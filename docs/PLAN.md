@@ -1,11 +1,11 @@
 # Energy Courtage — Apporteur d'Affaires Platform
-## Clone analysis + full build plan (v2 — screenshot batches #1 + #2)
+## Clone analysis + full build plan (v3 — screenshot batches #1 + #2 + #3)
 
-> Status: **living document**. v2 incorporates the invoice/e-signature flow, the admin
-> action sheet, and the incomplete-pipeline states. Sections marked `❓ TO CONFIRM` are
-> still assumptions.
+> Status: **living document**. v3 adds the Catalogue (with admin CRUD and a multi-step
+> product wizard) and the Chat screen (which revealed a **group + ticketing** system).
+> Sections marked `❓ TO CONFIRM` are still assumptions.
 >
-> **v2 changed three structural conclusions.** See §0.
+> **See §0 for what each batch changed, and §11 for the "can we do it in a weekend?" answer.**
 
 ---
 
@@ -17,6 +17,8 @@
 | Contracts are signed outside and uploaded | **Dual e-signature happens in-app**, apporteur + entreprise | +6 to +12 days, plus real legal weight |
 | "Voir le contrat" = the energy supply contract | It is the **facture / attestation d'apport d'affaires** between the company and the apporteur | A whole invoicing module appears in scope |
 | Network might be multi-level | Vocabulary is **parrain → filleul**, where the *filleul is the recommended prospect*, not a sub-collaborator. Flat network | Removes the 2-3 week multi-level risk 🎉 |
+| (v3) Chat = one realtime screen | Chat has **groups, pinning, archiving, unread filters AND a separate `Tickets` system** | 9 d → 15 d |
+| (v3) Catalogue = a read-only list | Catalogue has **admin CRUD and a ~5-step product wizard** | 4 d → 7 d |
 
 ---
 
@@ -164,7 +166,50 @@ Five admin powers, four of which need confirmation + audit logging.
 `Remettre à zéro` (reset the whole pipeline) is the most dangerous — it destroys stage
 history unless you soft-reset. `Supprimer` must be blocked once an invoice exists (§6.2).
 
-### 2.6 Bugs in the original — **do not clone these**
+### 2.6 `Catalogue` (batch 3, shots 1-3)
+
+Large title `Catalogue` · search `Rechercher un produit…` · category chips
+(`Tous` selected = blue border + blue text + pale blue fill, `Energie` = grey outline) ·
+blue **FAB `+`** bottom-right · product cards:
+
+```
+┌────────────────────────────────┐
+│ [ 16:9 image ]        ✏️  🗑    │  ← edit / delete float over the image (ADMIN only)
+│ Suivi              [En stock]  │  ← green pill
+│ Nous surveillons vos dates     │
+│ d'échéances…                   │  ← 2-line description
+│ 🏷 Energie          Sur devis  │  ← category + price, price in brand blue
+└────────────────────────────────┘
+```
+Products seen: **Suivi**, **Optimisation**, **Conseil** — all `Energie`, all `Sur devis`.
+So the catalogue sells *services of the brokerage*, not energy contracts. Pricing is
+`Sur devis`, meaning `offers.price_mode = enum('quote','fixed')` rather than a number.
+
+### 2.7 Add-product wizard (batch 3, shot 4)
+
+Back chevron + **progress bar (~20% ⇒ roughly 5 steps)** · `Informations sur le produit` /
+`Saisissez les détails du produit que vous souhaitez mettre en ligne` ·
+`Nom du produit` (text) · `Catégorie` (dropdown) · footer `Annuler` + `Suivant` (disabled
+until valid). Remaining steps `❓ not yet seen` — presumably description, image, pricing,
+reward amount, publish.
+
+### 2.8 `Chat` (batch 3, shot 5) ⭐ bigger than v2 assumed
+
+```
+Chat
+[ Discussions | Tickets ]            ← ⚠️ a support TICKETING system, new module
+🔍 Rechercher une discussion   [✎]   ← compose
+( Toutes ) ( Non lues ) ( Groupes ) ( Épinglées ) ( Arch…   ← scrollable filter chips
+┌──────────────────────────────────┐
+│ (JL)  Johann Lefeuvre      14:56 │
+│       Aucun message          ⋯   │
+└──────────────────────────────────┘
+```
+Confirmed scope: 1:1 **and group** conversations, pin, archive, unread filter, per-thread
+overflow menu, compose flow, **plus a separate ticket system** with its own lifecycle
+(status, assignee, priority, resolution). That is not "a chat screen", it is two modules.
+
+### 2.9 Bugs in the original — **do not clone these**
 1. `invoice_number` displayed as a raw field key instead of a label + value.
 2. `De nouveaux éléments sont di…` truncated instead of wrapping or shortening.
 3. `Pour la prestation suivante : aa` — no validation on a field that lands on a legal document.
@@ -172,8 +217,14 @@ history unless you soft-reset. `Supprimer` must be blocked once an invoice exist
 5. Invoice number `1111` — sequential numbering is a **legal obligation** (§6.2).
 6. The invoice header mixes the company and the apporteur with ambiguous alignment; a real
    invoice needs SIRET, address and legal form of both parties.
+7. The Catalogue **FAB overlaps card content** — `Sur devis` is hidden behind the `+` button.
+   Needs bottom content inset.
+8. All three products use the **same stock photo**.
+9. `En stock` on a service sold `Sur devis` — inventory semantics applied to something with no
+   inventory. Prefer `Disponible` / `Actif`.
+10. The `Arch…` filter chip is clipped rather than scrolled into view.
 
-### 2.7 Design tokens (sampled — refine against the real source)
+### 2.10 Design tokens (sampled — refine against the real source)
 ```swift
 brandBlue     #2196D3   // tint, primary button, current-step ring, links
 successGreen  #22C55E   // completed circles/lines, ✅ in signature panel
@@ -284,8 +335,14 @@ personal_notes(id, recommendation_id, author_id, body, updated_at)
 documents(id, recommendation_id, type enum('invoice','quote','contract','other'),
        storage_path, filename, size, uploaded_by, created_at)
 offers(id, title, description, category, supplier, energy_type,
+       price_mode enum('quote','fixed'), price numeric, availability_label text,
        default_reward_amount, media_url, is_active, position)
-threads / thread_participants / messages          -- chat
+
+tickets(id, opener_id, assignee_id, subject, status enum('open','pending','resolved','closed'),
+       priority, thread_id, created_at, resolved_at)
+threads(id, kind enum('direct','group','ticket'), recommendation_id, title, created_at)
+thread_participants(thread_id, profile_id, last_read_at, pinned bool, archived bool)
+messages(id, thread_id, sender_id, body, attachment_path, created_at)
 commissions / payout_batches                      -- money
 notifications(id, profile_id, type, payload jsonb, read_at, created_at)
 audit_log(id, actor_id, entity, entity_id, action, before jsonb, after jsonb, created_at)
@@ -402,8 +459,8 @@ on the iOS lines.
 | 7 | **Dual e-signature** — flow, state machine, evidence bundle, OTP, hashing | 6 | 4% |
 | 8 | Documents (viewer, signed URLs, share, PDFKit) | 4 | 3% |
 | 9 | Rappels / reminders (scheduling, push, done state) | 3 | 2% |
-| 10 | Chat (realtime, threads, attachments, unread, push) | 9 | 7% |
-| 11 | Catalogue (iOS) | 4 | 3% |
+| 10 | **Chat & Tickets** — realtime, 1:1 **+ groups**, pin/archive/unread filters, compose, attachments, push, **support ticket system** | 15 | 12% |
+| 11 | **Catalogue** — list, chips, search, admin CRUD, **multi-step product wizard**, image upload | 7 | 5% |
 | 12 | Accueil dashboard + stats | 4 | 3% |
 | 13 | Profil, KYC, IBAN, commission history, settings, account deletion | 6 | 4% |
 | 14 | Push notifications end-to-end + deep links + the "Actualiser" realtime banner | 5 | 4% |
@@ -413,13 +470,13 @@ on the iOS lines.
 | 18 | Tests (unit, snapshot, **RLS policy tests**, invoice-numbering tests, critical UI flows) | 8 | 6% |
 | 19 | CI/CD, TestFlight, App Store submission, privacy manifest | 4 | 3% |
 | 20 | RGPD & legal pages (CGU, privacy, consent, retention, deletion) | 4 | 3% |
-| | **Subtotal** | **119** | |
-| | Buffer / QA / iteration (+20%) | **+24** | |
-| | **TOTAL** | **≈ 143 dev-days** | |
+| | **Subtotal** | **128** | |
+| | Buffer / QA / iteration (+20%) | **+26** | |
+| | **TOTAL** | **≈ 154 dev-days** | |
 
 **Calendar**
-- Solo full-time (5 d/week): **~7 months**
-- Solo student ~15 h/week: **~17-19 months** ⇒ take the MVP cut (§8)
+- Solo full-time (5 d/week): **~7.5 months**
+- Solo student ~15 h/week: **~18-20 months** ⇒ take the MVP cut (§8)
 - Two devs (1 iOS + 1 web/backend): **~4 months**
 - Expo instead of SwiftUI, shared monorepo: **-30 to -35 days**
 
@@ -427,7 +484,8 @@ on the iOS lines.
 1. **Invoicing + e-signature + their legal constraints (12% + legal review)** — this is the
    part that looks like "one screen" and is actually a compliance subsystem.
 2. **The web back-office (9%)** — invisible in the screenshots, unavoidable in reality.
-3. **Chat (7%)** — realtime is always ~2× the guess. **Cut it from v1.**
+3. **Chat + tickets (12%)** — now the second-biggest line. Realtime is always ~2× the guess,
+   and the ticket system is a second product. **Cut both from v1.**
 4. **The 4-state stepper + expanding card (part of the 5% design system)** — the "exact clone" tax.
 5. **Money correctness** — reward vs invoiced amount, earned vs invoiced vs paid. Bugs here
    aren't bugs, they're disputes with your partners.
@@ -486,3 +544,93 @@ That already delivers the entire value proposition.
    c. a clickable SwiftUI prototype of the `Recommandations` screen matching shots 1 and 5
       pixel-for-pixel — the cheapest way to validate the "exact clone" bar before committing
       to ~7 months of work.
+
+
+---
+
+## 11. "Why can't we build the whole thing in one weekend?"
+
+Fair question, and part of the answer is: **a surprising amount of it, you can.** Here is the
+honest split rather than a defensive one.
+
+### 11.1 What a weekend genuinely buys you
+
+20-25 focused hours with aggressive AI codegen ≈ **4-6 dev-days of output**, if the stack is
+already familiar. A realistic weekend deliverable:
+
+- Supabase project: schema, RLS first pass, auth, seed data (5 stages + templates + 3 offers)
+- The `Recommandations` screen for real: list, search, `Actives`/`Archivées`, expandable card,
+  the 4-state stepper, the comment modal
+- `Valider l'étape` writing back to the database
+- A Catalogue list
+
+That is the **core loop, demo-able**, and it is genuinely the right first move — it validates
+the "exact clone" quality bar before anyone commits months.
+
+### 11.2 What a weekend cannot buy, hardest first
+
+**1. Time that isn't yours.** App Store review is 24-72 h. External TestFlight builds are
+reviewed too. Apple Developer enrolment is 24-48 h if you don't already have it. APNs
+certificates and provisioning profiles are hours of portal friction. **None of this
+compresses, at any budget.**
+
+**2. Legal correctness.** No amount of codegen makes an invoice compliant: gapless sequential
+numbering, 10-year immutable retention, the `mandat de facturation` required for self-billing,
+VAT vs the 293B franchise, the e-signature evidence bundle. Done wrong, you have shipped a
+liability, not a feature.
+
+**3. Row Level Security.** One bad policy and every apporteur reads every other apporteur's
+client list — names, phone numbers, deal values. Authorisation bugs are *silent*: nothing
+crashes, the data just leaks. Writing and actually testing these policies is slow on purpose.
+
+**4. Decisions nobody has made yet.** §9 lists 7 blocking questions, none answered.
+`1000 €` vs `300 €` on the same reco is still unresolved. **You cannot code past an
+unmade decision** — you can only guess, and then rewrite.
+
+**5. Content.** Catalogue copy, the 5 comment templates, the tax-notice wording, CGU, privacy
+policy. Writing is not coding and does not parallelise.
+
+**6. The screens nobody has seen.** ~14 screenshots so far. A product like this has 40+.
+
+### 11.3 The empirical argument
+
+Each batch of screenshots has *raised* the estimate:
+
+| After | Estimate | What newly appeared |
+|---|---:|---|
+| Batch 1 (4 shots) | 124 d | The core loop |
+| Batch 2 (5 shots) | 143 d | Invoicing, dual e-signature, admin action sheet, reminders |
+| Batch 3 (5 shots) | **154 d** | Catalogue admin CRUD + 5-step wizard, chat **groups**, pin/archive/unread, and a whole **ticketing system** |
+
+Three batches, **+30 days**, and `Accueil`, `Profil`, the create-reco form, onboarding and the
+entire apporteur-side view are still unseen. This is the normal shape of a clone job: the
+screenshots show the happy path, and the happy path is roughly a third of the work.
+
+### 11.4 Where the weekend maths actually lands
+
+The 154 days assume **production**: legal, App Store, polish, error states, tests. A **rough
+functional clone that looks right and demos well** is more like 30-40 days. So honestly:
+
+| Goal | Verdict |
+|---|---|
+| Weekend prototype of the core loop | **Realistic — do it** |
+| Weekend functional clone of everything | **~6-8× short** |
+| Weekend production launch | Not a scheduling problem. Apple alone won't allow it |
+
+### 11.5 What AI actually compresses
+
+| Compresses a lot (2-4×) | Compresses a little | Doesn't compress |
+|---|---|---|
+| SwiftUI views, design system, CRUD screens, forms, schema, boilerplate, tests | On-device debugging, state edge cases, realtime sync, PDF layout | App Review, Apple enrolment, legal review, **your product decisions**, content writing, user testing |
+
+Roughly **55% of the estimate sits in the first column** — which is *why the number is 154 and
+not 400*. It already assumes heavy AI use. Halving that column again takes you to ~110 days.
+Halving it a third time is not a thing that exists.
+
+### 11.6 Recommendation
+
+**Do the weekend.** Build the core-loop prototype in §11.1. It de-risks everything, it answers
+the "can we really clone this?" question with code instead of opinion, and if it lands better
+than predicted I will re-cost downward on the evidence. What should *not* happen is committing
+to a launch date on the assumption that the weekend result is 80% of the product — it will be
+closer to 4%, and the remaining 96% is where every energy-brokerage clone dies.
