@@ -55,11 +55,15 @@ begin
     (v_marie,  'marie@example.test'),
     (v_pierre, 'pierre-louis@trinity-energie.test');
 
-  insert into profiles (id, role, status, first_name, last_name, email, city) values
-    (v_johann, 'apporteur', 'active', 'Johann', 'Lefeuvre', 'johann@example.test', 'Lille'),
-    (v_marie,  'apporteur', 'active', 'Marie',  'Durand',   'marie@example.test',  'Lyon'),
+  insert into profiles (id, role, status, first_name, last_name, email, city,
+                        company_name, billing_mandate_signed_at) values
+    (v_johann, 'apporteur', 'active', 'Johann', 'Lefeuvre', 'johann@example.test', 'Lille',
+     'Lefeuvre Conseil', timestamptz '2026-01-05 10:00'),
+    -- Marie has no mandate on file: she cannot be invoiced (section 8)
+    (v_marie,  'apporteur', 'active', 'Marie',  'Durand',   'marie@example.test',  'Lyon',
+     null, null),
     (v_pierre, 'admin',     'active', 'Pierre-Louis', 'Tettamanti',
-     'pierre-louis@trinity-energie.test', 'AIX-EN-PEVELE');
+     'pierre-louis@trinity-energie.test', 'AIX-EN-PEVELE', 'Trinity Énergie', null);
 end $$;
 
 -- Johann creates a recommendation (Thomas Dubois, as in the screenshots)
@@ -312,6 +316,123 @@ begin
   perform login(v_pierre);
   perform assert((select count(*) from personal_notes) = 0,
     'even an admin cannot read an apporteur''s "Notes personnelles"');
+end $$;
+
+\echo ''
+\echo '=== 8. Invoicing obligations ======================================'
+do $$
+declare
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_reco   uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  v_inv    uuid;
+  v_doc    jsonb;
+  v_rate   numeric;
+  v_ttc    numeric;
+  v_ment   text;
+begin
+  perform login(v_pierre);
+
+  -- no mandate on file -> refused, whatever the UI allows
+  perform assert_denied(v_pierre, format(
+    'insert into invoices (recommendation_id, apporteur_id, issuer_id, prestation_label,
+                           intervened_on, issued_on, place, amount_ht, amount_ttc, legal_mentions)
+     values (%L, %L, %L, ''x'', current_date, current_date, ''Lille'', 100, 100, ''x'')',
+    v_reco, v_marie, v_pierre),
+    'an apporteur without a self-billing mandate cannot be invoiced');
+
+  -- a mandate signed after the invoice date is not a prior mandate
+  update profiles set billing_mandate_signed_at = timestamptz '2027-01-01 10:00'
+   where id = v_marie;
+  perform assert_denied(v_pierre, format(
+    'insert into invoices (recommendation_id, apporteur_id, issuer_id, prestation_label,
+                           intervened_on, issued_on, place, amount_ht, amount_ttc, legal_mentions)
+     values (%L, %L, %L, ''x'', current_date, date ''2026-09-17'', ''Lille'', 100, 100, ''x'')',
+    v_reco, v_marie, v_pierre),
+    'a mandate signed after the invoice date does not authorise it');
+
+  -- Johann is under the franchise en base: 293B wording, no VAT
+  select id into v_inv from invoices where number = 'FA-2026-0002';
+  select vat_rate, amount_ttc, legal_mentions into v_rate, v_ttc, v_ment
+    from invoices where id = v_inv;
+  perform assert(v_rate = 0 and v_ttc = 150.00, 'a 293B apporteur is invoiced without VAT');
+  perform assert(v_ment like '%Article 293B%', 'the 293B exemption wording is applied');
+
+  -- once he crosses the threshold, VAT appears with no code change
+  update profiles set vat_liable = true, vat_number = 'FR12345678901' where id = v_johann;
+  insert into invoices (recommendation_id, apporteur_id, issuer_id, prestation_label,
+                        intervened_on, issued_on, place, amount_ht, amount_ttc, legal_mentions)
+  values (v_reco, v_johann, v_pierre, 'Apport d''affaires', date '2026-09-19',
+          date '2026-09-19', 'AIX-EN-PEVELE', 300.00, 0, 'ignored')
+  returning id, vat_rate, amount_ttc into v_inv, v_rate, v_ttc;
+  perform assert(v_rate = 20.00 and v_ttc = 360.00,
+    'a VAT-liable apporteur is invoiced with 20% VAT, derived not typed');
+
+  -- the document contract the PDF and the in-app viewer both read
+  select invoice_document(v_inv) into v_doc;
+  perform assert(v_doc -> 'attestation' ->> 'avec' = 'Thomas Dubois',
+    'the attestation names the filleul');
+  perform assert(v_doc -> 'attestation' ->> 'mis_en_relation' = 'Trinity Énergie',
+    'the attestation names the company');
+  perform assert(v_doc -> 'amount' ->> 'ttc' = '360.00', 'the document carries the TTC amount');
+  perform assert(v_doc ->> 'tax_notice' like '%CERFA 2042 C%',
+    'the document carries the BNC tax notice');
+  perform assert(jsonb_array_length(v_doc -> 'signatures') = 2
+                 and (v_doc -> 'signatures' -> 0 ->> 'signed') = 'false',
+    'both signature slots are present and start unsigned');
+
+  update profiles set vat_liable = false, vat_number = null where id = v_johann;
+end $$;
+
+\echo ''
+\echo '=== 9. The feed view does not bypass RLS =========================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_row    recommendation_feed%rowtype;
+  n int;
+begin
+  -- section 6 soft-deleted the first reco; give Johann a live one again
+  perform login(v_pierre);
+  update recommendations set deleted_at = null
+   where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+  perform login(v_marie);
+  select count(*) into n from recommendation_feed;
+  perform assert(n = 0, 'the feed view honours RLS: Marie still sees nothing');
+
+  perform login(v_johann);
+  select * into v_row from recommendation_feed limit 1;
+  perform assert(v_row.parrain_name = 'Johann Lefeuvre', 'the feed resolves the parrain name');
+  perform assert(jsonb_array_length(v_row.events) = 5,
+    'the feed returns the whole timeline in one row (no N+1)');
+  perform assert(v_row.events -> 0 ->> 'stage_key' = 'a_contacter',
+    'timeline events come back in pipeline order');
+  perform assert(v_row.invoice_number = 'FA-2026-0003', 'the feed exposes the latest invoice');
+end $$;
+
+\echo ''
+\echo '=== 10. Dashboard stats are scoped to the caller =================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_stats  jsonb;
+begin
+  perform login(v_johann);
+  select dashboard_stats() into v_stats;
+  perform assert((v_stats ->> 'active_count')::int = 1, 'Johann counts his own recommendation');
+  perform assert((v_stats ->> 'earned_total')::numeric = 1000,
+    'his earned total reflects the invoiced reward');
+
+  perform login(v_marie);
+  select dashboard_stats() into v_stats;
+  perform assert((v_stats ->> 'active_count')::int = 0,
+    'Marie''s dashboard cannot count other people''s deals');
+  perform assert((v_stats ->> 'earned_total')::numeric = 0, 'nor their money');
 end $$;
 
 reset role;
