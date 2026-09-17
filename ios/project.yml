@@ -1,0 +1,39 @@
+# XcodeGen spec for the runnable app.
+#
+# A Swift package previews in Xcode but cannot run in the Simulator on its
+# own; it needs an app target to host it. Generate the project with:
+#
+#   brew install xcodegen && cd ios && xcodegen generate && open EnergyCourtage.xcodeproj
+#
+# Or skip XcodeGen entirely: File > New > Project > iOS App, then
+# File > Add Package Dependencies > Add Local... and point it at ios/.
+name: EnergyCourtage
+options:
+  bundleIdPrefix: com.trinityenergie
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    # Point these at your own project; both are safe to commit in a local
+    # xcconfig, not here.
+    SUPABASE_URL: ""
+    SUPABASE_ANON_KEY: ""
+packages:
+  EnergyCourtage:
+    path: .
+targets:
+  EnergyCourtage:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    info:
+      path: App/Info.plist
+    dependencies:
+      - package: EnergyCourtage
+        product: EnergyCourtage
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.trinityenergie.energycourtage
+        GENERATE_INFOPLIST_FILE: NO

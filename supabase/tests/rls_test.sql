@@ -141,6 +141,22 @@ begin
 end $$;
 
 \echo ''
+\echo '=== 2b. An unauthenticated caller reaches nothing ================='
+do $$
+declare n int;
+begin
+  -- The column guard treats a null uid as trusted server-side context, which
+  -- is only safe because RLS stops an anonymous request before it gets there.
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into n from recommendations;
+  perform assert(n = 0, 'an unauthenticated caller sees no recommendations');
+
+  perform assert_denied(null,
+    'update recommendations set reward_amount = 1 where true',
+    'and cannot update one either, so the null-uid guard exposes nothing');
+end $$;
+
+\echo ''
 \echo '=== 3. Admin advances the pipeline, templates render =============='
 do $$
 declare
@@ -245,14 +261,16 @@ begin
 
   perform login(v_johann);
   insert into invoice_signatures (invoice_id, signer_id, signer_role, signer_full_name, document_sha256)
-  values (v_inv, v_johann, 'apporteur', 'Johann Lefeuvre', repeat('a', 64));
+  values (v_inv, v_johann, 'apporteur', 'Johann Lefeuvre',
+          (select document_sha256 from invoices where id = v_inv));
 
   select status into v_status from invoices where id = v_inv;
   perform assert(v_status <> 'signed', 'one signature is not enough to seal the invoice');
 
   perform login(v_pierre);
   insert into invoice_signatures (invoice_id, signer_id, signer_role, signer_full_name, document_sha256)
-  values (v_inv, v_pierre, 'entreprise', 'Pierre-Louis Tettamanti', repeat('a', 64));
+  values (v_inv, v_pierre, 'entreprise', 'Pierre-Louis Tettamanti',
+          (select document_sha256 from invoices where id = v_inv));
 
   select status into v_status from invoices where id = v_inv;
   perform assert(v_status = 'signed', 'both signatures seal the invoice automatically');
@@ -376,6 +394,8 @@ begin
   perform assert(v_doc -> 'attestation' ->> 'mis_en_relation' = 'Trinity Énergie',
     'the attestation names the company');
   perform assert(v_doc -> 'amount' ->> 'ttc' = '360.00', 'the document carries the TTC amount');
+  perform assert(length(v_doc ->> 'document_sha256') = 64,
+    'the viewer receives the digest it must sign, rather than recomputing it');
   perform assert(v_doc ->> 'tax_notice' like '%CERFA 2042 C%',
     'the document carries the BNC tax notice');
   perform assert(jsonb_array_length(v_doc -> 'signatures') = 2
@@ -498,23 +518,24 @@ declare
   v_johann uuid := '11111111-1111-1111-1111-111111111111';
   v_marie  uuid := '22222222-2222-2222-2222-222222222222';
   v_inv    uuid;
+  v_digest text;
 begin
   perform login(v_pierre);
   select id into v_inv from invoices where number = 'FA-2026-0003';
-  update invoices set pdf_path = 'invoices/FA-2026-0003.pdf',
-                      pdf_sha256 = repeat('b', 64)
-   where id = v_inv;
+  select document_sha256 into v_digest from invoices where id = v_inv;
+  perform assert(v_digest is not null and length(v_digest) = 64,
+    'every invoice is stamped with the digest of its own canonical text');
 
   perform assert_denied(v_johann,
     format('select * from sign_invoice(%L, %L)', v_inv, repeat('c', 64)),
     'signing a document whose hash does not match the invoice is refused');
 
   perform assert_denied(v_marie,
-    format('select * from sign_invoice(%L, %L)', v_inv, repeat('b', 64)),
+    format('select * from sign_invoice(%L, %L)', v_inv, v_digest),
     'a stranger to the invoice cannot sign it at all');
 
   perform login(v_johann);
-  perform sign_invoice(v_inv, repeat('b', 64));
+  perform sign_invoice(v_inv, v_digest);
   perform assert(
     (select signer_role from invoice_signatures where invoice_id = v_inv) = 'apporteur',
     'the signer role is derived from who is calling, never chosen');

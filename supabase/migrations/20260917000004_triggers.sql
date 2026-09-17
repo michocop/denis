@@ -24,7 +24,12 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
-  if is_admin(auth.uid()) then
+  -- A null uid means there is no authenticated request: a migration, a seed,
+  -- or an Edge Function on the service role. That is trusted server-side
+  -- context, and it is safe to allow here because RLS has already run -- an
+  -- anonymous caller never reaches this trigger, since no policy grants them
+  -- the row in the first place (asserted in the test suite).
+  if auth.uid() is null or is_admin(auth.uid()) then
     return new;
   end if;
 

@@ -120,5 +120,18 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
         return reco
     }
 
+    public func create(_ draft: RecommendationDraft) async throws -> Recommendation {
+        try? await Task.sleep(for: delay)
+        return Recommendation(
+            id: UUID(),
+            filleulFirstName: draft.firstName,
+            filleulLastName: draft.lastName,
+            filleulPhone: draft.phone,
+            parrainName: "Johann Lefeuvre",
+            createdAt: .now,
+            currentStageID: SampleData.stages[0].id
+        )
+    }
+
     enum PreviewError: Error { case notFound }
 }

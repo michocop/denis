@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>Energy Courtage</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1</string>
+  <!-- Filled from the build settings so keys stay out of source control.
+       The anon key is public by design: it grants nothing on its own,
+       because every table is behind RLS. -->
+  <key>SUPABASE_URL</key>
+  <string>$(SUPABASE_URL)</string>
+  <key>SUPABASE_ANON_KEY</key>
+  <string>$(SUPABASE_ANON_KEY)</string>
+  <key>UILaunchScreen</key>
+  <dict/>
+</dict>
+</plist>

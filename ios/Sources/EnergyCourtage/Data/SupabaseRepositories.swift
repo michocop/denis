@@ -1,0 +1,367 @@
+import Foundation
+
+// MARK: - Recommendations
+
+/// Reads through `recommendation_feed`, which returns a card and its whole
+/// timeline in one row, and writes through the RPCs — so the client never
+/// encodes an ordering rule the database already owns.
+public struct SupabaseRecommendationsRepository: RecommendationsRepository {
+
+    private let client: SupabaseClient
+    public init(client: SupabaseClient) { self.client = client }
+
+    private struct FeedRow: Decodable {
+        struct Event: Decodable {
+            let stageKey: String
+            let comment: String?
+            let completedAt: Date
+        }
+        let id: UUID
+        let filleulFirstName: String
+        let filleulLastName: String
+        let filleulPhone: String?
+        let parrainName: String
+        let createdAt: Date
+        let currentStageKey: String
+        let rewardStatus: RewardStatus
+        let status: RecommendationStatus
+        let displayedAmount: Decimal?
+        let rewardAmount: Decimal?
+        let events: [Event]
+        let hasContract: Bool
+        let invoiceNumber: String?
+    }
+
+    public func loadPipeline() async throws -> [Stage] {
+        let rows: [StageRow] = try await client.get(
+            "stages", query: [URLQueryItem(name: "order", value: "position.asc")]
+        )
+        return rows.map(\.asStage)
+    }
+
+    private struct StageRow: Decodable {
+        let id: UUID
+        let key: String
+        let label: String
+        let position: Int
+        let isRewardTrigger: Bool
+        let isTerminal: Bool
+        let bannerTemplate: String?
+        let commentTemplate: String?
+
+        var asStage: Stage {
+            Stage(id: id, key: key, label: label, position: position,
+                  isRewardTrigger: isRewardTrigger, isTerminal: isTerminal,
+                  bannerTemplate: bannerTemplate, commentTemplate: commentTemplate)
+        }
+    }
+
+    public func loadRecommendations(archived: Bool) async throws -> [Recommendation] {
+        let pipeline = try await loadPipeline()
+        let rows: [FeedRow] = try await client.get("recommendation_feed", query: [
+            URLQueryItem(name: "status", value: archived ? "neq.active" : "eq.active"),
+            URLQueryItem(name: "order", value: "created_at.desc")
+        ])
+        return rows.map { row in map(row, pipeline: pipeline) }
+    }
+
+    private func map(_ row: FeedRow, pipeline: [Stage]) -> Recommendation {
+        let byKey = Dictionary(uniqueKeysWithValues: pipeline.map { ($0.key, $0) })
+        return Recommendation(
+            id: row.id,
+            filleulFirstName: row.filleulFirstName,
+            filleulLastName: row.filleulLastName,
+            filleulPhone: row.filleulPhone,
+            parrainName: row.parrainName,
+            createdAt: row.createdAt,
+            currentStageID: byKey[row.currentStageKey]?.id ?? UUID(),
+            events: row.events.compactMap { event in
+                guard let stage = byKey[event.stageKey] else { return nil }
+                return StageEvent(id: UUID(), stageID: stage.id,
+                                  comment: event.comment, completedAt: event.completedAt)
+            },
+            rewardAmount: row.rewardAmount,
+            rewardStatus: row.rewardStatus,
+            status: row.status,
+            hasContract: row.hasContract,
+            invoiceNumber: row.invoiceNumber
+        )
+    }
+
+    public func advanceStage(recommendationID: UUID, stageKey: String) async throws -> Recommendation {
+        // The RPC returns the raw row; re-read the feed so the caller gets the
+        // same shape the list renders, timeline included.
+        try await client.rpcVoid("advance_stage", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString),
+            "p_stage_key": AnyEncodable(stageKey)
+        ])
+        return try await reload(recommendationID)
+    }
+
+    private func reload(_ id: UUID) async throws -> Recommendation {
+        let pipeline = try await loadPipeline()
+        let rows: [FeedRow] = try await client.get("recommendation_feed", query: [
+            URLQueryItem(name: "id", value: "eq.\(id.uuidString)")
+        ])
+        guard let row = rows.first else { throw SupabaseError.decoding("recommendation missing") }
+        return map(row, pipeline: pipeline)
+    }
+
+    public func create(_ draft: RecommendationDraft) async throws -> Recommendation {
+        // current_stage_id is left out on purpose: a trigger sets the entry
+        // stage, so the form does not have to know the pipeline.
+        var values: [String: AnyEncodable] = [
+            "filleul_first_name": AnyEncodable(draft.firstName),
+            "filleul_last_name": AnyEncodable(draft.lastName),
+            "parrain_id": AnyEncodable(try await currentUserID().uuidString)
+        ]
+        if !draft.phone.isEmpty { values["filleul_phone"] = AnyEncodable(draft.phone) }
+        if !draft.email.isEmpty { values["filleul_email"] = AnyEncodable(draft.email) }
+        if !draft.company.isEmpty { values["filleul_company"] = AnyEncodable(draft.company) }
+        if let offerID = draft.offerID { values["offer_id"] = AnyEncodable(offerID.uuidString) }
+
+        struct Created: Decodable { let id: UUID }
+        let created: [Created] = try await client.insert("recommendations", values: values)
+        guard let id = created.first?.id else {
+            throw SupabaseError.decoding("insert returned no row")
+        }
+        return try await reload(id)
+    }
+
+    public func reassign(recommendationID: UUID, to adminID: UUID) async throws {
+        try await client.rpcVoid("reassign_recommendation", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString),
+            "p_admin_id": AnyEncodable(adminID.uuidString)
+        ])
+    }
+
+    public func archive(recommendationID: UUID, won: Bool) async throws {
+        try await client.rpcVoid("archive_recommendation", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString),
+            "p_won": AnyEncodable(won)
+        ])
+    }
+
+    public func resetPipeline(recommendationID: UUID) async throws {
+        try await client.rpcVoid("reset_pipeline", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString)
+        ])
+    }
+
+    public func softDelete(recommendationID: UUID) async throws {
+        try await client.rpcVoid("soft_delete_recommendation", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString)
+        ])
+    }
+
+    public func loadAdmins() async throws -> [Profile] {
+        try await client.get("profiles", query: [
+            URLQueryItem(name: "role", value: "in.(admin,manager)"),
+            URLQueryItem(name: "status", value: "eq.active"),
+            URLQueryItem(name: "order", value: "first_name.asc")
+        ])
+    }
+
+    private func currentUserID() async throws -> UUID {
+        struct Me: Decodable { let id: UUID }
+        let me: [Me] = try await client.get("profiles", query: [
+            URLQueryItem(name: "select", value: "id"),
+            URLQueryItem(name: "limit", value: "1")
+        ])
+        guard let id = me.first?.id else { throw SupabaseError.unauthenticated }
+        return id
+    }
+}
+
+// MARK: - Catalogue
+
+public struct SupabaseCatalogueRepository: CatalogueRepository {
+    private let client: SupabaseClient
+    public init(client: SupabaseClient) { self.client = client }
+
+    public func loadOffers() async throws -> [Offer] {
+        try await client.get("offers", query: [
+            URLQueryItem(name: "order", value: "position.asc")
+        ])
+    }
+
+    public func save(_ offer: Offer) async throws -> Offer {
+        let values: [String: AnyEncodable] = [
+            "title": AnyEncodable(offer.title),
+            "description": AnyEncodable(offer.description ?? ""),
+            "category": AnyEncodable(offer.category),
+            "price_mode": AnyEncodable(offer.priceMode.rawValue),
+            "availability_label": AnyEncodable(offer.availabilityLabel),
+            "is_active": AnyEncodable(offer.isActive),
+            "position": AnyEncodable(offer.position)
+        ]
+        let rows: [Offer] = try await client.update(
+            "offers", values: values,
+            match: [URLQueryItem(name: "id", value: "eq.\(offer.id.uuidString)")]
+        )
+        return rows.first ?? offer
+    }
+
+    public func delete(offerID: UUID) async throws {
+        // Unpublishing rather than deleting: recommendations reference offers,
+        // and a removed offer would blank out their history.
+        let _: [Offer] = try await client.update(
+            "offers", values: ["is_active": AnyEncodable(false)],
+            match: [URLQueryItem(name: "id", value: "eq.\(offerID.uuidString)")]
+        )
+    }
+}
+
+// MARK: - Chat
+
+public struct SupabaseChatRepository: ChatRepository {
+    private let client: SupabaseClient
+    public init(client: SupabaseClient) { self.client = client }
+
+    private struct ThreadRow: Decodable {
+        let id: UUID
+        let kind: ChatThread.Kind
+        let title: String?
+        let createdAt: Date
+    }
+
+    public func loadThreads() async throws -> [ChatThread] {
+        let rows: [ThreadRow] = try await client.get("threads", query: [
+            URLQueryItem(name: "order", value: "created_at.desc")
+        ])
+        let unread: [String: Int] = try await client.rpc("unread_counts")
+
+        return rows.map { row in
+            ChatThread(id: row.id, kind: row.kind, title: row.title,
+                       counterpartName: row.title ?? "Conversation",
+                       lastMessageAt: row.createdAt,
+                       unreadCount: unread[row.id.uuidString.lowercased()] ?? 0)
+        }
+    }
+
+    private struct MessageRow: Decodable {
+        let id: UUID
+        let threadId: UUID
+        let senderId: UUID
+        let body: String?
+        let createdAt: Date
+    }
+
+    public func loadMessages(threadID: UUID) async throws -> [ChatMessage] {
+        let rows: [MessageRow] = try await client.get("messages", query: [
+            URLQueryItem(name: "thread_id", value: "eq.\(threadID.uuidString)"),
+            URLQueryItem(name: "order", value: "created_at.asc")
+        ])
+        return rows.map {
+            ChatMessage(id: $0.id, threadID: $0.threadId, senderID: $0.senderId,
+                        senderName: "", body: $0.body, createdAt: $0.createdAt)
+        }
+    }
+
+    public func send(body: String, threadID: UUID) async throws -> ChatMessage {
+        struct Me: Decodable { let id: UUID }
+        let me: [Me] = try await client.get("profiles", query: [
+            URLQueryItem(name: "select", value: "id"), URLQueryItem(name: "limit", value: "1")
+        ])
+        guard let sender = me.first?.id else { throw SupabaseError.unauthenticated }
+
+        let rows: [MessageRow] = try await client.insert("messages", values: [
+            "thread_id": AnyEncodable(threadID.uuidString),
+            "sender_id": AnyEncodable(sender.uuidString),
+            "body": AnyEncodable(body)
+        ])
+        guard let row = rows.first else { throw SupabaseError.decoding("no message returned") }
+        return ChatMessage(id: row.id, threadID: row.threadId, senderID: row.senderId,
+                           senderName: "", body: row.body, createdAt: row.createdAt)
+    }
+
+    public func markRead(threadID: UUID) async throws {
+        try await client.rpcVoid("mark_thread_read", body: [
+            "p_thread_id": AnyEncodable(threadID.uuidString)
+        ])
+    }
+
+    public func openTicket(subject: String, body: String) async throws -> UUID {
+        try await client.rpc("open_ticket", body: [
+            "p_subject": AnyEncodable(subject),
+            "p_body": AnyEncodable(body)
+        ])
+    }
+}
+
+// MARK: - Profile
+
+public struct SupabaseProfileRepository: ProfileRepository {
+    private let client: SupabaseClient
+    public init(client: SupabaseClient) { self.client = client }
+
+    public func currentProfile() async throws -> Profile {
+        // RLS already restricts this to the caller's own row.
+        let rows: [Profile] = try await client.get("profiles",
+                                                   query: [URLQueryItem(name: "limit", value: "1")])
+        guard let profile = rows.first else { throw SupabaseError.unauthenticated }
+        return profile
+    }
+
+    public func save(_ profile: Profile) async throws -> Profile {
+        let rows: [Profile] = try await client.update("profiles", values: [
+            "first_name": AnyEncodable(profile.firstName),
+            "last_name": AnyEncodable(profile.lastName),
+            "phone": AnyEncodable(profile.phone ?? ""),
+            "company_name": AnyEncodable(profile.companyName ?? ""),
+            "siret": AnyEncodable(profile.siret ?? ""),
+            "city": AnyEncodable(profile.city ?? "")
+        ], match: [URLQueryItem(name: "id", value: "eq.\(profile.id.uuidString)")])
+        return rows.first ?? profile
+    }
+
+    public func dashboardStats() async throws -> DashboardStats {
+        try await client.rpc("dashboard_stats")
+    }
+
+    public func signBillingMandate() async throws -> Profile {
+        let profile = try await currentProfile()
+        let rows: [Profile] = try await client.update("profiles", values: [
+            "billing_mandate_signed_at": AnyEncodable(ISO8601DateFormatter().string(from: .now))
+        ], match: [URLQueryItem(name: "id", value: "eq.\(profile.id.uuidString)")])
+        return rows.first ?? profile
+    }
+
+    public func deleteAccount() async throws {
+        // App Store guideline 5.1.1(v): deletion must be reachable in-app.
+        try await client.rpcVoid("request_account_deletion")
+    }
+}
+
+// MARK: - Invoices
+
+public struct SupabaseInvoiceRepository: InvoiceRepository {
+    private let client: SupabaseClient
+    public init(client: SupabaseClient) { self.client = client }
+
+    public func document(invoiceID: UUID) async throws -> InvoiceDocument {
+        try await client.rpc("invoice_document", body: [
+            "p_invoice_id": AnyEncodable(invoiceID.uuidString)
+        ])
+    }
+
+    public func latestInvoiceID(recommendationID: UUID) async throws -> UUID? {
+        struct Row: Decodable { let id: UUID }
+        let rows: [Row] = try await client.get("invoices", query: [
+            URLQueryItem(name: "select", value: "id"),
+            URLQueryItem(name: "recommendation_id", value: "eq.\(recommendationID.uuidString)"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: "1")
+        ])
+        return rows.first?.id
+    }
+
+    public func sign(invoiceID: UUID, documentSHA256: String) async throws {
+        // The hash is checked server-side against the issued invoice, so a
+        // client cannot sign anything other than what it was shown.
+        try await client.rpcVoid("sign_invoice", body: [
+            "p_invoice_id": AnyEncodable(invoiceID.uuidString),
+            "p_document_sha256": AnyEncodable(documentSHA256)
+        ])
+    }
+}

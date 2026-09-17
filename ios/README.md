@@ -10,8 +10,8 @@ company signature panel). Authority is enforced in Postgres — see
 
 | | |
 |---|---|
-| Built | Design tokens, 4-state stepper, card, comment dialog, segmented control, search, refresh banner, buttons, `Recommandations` screen with loading/empty/error states, view model, in-memory repository, unit tests |
-| Not built yet | Supabase repository, the other four tabs, create-reco form, invoice + signature UI, action sheet, push |
+| Built | All five tabs (Accueil, Reco, Catalogue, Chat, Profil), sign-in, create-recommendation form with the RGPD consent gate, the admin action sheet, the invoice viewer with dual signature, the product wizard, the design system, Supabase repositories for every screen, and unit tests |
+| Not built yet | Push notifications, realtime subscriptions, the thread detail view, offline cache, reminders UI, PDF rendering |
 
 **Not yet compiled.** This package was written on Linux, where no Swift
 toolchain is available, so it has had a careful read-through but not a build.
@@ -20,9 +20,18 @@ Expect to fix a few small things on first `swift build` / Xcode open.
 ## Run it
 
 ```bash
-open ios/Package.swift        # Xcode 15+, iOS 17 target
-swift test                    # logic tests (no UI)
+# runnable app (Simulator)
+brew install xcodegen && cd ios && xcodegen generate
+open EnergyCourtage.xcodeproj     # set SUPABASE_URL / SUPABASE_ANON_KEY
+
+# previews and tests only, no app target needed
+open ios/Package.swift
+swift test
 ```
+
+A Swift package previews in Xcode but cannot run in the Simulator on its own;
+`project.yml` generates the app target that hosts it. Without XcodeGen: create
+an iOS App project by hand and add `ios/` as a local package dependency.
 
 Four previews reproduce the reference screenshots: the completed Thomas Dubois
 card, the same card mid-pipeline (completed / current / pending together), the
@@ -34,7 +43,11 @@ stage comment dialog, and the full screen in both roles.
 Sources/EnergyCourtage/
   DesignSystem/   Theme.swift (all tokens), StageStepper.swift, Controls.swift
   Models/         Domain.swift — Stage, StageEvent, Recommendation, UserRole
-  Features/       Recommendations/ — card, screen, view model
+  Core/           SupabaseClient.swift (PostgREST/GoTrue over URLSession),
+                  Repositories.swift (protocols + Dependencies)
+  Data/           SupabaseRepositories.swift — one per screen
+  Features/       Home · Recommendations · Catalogue · Chat · Profile · Invoices
+  App/            AppRoot.swift (session + routing), RootView.swift (tabs, sign-in)
   Preview/        SampleData.swift (screenshot fixtures), Previews.swift
 ```
 

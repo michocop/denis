@@ -7,6 +7,46 @@ public protocol RecommendationsRepository: Sendable {
     func loadPipeline() async throws -> [Stage]
     func loadRecommendations(archived: Bool) async throws -> [Recommendation]
     func advanceStage(recommendationID: UUID, stageKey: String) async throws -> Recommendation
+
+    // Creation, and the five admin powers behind the action sheet.
+    func create(_ draft: RecommendationDraft) async throws -> Recommendation
+    func reassign(recommendationID: UUID, to adminID: UUID) async throws
+    func archive(recommendationID: UUID, won: Bool) async throws
+    func resetPipeline(recommendationID: UUID) async throws
+    func softDelete(recommendationID: UUID) async throws
+    func loadAdmins() async throws -> [Profile]
+}
+
+/// What the create form collects. `consentConfirmed` is not decoration: the
+/// filleul never signed up, so storing their details needs a lawful basis and
+/// the apporteur confirming they informed them is it.
+public struct RecommendationDraft: Hashable, Sendable {
+    public var firstName: String = ""
+    public var lastName: String = ""
+    public var phone: String = ""
+    public var email: String = ""
+    public var company: String = ""
+    public var offerID: UUID?
+    public var consentConfirmed: Bool = false
+
+    public init() {}
+
+    public var isValid: Bool {
+        !firstName.trimmingCharacters(in: .whitespaces).isEmpty
+        && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
+        && !phone.trimmingCharacters(in: .whitespaces).isEmpty
+        && consentConfirmed
+    }
+}
+
+/// Previews and tests only need the read path; the admin operations default to
+/// no-ops so a fake does not have to implement six methods it never calls.
+public extension RecommendationsRepository {
+    func reassign(recommendationID: UUID, to adminID: UUID) async throws {}
+    func archive(recommendationID: UUID, won: Bool) async throws {}
+    func resetPipeline(recommendationID: UUID) async throws {}
+    func softDelete(recommendationID: UUID) async throws {}
+    func loadAdmins() async throws -> [Profile] { [] }
 }
 
 public enum RecommendationFilter: Hashable, Sendable {
@@ -29,7 +69,9 @@ public final class RecommendationsViewModel {
     /// reloading the list under the user's finger.
     public var hasStaleData = false
 
-    public var filter: RecommendationFilter = .active { didSet { Task { await load() } } }
+    // No didSet here: the @Observable macro rewrites stored properties, and
+    // property observers do not survive it. The view reloads on change instead.
+    public var filter: RecommendationFilter = .active
     public var query: String = ""
     public var expandedID: UUID?
 

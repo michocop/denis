@@ -56,6 +56,7 @@ public struct RecommendationsView: View {
         }
         .animation(.snappy(duration: 0.25), value: model.hasStaleData)
         .task { await model.load() }
+        .onChange(of: model.filter) { _, _ in Task { await model.load() } }
     }
 
     @ViewBuilder
