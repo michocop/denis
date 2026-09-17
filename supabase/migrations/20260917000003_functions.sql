@@ -28,6 +28,40 @@ as $$
   select exists (select 1 from profiles where id = p_uid and status = 'active');
 $$;
 
+-- Membership of a conversation, for the chat policies.
+-- SECURITY DEFINER for the same reason as is_admin: a policy on
+-- thread_participants that queried thread_participants through RLS recurses
+-- infinitely, and Postgres refuses the whole query at runtime.
+create or replace function public.is_thread_participant(p_thread_id uuid, p_uid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from thread_participants
+     where thread_id = p_thread_id and profile_id = p_uid
+  );
+$$;
+
+-- Who support tickets go to.
+-- SECURITY DEFINER because an apporteur cannot see admin profiles through RLS,
+-- so server-side logic running as them would find nobody to assign and open
+-- the ticket into the void.
+create or replace function public.support_admin_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select id from profiles
+   where role in ('admin','manager') and status = 'active'
+   order by created_at
+   limit 1;
+$$;
+
 -- --------------------------------------------------------------- templates
 -- Renders "Bonjour {parrain}, ... {filleul} ..." against a jsonb of values.
 create or replace function public.render_template(p_template text, p_vars jsonb)

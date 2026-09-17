@@ -435,6 +435,134 @@ begin
   perform assert((v_stats ->> 'earned_total')::numeric = 0, 'nor their money');
 end $$;
 
+\echo ''
+\echo '=== 11. Admin operations and their side effects ==================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_new    recommendations%rowtype;
+begin
+  -- a new reco needs no stage: the database picks the entry point
+  perform login(v_marie);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+  values ('Claire', 'Petit', v_marie)
+  returning * into v_new;
+  v_reco := v_new.id;
+  perform assert(
+    v_new.current_stage_id = (select id from stages order by position limit 1),
+    'a new recommendation enters at the first stage without the client saying so');
+
+  perform assert_denied(v_marie,
+    format('select * from reassign_recommendation(%L, %L)', v_reco, v_pierre),
+    'an apporteur cannot reassign');
+
+  perform login(v_pierre);
+  perform reassign_recommendation(v_reco, v_pierre);
+  perform assert(
+    (select assigned_admin_id from recommendations where id = v_reco) = v_pierre,
+    'an admin can reassign');
+
+  perform assert_denied(v_pierre,
+    format('select * from reassign_recommendation(%L, %L)', v_reco, v_johann),
+    'a recommendation cannot be assigned to a non-admin');
+
+  -- losing a deal cancels a reward that was never invoiced
+  perform advance_stage(v_reco, 'a_contacter');
+  update recommendations set reward_amount = 500 where id = v_reco;
+  perform advance_stage(v_reco, 'rdv_programme');
+  perform advance_stage(v_reco, 'proposition_envoyee');
+  perform advance_stage(v_reco, 'devis_signe');
+  perform assert((select reward_status from recommendations where id = v_reco) = 'earned',
+    'the reward is earned at "Devis signé"');
+
+  perform archive_recommendation(v_reco, false);
+  perform assert((select status from recommendations where id = v_reco) = 'archived_lost',
+    'archiving as lost sets the archived_lost status');
+  perform assert((select reward_status from recommendations where id = v_reco) = 'cancelled',
+    'a lost deal cancels a reward that was never invoiced');
+
+  -- "Supprimer" is always soft
+  perform soft_delete_recommendation(v_reco);
+  perform assert((select deleted_at from recommendations where id = v_reco) is not null,
+    '"Supprimer" soft-deletes rather than destroying the row');
+end $$;
+
+\echo ''
+\echo '=== 12. Signing binds to the document that was shown =============='
+do $$
+declare
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_inv    uuid;
+begin
+  perform login(v_pierre);
+  select id into v_inv from invoices where number = 'FA-2026-0003';
+  update invoices set pdf_path = 'invoices/FA-2026-0003.pdf',
+                      pdf_sha256 = repeat('b', 64)
+   where id = v_inv;
+
+  perform assert_denied(v_johann,
+    format('select * from sign_invoice(%L, %L)', v_inv, repeat('c', 64)),
+    'signing a document whose hash does not match the invoice is refused');
+
+  perform assert_denied(v_marie,
+    format('select * from sign_invoice(%L, %L)', v_inv, repeat('b', 64)),
+    'a stranger to the invoice cannot sign it at all');
+
+  perform login(v_johann);
+  perform sign_invoice(v_inv, repeat('b', 64));
+  perform assert(
+    (select signer_role from invoice_signatures where invoice_id = v_inv) = 'apporteur',
+    'the signer role is derived from who is calling, never chosen');
+end $$;
+
+\echo ''
+\echo '=== 13. Conversations are private to their participants ==========='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_thread uuid;
+  n int;
+begin
+  perform login(v_johann);
+  select start_direct_thread(v_pierre) into v_thread;
+  insert into messages (thread_id, sender_id, body)
+  values (v_thread, v_johann, 'Bonjour, une question sur Thomas Dubois.');
+
+  perform assert(start_direct_thread(v_pierre) = v_thread,
+    'starting the same conversation twice reuses it');
+
+  perform login(v_marie);
+  select count(*) into n from messages;
+  perform assert(n = 0, 'Marie cannot read a conversation she is not part of');
+  select count(*) into n from threads;
+  perform assert(n = 0, 'nor even see that it exists');
+
+  perform login(v_pierre);
+  select count(*) into n from messages where thread_id = v_thread;
+  perform assert(n = 1, 'the other participant reads it');
+  perform assert((unread_counts() ->> v_thread::text)::int = 1,
+    'it counts as unread until opened');
+  perform mark_thread_read(v_thread);
+  perform assert(unread_counts() -> v_thread::text is null,
+    'and stops counting once read');
+
+  -- a ticket puts an admin in the conversation from the first message
+  perform login(v_marie);
+  select open_ticket('Problème de virement', 'Je n''ai pas reçu mon paiement.') into v_thread;
+  perform assert((select count(*) from thread_participants where thread_id = v_thread) = 2,
+    'a ticket is opened with an admin already on it');
+  perform login(v_pierre);
+  perform assert((select count(*) from tickets where thread_id = v_thread) = 1,
+    'and appears in the admin''s ticket list');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

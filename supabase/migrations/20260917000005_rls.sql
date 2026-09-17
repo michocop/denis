@@ -134,20 +134,25 @@ create policy reminders_admin on reminders for all to authenticated
   using (is_admin(auth.uid())) with check (is_admin(auth.uid()));
 
 -- ------------------------------------------------------------ chat & tickets
+-- The creator is included deliberately, not just for tidiness: a new thread
+-- has no participant rows yet, so without this an INSERT ... RETURNING (which
+-- is what PostgREST issues by default) cannot read back the row it just wrote
+-- and the whole insert is refused.
 create policy threads_select on threads for select to authenticated
-  using (exists (
-    select 1 from thread_participants p
-     where p.thread_id = threads.id and p.profile_id = auth.uid()
-  ));
+  using (created_by = auth.uid() or is_thread_participant(threads.id, auth.uid()));
 
 create policy threads_insert on threads for insert to authenticated
   with check (created_by = auth.uid() and is_active_member(auth.uid()));
 
+-- Reading the participant list of a conversation you are in. The membership
+-- test goes through the SECURITY DEFINER helper: querying this same table
+-- inline would recurse.
 create policy participants_select on thread_participants for select to authenticated
-  using (profile_id = auth.uid() or exists (
-    select 1 from thread_participants me
-     where me.thread_id = thread_participants.thread_id and me.profile_id = auth.uid()
-  ));
+  using (profile_id = auth.uid()
+         or is_thread_participant(thread_participants.thread_id, auth.uid())
+         or exists (select 1 from threads t
+                     where t.id = thread_participants.thread_id
+                       and t.created_by = auth.uid()));
 
 -- pinned / archived / last_read_at are per-participant settings
 create policy participants_update_own on thread_participants for update to authenticated
@@ -159,19 +164,11 @@ create policy participants_insert on thread_participants for insert to authentic
   ) or is_admin(auth.uid()));
 
 create policy messages_select on messages for select to authenticated
-  using (exists (
-    select 1 from thread_participants p
-     where p.thread_id = messages.thread_id and p.profile_id = auth.uid()
-  ));
+  using (is_thread_participant(messages.thread_id, auth.uid()));
 
 create policy messages_insert on messages for insert to authenticated
-  with check (
-    sender_id = auth.uid()
-    and exists (
-      select 1 from thread_participants p
-       where p.thread_id = messages.thread_id and p.profile_id = auth.uid()
-    )
-  );
+  with check (sender_id = auth.uid()
+              and is_thread_participant(messages.thread_id, auth.uid()));
 
 create policy tickets_select on tickets for select to authenticated
   using (opener_id = auth.uid() or assignee_id = auth.uid() or is_admin(auth.uid()));
