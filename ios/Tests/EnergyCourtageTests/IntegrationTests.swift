@@ -37,7 +37,10 @@ final class IntegrationTests: XCTestCase {
         try XCTSkipUnless(env["SUPABASE_TEST_URL"] != nil,
                           "integration tests need a live PostgREST")
         baseURL = URL(string: env["SUPABASE_TEST_URL"]!)!
-        client = SupabaseClient(baseURL: baseURL, anonKey: token(for: nil, role: "anon"))
+        // A bare PostgREST serves tables at the root, unlike hosted Supabase.
+        client = SupabaseClient(baseURL: baseURL,
+                                anonKey: token(for: nil, role: "anon"),
+                                restPath: "", authPath: "")
     }
 
     /// PostgREST authenticates with a JWT signed by a shared secret, which is
@@ -73,7 +76,8 @@ final class IntegrationTests: XCTestCase {
 
     private func signedIn(as user: UUID) async -> SupabaseClient {
         let authed = SupabaseClient(baseURL: baseURL,
-                                    anonKey: token(for: nil, role: "anon"))
+                                    anonKey: token(for: nil, role: "anon"),
+                                    restPath: "", authPath: "")
         await authed.setAccessToken(token(for: user, role: "authenticated"))
         return authed
     }

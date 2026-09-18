@@ -63,14 +63,38 @@ public actor SupabaseClient: SupabaseTransport {
 
     private let baseURL: URL
     private let anonKey: String
+    private let restPath: String
+    private let authPath: String
     private let session: URLSession
     private var accessToken: String?
     private var refreshToken: String?
 
-    public init(baseURL: URL, anonKey: String, session: URLSession = .shared) {
+    /// The path prefixes default to what hosted Supabase serves, where
+    /// PostgREST and GoTrue sit behind a gateway at /rest/v1 and /auth/v1.
+    /// They are settable because a bare PostgREST serves its tables at the
+    /// root, which is what the integration tests run against -- and because a
+    /// prefix baked into the client is a constant nothing can ever check.
+    public init(baseURL: URL,
+                anonKey: String,
+                restPath: String = "rest/v1",
+                authPath: String = "auth/v1",
+                session: URLSession = .shared) {
         self.baseURL = baseURL
         self.anonKey = anonKey
+        self.restPath = restPath
+        self.authPath = authPath
         self.session = session
+    }
+
+    /// Appends only the components that exist, so an empty prefix does not
+    /// leave a stray slash the server will reject.
+    private func makeURL(prefix: String, path: String,
+                         query: [URLQueryItem] = []) -> URL {
+        var url = baseURL
+        if !prefix.isEmpty { url = url.appending(path: prefix) }
+        if !path.isEmpty { url = url.appending(path: path) }
+        if !query.isEmpty { url = url.appending(queryItems: query) }
+        return url
     }
 
     public func setAccessToken(_ token: String?) { accessToken = token }
@@ -96,8 +120,8 @@ public actor SupabaseClient: SupabaseTransport {
     }
 
     public func signIn(email: String, password: String) async throws -> AuthSession {
-        let url = baseURL.appending(path: "auth/v1/token")
-            .appending(queryItems: [URLQueryItem(name: "grant_type", value: "password")])
+        let url = makeURL(prefix: authPath, path: "token",
+                          query: [URLQueryItem(name: "grant_type", value: "password")])
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         applyHeaders(to: &request, authenticated: false)
@@ -111,7 +135,7 @@ public actor SupabaseClient: SupabaseTransport {
     /// Registration is invitation-based, so this only creates the auth account;
     /// `redeem_invite` turns it into a profile.
     public func signUp(email: String, password: String) async throws -> AuthSession {
-        var request = URLRequest(url: baseURL.appending(path: "auth/v1/signup"))
+        var request = URLRequest(url: makeURL(prefix: authPath, path: "signup"))
         request.httpMethod = "POST"
         applyHeaders(to: &request, authenticated: false)
         request.httpBody = try JSONEncoder().encode(["email": email, "password": password])
@@ -128,8 +152,8 @@ public actor SupabaseClient: SupabaseTransport {
     // `refreshToken`, it shadowed the stored one and the assignment below
     // silently targeted the parameter instead.
     public func restore(refreshToken token: String) async throws -> AuthSession {
-        let url = baseURL.appending(path: "auth/v1/token")
-            .appending(queryItems: [URLQueryItem(name: "grant_type", value: "refresh_token")])
+        let url = makeURL(prefix: authPath, path: "token",
+                          query: [URLQueryItem(name: "grant_type", value: "refresh_token")])
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         applyHeaders(to: &request, authenticated: false)
@@ -146,7 +170,7 @@ public actor SupabaseClient: SupabaseTransport {
     /// Always reports success to the caller: whether an address has an account
     /// is not something an unauthenticated request should be able to learn.
     public func requestPasswordReset(email: String) async {
-        var request = URLRequest(url: baseURL.appending(path: "auth/v1/recover"))
+        var request = URLRequest(url: makeURL(prefix: authPath, path: "recover"))
         request.httpMethod = "POST"
         applyHeaders(to: &request, authenticated: false)
         request.httpBody = try? JSONEncoder().encode(["email": email])
@@ -209,7 +233,7 @@ public actor SupabaseClient: SupabaseTransport {
 
     public func rpc<T: Decodable>(_ function: String,
                                   body: [String: AnyEncodable] = [:]) async throws -> T {
-        var request = URLRequest(url: baseURL.appending(path: "rest/v1/rpc/\(function)"))
+        var request = URLRequest(url: restURL("rpc/\(function)"))
         request.httpMethod = "POST"
         applyHeaders(to: &request)
         request.httpBody = try JSONEncoder().encode(body)
@@ -217,7 +241,7 @@ public actor SupabaseClient: SupabaseTransport {
     }
 
     public func rpcVoid(_ function: String, body: [String: AnyEncodable] = [:]) async throws {
-        var request = URLRequest(url: baseURL.appending(path: "rest/v1/rpc/\(function)"))
+        var request = URLRequest(url: restURL("rpc/\(function)"))
         request.httpMethod = "POST"
         applyHeaders(to: &request)
         request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
@@ -228,9 +252,7 @@ public actor SupabaseClient: SupabaseTransport {
     // MARK: - Plumbing
 
     private func restURL(_ path: String, query: [URLQueryItem] = []) -> URL {
-        var url = baseURL.appending(path: "rest/v1/\(path)")
-        if !query.isEmpty { url = url.appending(queryItems: query) }
-        return url
+        makeURL(prefix: restPath, path: path, query: query)
     }
 
     private func applyHeaders(to request: inout URLRequest, authenticated: Bool = true) {
