@@ -45,6 +45,16 @@ xcodebuild build \
 
 APP="ios/.build/Build/Products/Debug-iphonesimulator/EnergyCourtageApp.app"
 
+# A missing bundle here means the build produced a library and no app, which
+# is what happens when the package is built instead of the app target. Say so
+# rather than failing three commands later with something cryptic.
+if [ ! -d "$APP" ]; then
+  echo "No app bundle at $APP" >&2
+  echo "Products that were built:" >&2
+  find ios/.build/Build/Products -maxdepth 2 -name '*.app' -o -maxdepth 2 -name '*.framework' 2>/dev/null >&2 || true
+  exit 1
+fi
+
 echo "==> Booting $DEVICE"
 # `boot` fails if it is already booted, which is not an error here.
 xcrun simctl boot "$DEVICE" 2>/dev/null || true
@@ -60,3 +70,10 @@ if [ "$MODE" = "demo" ]; then
 else
   xcrun simctl launch booted "$BUNDLE_ID"
 fi
+
+# simctl returns before the app is on screen, and the Simulator window can
+# stay behind the terminal.
+open -a Simulator
+echo
+echo "If the Simulator window is empty, bring it to the front (Cmd-Tab)."
+echo "App: $BUNDLE_ID  Device: $DEVICE"
