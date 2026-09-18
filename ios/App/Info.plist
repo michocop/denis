@@ -26,10 +26,19 @@
   <!-- Without this the app runs in compatibility mode: iOS letterboxes it at a
        legacy resolution instead of using the whole screen. An empty dictionary
        is the modern equivalent of a blank launch storyboard. -->
+  <!--
+    A launch screen must exist or iOS letterboxes the app into a 320x480 box,
+    which is how this one first ran. The colour and image are asset names, so
+    they come from Assets.xcassets rather than being repeated here.
+  -->
   <key>UILaunchScreen</key>
   <dict>
     <key>UIColorName</key>
-    <string></string>
+    <string>LaunchBackground</string>
+    <key>UIImageName</key>
+    <string>LaunchLogo</string>
+    <key>UIImageRespectsSafeAreaInsets</key>
+    <true/>
   </dict>
 
   <key>UISupportedInterfaceOrientations</key>

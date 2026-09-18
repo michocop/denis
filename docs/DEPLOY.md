@@ -125,3 +125,134 @@ reminders but not "a new message arrived while the app was closed".
 an hour and is not for production. Connecting a real sender (Resend, Postmark,
 SES) is a settings page, and is needed before the first real invitation goes
 out.
+
+---
+
+## 6. Push notifications
+
+The client side is finished and the sender now exists
+(`supabase/functions/send-push`). What it needs is a key only an Apple
+Developer account can issue, so this step waits on §Apple below.
+
+### The APNs key
+
+1. Apple Developer → Certificates, Identifiers & Profiles → **Keys** → **+**
+2. Name it, tick **Apple Push Notifications service (APNs)**, register.
+3. Download the `.p8` **once** — Apple does not let you download it again.
+   Note the **Key ID** and your **Team ID**.
+4. In the app's identifier, enable the **Push Notifications** capability. The
+   app only calls `registerForRemoteNotifications()` when the entitlement is
+   present, so nothing happens until this is done and nothing breaks either.
+
+### Deploy the sender
+
+```bash
+supabase functions deploy send-push --no-verify-jwt
+
+supabase secrets set \
+  APNS_KEY_ID=ABC123DEFG \
+  APNS_TEAM_ID=1234567890 \
+  APNS_TOPIC=com.trinityenergie.energycourtage \
+  APNS_ENVIRONMENT=production \
+  PUSH_HOOK_SECRET="$(openssl rand -hex 32)" \
+  APNS_PRIVATE_KEY="$(cat AuthKey_ABC123DEFG.p8)"
+```
+
+`--no-verify-jwt` because the caller is the database, not a signed-in user.
+The function is protected by `PUSH_HOOK_SECRET` instead — without that check
+anyone who found the URL could push arbitrary text to every apporteur's lock
+screen.
+
+`APNS_ENVIRONMENT=sandbox` for builds installed from Xcode; TestFlight and the
+App Store use `production`. A token minted in one environment is rejected by
+the other, which is the usual cause of "it worked on my phone and not in
+TestFlight".
+
+### Point the database at it
+
+```sql
+insert into push_config (function_url, hook_secret)
+values ('https://<project-ref>.supabase.co/functions/v1/send-push',
+        '<the same PUSH_HOOK_SECRET>');
+```
+
+`push_config` has **no RLS policy for `authenticated`**, on purpose: the secret
+in it would let its holder push anything to anyone, and no screen needs it.
+Only the trigger reads it, as definer.
+
+Until that row exists the trigger is inert — notifications still appear in the
+app, nothing is sent, and nothing errors. That is the state the project ships
+in, and it is a tested path rather than an accident.
+
+To stop sending without touching anything else: `update push_config set
+enabled = false;`
+
+---
+
+## 7. The legal texts
+
+They live in the `legal_documents` table, not in the app bundle, so correcting
+a clause does not need an App Store release.
+
+Three are seeded **inactive**, each still carrying `[PLACEHOLDERS]`:
+
+| key | what |
+|---|---|
+| `mandat_facturation` | the self-billing mandate — **invoicing is refused without it** |
+| `cgu` | terms of use |
+| `confidentialite` | privacy policy |
+
+To publish one:
+
+1. Fill every `[PLACEHOLDER]` — company name, SIREN, address, notice periods.
+2. **Have a lawyer read it.** These are drafts written to save a professional
+   time, not to replace one.
+3. ```sql
+   update legal_documents
+      set body = '<the reviewed text>', active = true
+    where key = 'mandat_facturation' and version = '2026-09-1';
+   ```
+
+The publish trigger **refuses** a document that still contains a placeholder,
+so nobody can be asked to sign a contract with `[RAISON SOCIALE]` where the
+company's name belongs. It also derives the SHA-256 itself — a digest supplied
+alongside the text it describes proves nothing.
+
+### Revising one
+
+Insert a **new version** and activate it; never edit a published one. The old
+row stays because somebody signed it, and their acceptance has to remain
+readable. Everyone is then asked to accept the new version, which is the whole
+reason it is versioned:
+
+```sql
+update legal_documents set active = false where key = 'mandat_facturation';
+insert into legal_documents (key, version, title, body, sha256, active)
+values ('mandat_facturation', '2026-10-1', 'Mandat de facturation', '<text>', '', true);
+```
+
+### What is recorded
+
+`legal_acceptances` keeps one row per person per version: the version, the
+digest of the exact bytes they were shown, their name, the time, and
+optionally IP and user agent. The app hashes what it rendered and the server
+refuses a mismatch — the same rule invoice signatures follow, so consent can
+only ever attach to the text that was actually displayed.
+
+---
+
+## 8. Email
+
+Supabase's built-in SMTP is rate-limited to a handful of messages an hour and
+is explicitly not for production. Before the first real invitation goes out,
+connect a sender under **Project Settings → Authentication → SMTP**:
+
+- Resend, Postmark or SES all work; any of them needs the sending domain's
+  SPF and DKIM records set, or the mail lands in spam.
+- Set the sender name to the client's, not the developer's.
+- Customise the templates under **Authentication → Email Templates**: the
+  defaults say "Supabase" to someone who has never heard of it.
+
+Only two are reachable in this app — **Confirm signup** and **Reset password**
+— because sign-up is invitation-based and the invitation code is read out by
+an admin rather than emailed.

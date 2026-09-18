@@ -362,9 +362,14 @@ begin
     v_reco, v_marie, v_pierre),
     'an apporteur without a self-billing mandate cannot be invoiced');
 
-  -- a mandate signed after the invoice date is not a prior mandate
+  -- A mandate signed after the invoice date is not a prior mandate. Set with
+  -- the guard temporarily lifted, because a client can no longer write this
+  -- column at all -- accepting the document is the only way, and that stamps
+  -- now(). Which is the point: this state is unreachable from the app.
+  perform set_config('app.recording_mandate', 'on', true);
   update profiles set billing_mandate_signed_at = timestamptz '2027-01-01 10:00'
    where id = v_marie;
+  perform set_config('app.recording_mandate', 'off', true);
   perform assert_denied(v_pierre, format(
     'insert into invoices (recommendation_id, apporteur_id, issuer_id, prestation_label,
                            intervened_on, issued_on, place, amount_ht, amount_ttc, legal_mentions)
@@ -1445,6 +1450,202 @@ begin
     'a lost deal is archived as lost');
   perform assert((select reward_status from recommendations where id = v_lost) = 'cancelled',
     'and that one does cancel the commission');
+end $$;
+
+
+\echo ''
+\echo '=== 29. What people agree to is shown, and recorded ==============='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_doc    legal_documents%rowtype;
+  v_acc    legal_acceptances%rowtype;
+  n int;
+begin
+  -- Nothing ships live: every seeded text still has placeholders in it.
+  perform login(v_pierre);
+  select count(*) into n from legal_documents where active;
+  perform assert(n = 0, 'no legal text is published until someone fills it in');
+
+  perform assert_denied(v_pierre,
+    'update legal_documents set active = true where key = ''mandat_facturation''',
+    'and a draft still full of [PLACEHOLDERS] cannot be published');
+
+  -- fill it in, the way the client will
+  update legal_documents
+     set body = regexp_replace(body, '\[[A-ZÉÈÀÇ_ /]{3,}\]', 'Trinity Énergie', 'g')
+   where key = 'mandat_facturation';
+  update legal_documents
+     set body = replace(body, '[X]', '30'), active = true
+   where key = 'mandat_facturation';
+
+  select * into v_doc from legal_documents where key = 'mandat_facturation' and active;
+  perform assert(v_doc.sha256 = encode(digest(v_doc.body, 'sha256'), 'hex'),
+    'the digest is derived from the text, never supplied by the caller');
+
+  -- an apporteur sees the document itself, not a two-line summary
+  perform login(v_johann);
+  perform assert(
+    (select length(body) from legal_documents_for_me where key = 'mandat_facturation') > 500,
+    'the apporteur is shown the whole document');
+  perform assert(
+    not (select accepted from legal_documents_for_me where key = 'mandat_facturation'),
+    'and has not accepted it yet');
+
+  perform assert_denied(v_johann,
+    format('select accept_legal_document(%L, %L)', 'mandat_facturation', repeat('f', 64)),
+    'accepting a different text than the one published is refused');
+
+  select * into v_acc from accept_legal_document('mandat_facturation', v_doc.sha256);
+  perform assert(v_acc.version = v_doc.version and v_acc.sha256 = v_doc.sha256,
+    'what is recorded is the version and the exact bytes agreed to');
+  perform assert(v_acc.full_name = 'Johann Lefeuvre',
+    'under the name of whoever accepted it');
+  perform assert(
+    (select billing_mandate_signed_at from profiles where id = v_johann) is not null,
+    'and the mandate is what unlocks invoicing');
+  perform assert(
+    (select billing_mandate_version from profiles where id = v_johann) = v_doc.version,
+    'with the version kept on the profile, so it is clear which one they signed');
+  perform assert((select accepted from legal_documents_for_me
+                   where key = 'mandat_facturation'),
+    'the app now shows it as accepted');
+
+  -- a revised mandate has to be signed again: that is why it is versioned
+  perform login(v_pierre);
+  update legal_documents set active = false where key = 'mandat_facturation';
+  insert into legal_documents (key, version, title, body, sha256, active)
+  select key, '2026-09-2', title, body || E'\n\nArticle 8 — Ajout.', '', true
+    from legal_documents where key = 'mandat_facturation' and version = '2026-09-1';
+
+  perform login(v_johann);
+  perform assert(
+    not (select accepted from legal_documents_for_me where key = 'mandat_facturation'),
+    'a revised mandate is unaccepted again, rather than inheriting the old consent');
+  perform assert(
+    (select count(*) from legal_acceptances where profile_id = v_johann) = 1,
+    'and the earlier acceptance is kept: it is the evidence for invoices already issued');
+
+  perform login(v_marie);
+  perform assert((select count(*) from legal_acceptances) = 0,
+    'nobody can read anyone else''s acceptance');
+end $$;
+
+
+\echo ''
+\echo '=== 30. A notification is handed to the push sender ==============='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_thread uuid;
+  v_req    net.sent_requests%rowtype;
+  n int;
+begin
+  -- Unconfigured, which is how the project ships: the in-app notification
+  -- still lands, and nothing raises.
+  perform login(v_johann);
+  select start_support_thread() into v_thread;
+  perform login(v_pierre);
+  insert into messages (thread_id, sender_id, body) values (v_thread, v_pierre, 'Sans push.');
+  perform assert((select count(*) from net.sent_requests) = 0,
+    'with no push configuration nothing is sent');
+  perform login(v_johann);
+  perform assert((select count(*) from notification_feed where kind = 'message_received') > 0,
+    'but the notification itself still exists, so the app shows it');
+end $$;
+
+-- Configured by whoever runs the deploy, not by the app: push_config has no
+-- grant for `authenticated` at all, because the secret in it would let its
+-- holder push anything to anyone.
+reset role;
+insert into push_config (function_url, hook_secret)
+values ('https://project.supabase.co/functions/v1/send-push', 'shared-secret');
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_thread uuid;
+  v_req    net.sent_requests%rowtype;
+  n int;
+begin
+  perform login(v_johann);
+  select start_support_thread() into v_thread;
+  perform login(v_pierre);
+  insert into messages (thread_id, sender_id, body)
+  values (v_thread, v_pierre, 'Avec push.');
+
+  select * into v_req from net.sent_requests order by id desc limit 1;
+  perform assert(v_req.url = 'https://project.supabase.co/functions/v1/send-push',
+    'the notification is posted to the push function');
+  perform assert(v_req.headers ->> 'x-hook-secret' = 'shared-secret',
+    'with the shared secret, so a stranger who finds the URL cannot send anything');
+  perform assert(v_req.body -> 'record' ->> 'profile_id' = v_johann::text,
+    'addressed to the person being notified');
+  perform assert(v_req.body -> 'record' ->> 'title' = 'Pierre-Louis Tettamanti',
+    'carrying the same title the in-app row shows');
+  perform assert(v_req.body -> 'record' ->> 'body' = 'Avec push.',
+    'and the same body: one renderer, so the lock screen cannot disagree with the list');
+  perform assert(v_req.body -> 'record' ->> 'thread_id' = v_thread::text,
+    'and the thread id, so a tap can open the conversation');
+
+  -- the secret must not be readable by anyone signed in
+  perform login(v_johann);
+  perform assert_denied(v_johann, 'select hook_secret from push_config',
+    'no signed-in user can read the push secret');
+
+end $$;
+
+reset role;
+update push_config set enabled = false;
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_thread uuid;
+  n int;
+begin
+  perform login(v_johann);
+  select start_support_thread() into v_thread;
+  perform login(v_pierre);
+  select count(*) into n from net.sent_requests;
+  insert into messages (thread_id, sender_id, body) values (v_thread, v_pierre, 'Coupé.');
+  perform assert((select count(*) from net.sent_requests) = n,
+    'disabling it stops the push, and only the push');
+end $$;
+
+
+\echo ''
+\echo '=== 31. The mandate cannot be granted by writing a column ========='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+begin
+  -- The old client did exactly this: PATCH profiles, set the timestamp, done.
+  -- It never showed the document, and RLS let it through because a person may
+  -- edit their own row.
+  perform assert_denied(v_johann,
+    format('update profiles set billing_mandate_signed_at = now() where id = %L', v_johann),
+    'an apporteur cannot grant themselves a mandate by writing the column');
+  perform assert_denied(v_pierre,
+    format('update profiles set billing_mandate_signed_at = now() where id = %L', v_johann),
+    'and neither can an admin: the mandate is the apporteur''s to give');
+  perform assert_denied(v_johann,
+    format('update profiles set billing_mandate_version = ''forged'' where id = %L', v_johann),
+    'nor forge which version was signed');
+
+  -- the ordinary parts of the profile are still editable
+  perform login(v_johann);
+  update profiles set city = 'Roubaix' where id = v_johann;
+  perform assert((select city from profiles where id = v_johann) = 'Roubaix',
+    'while the rest of the profile stays editable');
 end $$;
 
 reset role;

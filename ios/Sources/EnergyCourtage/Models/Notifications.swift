@@ -50,3 +50,32 @@ public protocol NotificationsRepository: Sendable {
     /// their commissions on the next person's lock screen.
     func forgetDevices() async throws
 }
+
+
+// MARK: - Legal documents
+
+/// A document someone is asked to agree to, with the exact text they are shown.
+///
+/// The body travels with it deliberately: what gets recorded on acceptance is
+/// the digest of these bytes, so the app must display the thing it hashes. A
+/// summary with a button underneath is not a mandate.
+public struct LegalDocument: Identifiable, Hashable, Codable, Sendable {
+    public let key: String
+    public var version: String
+    public var title: String
+    public var body: String
+    public var sha256: String
+    public var publishedAt: Date
+    public var accepted: Bool
+
+    public var id: String { "\(key)@\(version)" }
+}
+
+public protocol LegalRepository: Sendable {
+    /// Every published document, with whether this reader has accepted THIS
+    /// version — a revised mandate has to be signed again.
+    func documents() async throws -> [LegalDocument]
+    /// Sends back the digest of the text that was displayed. The server
+    /// refuses a mismatch, so consent can only attach to what was shown.
+    func accept(key: String, sha256: String) async throws
+}

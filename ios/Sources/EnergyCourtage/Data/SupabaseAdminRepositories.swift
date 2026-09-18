@@ -103,3 +103,23 @@ public struct SupabaseNotificationsRepository: NotificationsRepository {
         try await client.rpcVoid("forget_my_device_tokens")
     }
 }
+
+
+/// Reads `legal_documents_for_me`, which returns only published versions and
+/// says whether this reader has accepted each one.
+public struct SupabaseLegalRepository: LegalRepository {
+    private let client: SupabaseClient
+    public init(client: SupabaseClient) { self.client = client }
+
+    public func documents() async throws -> [LegalDocument] {
+        try await client.get("legal_documents_for_me",
+                             query: [URLQueryItem(name: "order", value: "key.asc")])
+    }
+
+    public func accept(key: String, sha256: String) async throws {
+        try await client.rpcVoid("accept_legal_document", body: [
+            "p_key": AnyEncodable(key),
+            "p_sha256": AnyEncodable(sha256)
+        ])
+    }
+}

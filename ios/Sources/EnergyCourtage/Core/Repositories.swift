@@ -18,8 +18,6 @@ public protocol ProfileRepository: Sendable {
     func currentProfile() async throws -> Profile
     func save(_ profile: Profile) async throws -> Profile
     func dashboardStats() async throws -> DashboardStats
-    /// Signing the self-billing mandate, without which no invoice can be issued.
-    func signBillingMandate() async throws -> Profile
     func deleteAccount() async throws
 }
 
@@ -51,6 +49,7 @@ public struct Dependencies: Sendable {
     public let admin: AdminRepository
     public let commissions: CommissionsRepository
     public let notifications: NotificationsRepository
+    public let legal: LegalRepository
     public let changeMonitor: ChangeMonitor
 
     public init(recommendations: RecommendationsRepository,
@@ -61,6 +60,7 @@ public struct Dependencies: Sendable {
                 admin: AdminRepository,
                 commissions: CommissionsRepository,
                 notifications: NotificationsRepository,
+                legal: LegalRepository,
                 changeMonitor: ChangeMonitor = InertChangeMonitor()) {
         self.recommendations = recommendations
         self.chat = chat
@@ -70,6 +70,7 @@ public struct Dependencies: Sendable {
         self.admin = admin
         self.commissions = commissions
         self.notifications = notifications
+        self.legal = legal
         self.changeMonitor = changeMonitor
     }
 }

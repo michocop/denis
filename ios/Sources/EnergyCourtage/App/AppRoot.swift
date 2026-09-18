@@ -53,7 +53,8 @@ public final class AppModel {
                 reminders: PreviewRemindersRepository(),
                 admin: PreviewAdminRepository(),
                 commissions: PreviewCommissionsRepository(),
-                notifications: PreviewNotificationsRepository()
+                notifications: PreviewNotificationsRepository(),
+                legal: PreviewLegalRepository()
             ),
             asAdmin ? .admin : .apporteur,
             asAdmin ? "Pierre-Louis Tettamanti" : "Johann Lefeuvre",
@@ -182,6 +183,7 @@ public final class AppModel {
                         admin: SupabaseAdminRepository(client: client),
                         commissions: SupabaseCommissionsRepository(client: client),
                         notifications: SupabaseNotificationsRepository(client: client),
+                        legal: SupabaseLegalRepository(client: client),
                         changeMonitor: PollingChangeMonitor(client: client)
                     ),
                     account.role ?? .apporteur,

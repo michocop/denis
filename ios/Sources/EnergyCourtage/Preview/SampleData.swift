@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Fixtures transcribed from the source app's screenshots, so the previews
 /// reproduce the two reference states exactly: the completed Thomas Dubois
@@ -330,10 +331,6 @@ public struct PreviewProfileRepository: ProfileRepository {
                               earnedTotal: 1300, paidTotal: 300, conversionRate: 25)
     }
 
-    public func signBillingMandate() async throws -> Profile {
-        try await PreviewProfileRepository(hasMandate: true).currentProfile()
-    }
-
     public func deleteAccount() async throws {}
 }
 
@@ -551,4 +548,86 @@ public struct PreviewNotificationsRepository: NotificationsRepository {
 
     public func register(deviceToken: String) async throws {}
     public func forgetDevices() async throws {}
+}
+
+/// Demo legal documents. The mandate carries enough real text that the
+/// scroll-to-the-end rule and the accept button can actually be tried.
+actor DemoLegalStore {
+    static let shared = DemoLegalStore()
+    private var accepted: Set<String> = []
+    func accept(_ key: String) { accepted.insert(key) }
+    func isAccepted(_ key: String) -> Bool { accepted.contains(key) }
+}
+
+public struct PreviewLegalRepository: LegalRepository {
+    public init() {}
+
+    private static let mandate = """
+    Entre les soussignés :
+
+    Trinity Énergie, SAS au capital de 10 000 €, dont le siège social est situé
+    à AIX-EN-PEVELE, immatriculée au RCS de Lille sous le numéro 000 000 000,
+    représentée par Pierre-Louis Tettamanti, en qualité de Président,
+
+    ci-après « le Mandataire »,
+
+    Et : Johann Lefeuvre, micro-entrepreneur, immatriculé sous le numéro SIREN
+    000 000 000, ci-après « le Mandant ».
+
+    Article 1 — Objet
+
+    Le Mandant donne mandat au Mandataire d'établir, en son nom et pour son
+    compte, les factures correspondant aux commissions d'apport d'affaires qui
+    lui sont dues au titre des mises en relation qu'il réalise.
+
+    Article 2 — Obligations du Mandataire
+
+    Le Mandataire s'engage à établir les factures conformément aux mentions
+    obligatoires prévues par l'article 242 nonies A de l'annexe II au CGI, à
+    respecter une numérotation chronologique et continue, à mettre chaque
+    facture à disposition du Mandant préalablement à son émission définitive,
+    et à en conserver un double pendant dix ans.
+
+    Article 3 — Obligations du Mandant
+
+    Le Mandant s'engage à signaler sans délai tout changement de sa situation,
+    notamment le passage à un régime assujetti à la TVA, à vérifier chaque
+    facture établie en son nom, et à procéder lui-même aux déclarations
+    fiscales et sociales qui lui incombent.
+
+    Article 5 — Absence de lien de subordination
+
+    Le Mandant exerce son activité en toute indépendance. Le présent mandat ne
+    crée ni lien de subordination, ni exclusivité, ni obligation de résultat.
+
+    Article 7 — Signature électronique
+
+    Les parties conviennent que la signature électronique apposée via
+    l'application constitue une signature au sens de l'article 1367 du Code
+    civil et vaut preuve de leur consentement.
+
+    — Données de démonstration, sans valeur contractuelle —
+    """
+
+    public func documents() async throws -> [LegalDocument] {
+        let accepted = await DemoLegalStore.shared.isAccepted("mandat_facturation")
+        return [
+            LegalDocument(key: "mandat_facturation", version: "demo-1",
+                          title: "Mandat de facturation",
+                          body: Self.mandate,
+                          sha256: Self.digest(Self.mandate),
+                          publishedAt: .now.addingTimeInterval(-86_400 * 30),
+                          accepted: accepted)
+        ]
+    }
+
+    public func accept(key: String, sha256: String) async throws {
+        await DemoLegalStore.shared.accept(key)
+    }
+
+    /// Same digest the screen computes, so the demo exercises the check rather
+    /// than skipping past it.
+    private static func digest(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
 }

@@ -388,14 +388,6 @@ public struct SupabaseProfileRepository: ProfileRepository {
         try await client.rpc("dashboard_stats")
     }
 
-    public func signBillingMandate() async throws -> Profile {
-        let profile = try await currentProfile()
-        let rows: [Profile] = try await client.update("profiles", values: [
-            "billing_mandate_signed_at": AnyEncodable(ISO8601DateFormatter().string(from: .now))
-        ], match: [URLQueryItem(name: "id", value: "eq.\(profile.id.uuidString)")])
-        return rows.first ?? profile
-    }
-
     public func deleteAccount() async throws {
         // App Store guideline 5.1.1(v): deletion must be reachable in-app.
         try await client.rpcVoid("request_account_deletion")

@@ -64,3 +64,36 @@ alter table storage.objects enable row level security;
 grant usage on schema storage to authenticated, anon;
 grant select, insert on storage.objects to authenticated;
 grant select on storage.buckets to authenticated;
+
+-- pg_net, which Supabase provides and a plain Postgres does not. The real one
+-- posts asynchronously; this records the call instead, so the test suite can
+-- assert WHAT would have been sent to the push function rather than only that
+-- the trigger did not raise.
+create schema if not exists net;
+
+create table if not exists net.sent_requests (
+  id      bigserial primary key,
+  url     text,
+  headers jsonb,
+  body    jsonb,
+  sent_at timestamptz not null default now()
+);
+
+create or replace function net.http_post(
+  url     text,
+  body    jsonb default '{}'::jsonb,
+  params  jsonb default '{}'::jsonb,
+  headers jsonb default '{}'::jsonb,
+  timeout_milliseconds int default 5000
+)
+returns bigint
+language sql
+as $$
+  insert into net.sent_requests (url, headers, body)
+  values (url, headers, body)
+  returning id;
+$$;
+
+grant usage on schema net to authenticated;
+-- the test suite reads it back to assert what would have been sent
+grant select on net.sent_requests to authenticated;

@@ -10,7 +10,8 @@ private func previewDependencies() -> Dependencies {
         reminders: PreviewRemindersRepository(),
         admin: PreviewAdminRepository(),
         commissions: PreviewCommissionsRepository(),
-        notifications: PreviewNotificationsRepository()
+        notifications: PreviewNotificationsRepository(),
+        legal: PreviewLegalRepository()
     )
 }
 

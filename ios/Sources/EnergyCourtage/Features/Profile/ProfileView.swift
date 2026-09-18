@@ -21,14 +21,6 @@ public final class ProfileViewModel {
     }
 
     @MainActor
-    public func signMandate() async {
-        isWorking = true
-        defer { isWorking = false }
-        do { profile = try await repository.signBillingMandate() }
-        catch { errorMessage = error.localizedDescription }
-    }
-
-    @MainActor
     public func deleteAccount() async {
         isWorking = true
         defer { isWorking = false }
@@ -40,6 +32,7 @@ public final class ProfileViewModel {
 public struct ProfileView: View {
     @State private var model: ProfileViewModel
     @State private var confirmsDeletion = false
+    @State private var showsMandate = false
     private let dependencies: Dependencies
     private let onSignOut: () -> Void
 
@@ -123,6 +116,11 @@ public struct ProfileView: View {
             }
         }
         .task { await model.load() }
+        .sheet(isPresented: $showsMandate) {
+            LegalDocumentView(model: LegalViewModel(repository: dependencies.legal),
+                              documentKey: "mandat_facturation")
+                .onDisappear { Task { await model.load() } }
+        }
         .confirmationDialog("Supprimer définitivement votre compte ?",
                             isPresented: $confirmsDeletion, titleVisibility: .visible) {
             Button("Supprimer", role: .destructive) { Task { await model.deleteAccount() } }
@@ -212,8 +210,11 @@ public struct ProfileView: View {
                         .font(Theme.Typography.secondary)
                         .foregroundStyle(Theme.Palette.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
-                    PrimaryActionButton("Signer le mandat") {
-                        Task { await model.signMandate() }
+                    // Opens the document. It used to sign it outright, from
+                    // under a two-line summary — which recorded a consent to
+                    // something the person had never been shown.
+                    PrimaryActionButton("Lire et signer le mandat") {
+                        showsMandate = true
                     }
                 }
             }
