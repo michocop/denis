@@ -17,7 +17,7 @@ public final class AppModel {
         case pendingApproval(email: String)
         case suspended
         case locked
-        case ready(Dependencies, UserRole, String)
+        case ready(Dependencies, UserRole, String, isDemo: Bool)
     }
 
     public private(set) var phase: Phase = .launching
@@ -56,7 +56,8 @@ public final class AppModel {
                 commissions: PreviewCommissionsRepository()
             ),
             asAdmin ? .admin : .apporteur,
-            asAdmin ? "Pierre-Louis Tettamanti" : "Johann Lefeuvre"
+            asAdmin ? "Pierre-Louis Tettamanti" : "Johann Lefeuvre",
+            isDemo: true
         )
     }
 
@@ -68,32 +69,35 @@ public final class AppModel {
             return
         }
 
+        // No backend configured means there is nothing to sign in to, so a
+        // sign-in form would be a dead end. Fall back to the sample data
+        // rather than to a screen that cannot work.
+        guard let config = try? AppConfig.supabase() else {
+            startDemo(asAdmin: arguments.contains("-admin"))
+            return
+        }
+
+        let client = SupabaseClient(baseURL: config.url, anonKey: config.key)
+        self.client = client
+
+        guard let refreshToken = sessionStore.refreshToken() else {
+            phase = .signedOut(nil)
+            return
+        }
+
         do {
-            let config = try AppConfig.supabase()
-            let client = SupabaseClient(baseURL: config.url, anonKey: config.key)
-            self.client = client
-
-            guard let refreshToken = sessionStore.refreshToken() else {
-                phase = .signedOut(nil)
-                return
-            }
-
-            do {
-                let session = try await client.restore(refreshToken: refreshToken)
-                try sessionStore.save(refreshToken: session.refreshToken)
-                await client.setRefreshToken(session.refreshToken)
-                email = session.user.email ?? ""
-                // A restored session was earned earlier, not now: make the
-                // person prove the device is theirs before it is reused.
-                phase = BiometricGate.isAvailable ? .locked : await resolvePhase()
-            } catch {
-                // A refresh token that no longer works is not an error worth
-                // showing; it just means signing in again.
-                sessionStore.clear()
-                phase = .signedOut(nil)
-            }
+            let session = try await client.restore(refreshToken: refreshToken)
+            try sessionStore.save(refreshToken: session.refreshToken)
+            await client.setRefreshToken(session.refreshToken)
+            email = session.user.email ?? ""
+            // A restored session was earned earlier, not now: make the person
+            // prove the device is theirs before it is reused.
+            phase = BiometricGate.isAvailable ? .locked : await resolvePhase()
         } catch {
-            phase = .signedOut(error.localizedDescription)
+            // A refresh token that no longer works is not an error worth
+            // showing; it just means signing in again.
+            sessionStore.clear()
+            phase = .signedOut(nil)
         }
     }
 
@@ -174,7 +178,8 @@ public final class AppModel {
                         changeMonitor: PollingChangeMonitor(client: client)
                     ),
                     account.role ?? .apporteur,
-                    account.fullName ?? ""
+                    account.fullName ?? "",
+                    isDemo: false
                 )
             case "pending_approval": return .pendingApproval(email: email)
             case "needs_invite":     return .needsInvite(email: email)
@@ -225,8 +230,9 @@ public struct AppRootView: View {
             case .suspended:
                 SuspendedView { Task { await model.signOut() } }
 
-            case .ready(let dependencies, let role, let name):
-                RootView(dependencies: dependencies, role: role, signerName: name) {
+            case .ready(let dependencies, let role, let name, let isDemo):
+                RootView(dependencies: dependencies, role: role, signerName: name,
+                         isDemo: isDemo) {
                     Task { await model.signOut() }
                 }
             }

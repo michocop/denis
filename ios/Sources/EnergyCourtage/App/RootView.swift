@@ -11,17 +11,37 @@ public struct RootView: View {
     private let dependencies: Dependencies
     private let role: UserRole
     private let signerName: String
+    private let isDemo: Bool
     private let onSignOut: () -> Void
 
     public init(dependencies: Dependencies, role: UserRole, signerName: String,
+                isDemo: Bool = false,
                 onSignOut: @escaping () -> Void) {
         self.dependencies = dependencies
         self.role = role
         self.signerName = signerName
+        self.isDemo = isDemo
         self.onSignOut = onSignOut
     }
 
     public var body: some View {
+        VStack(spacing: 0) {
+            // Said out loud, because the sample data contains plausible names
+            // and four-figure commissions, and nobody should have to guess
+            // whether what they are looking at is real.
+            if isDemo {
+                Text("Données de démonstration — \(role.isAdmin ? "vue entreprise" : "vue apporteur")")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.rewardText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(Theme.Palette.rewardSoft)
+            }
+            tabs
+        }
+    }
+
+    private var tabs: some View {
         TabView(selection: $tab) {
             HomeView(model: HomeViewModel(profiles: dependencies.profiles)) {
                 showsCreate = true

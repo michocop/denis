@@ -36,7 +36,11 @@ scripts/run_simulator.sh --admin    # as Pierre-Louis, with Valider l'étape
 
 The script generates the Xcode project, builds, boots the simulator, installs
 and launches with `-demo`, which wires every screen to the sample repositories
-and skips sign-in. `DEVICE="iPhone 16 Pro" scripts/run_simulator.sh` picks a
+and skips sign-in. **The app also falls back to demo mode whenever no
+`SUPABASE_URL` is configured**, so tapping the icon in the simulator, or
+pressing Run in Xcode, lands on the sample data too rather than on a sign-in
+form with nothing behind it. A banner across the top says so, because the
+sample data has plausible names and four-figure commissions. `DEVICE="iPhone 16 Pro" scripts/run_simulator.sh` picks a
 different simulator.
 
 **Against a real backend:**
