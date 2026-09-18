@@ -4,9 +4,8 @@
 -- know the ordering rules (which stage is first, what archiving implies) and
 -- cannot get them wrong.
 
--- A new recommendation always enters at the first stage, and inherits the
--- offer's reward when the admin has not set one. Filling this in the database
--- means the create form does not have to know the pipeline at all.
+-- A new recommendation always enters at the first stage. Filling this in the
+-- database means the create form does not have to know the pipeline at all.
 create or replace function public.default_recommendation_fields()
 returns trigger
 language plpgsql
@@ -16,10 +15,6 @@ as $$
 begin
   if new.current_stage_id is null then
     select id into new.current_stage_id from stages order by position limit 1;
-  end if;
-
-  if new.reward_amount is null and new.offer_id is not null then
-    select default_reward_amount into new.reward_amount from offers where id = new.offer_id;
   end if;
 
   return new;
@@ -246,7 +241,10 @@ create or replace function public.mark_thread_read(p_thread_id uuid)
 returns void
 language sql
 as $$
-  update thread_participants set last_read_at = now()
+  -- clock_timestamp() to match messages.created_at: now() is the transaction's
+  -- start, so a message written earlier in the same transaction would keep
+  -- counting as unread after the reader had opened the conversation.
+  update thread_participants set last_read_at = clock_timestamp()
    where thread_id = p_thread_id and profile_id = auth.uid();
 $$;
 

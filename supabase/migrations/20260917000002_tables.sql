@@ -45,26 +45,6 @@ create table stages (
   created_at        timestamptz not null default now()
 );
 
--- ------------------------------------------------------------------ offers
-create table offers (
-  id                    uuid primary key default gen_random_uuid(),
-  title                 text not null,
-  description           text,
-  category              text not null default 'Energie',
-  supplier              text,
-  price_mode            price_mode not null default 'quote',
-  price                 numeric(10,2),
-  availability_label    text not null default 'Disponible',
-  default_reward_amount numeric(10,2),
-  media_url             text,
-  is_active             boolean not null default true,
-  position              int not null default 0,
-  created_at            timestamptz not null default now(),
-  updated_at            timestamptz not null default now(),
-  constraint offers_price_required_when_fixed
-    check (price_mode <> 'fixed' or price is not null)
-);
-
 -- --------------------------------------------------------- recommendations
 create table recommendations (
   id                   uuid primary key default gen_random_uuid(),
@@ -81,7 +61,6 @@ create table recommendations (
 
   parrain_id           uuid not null references profiles(id) on delete restrict,
   assigned_admin_id    uuid references profiles(id) on delete set null,
-  offer_id             uuid references offers(id) on delete set null,
   current_stage_id     uuid not null references stages(id),
 
   reward_amount        numeric(10,2),
@@ -236,11 +215,16 @@ create table messages (
   sender_id       uuid not null references profiles(id),
   body            text,
   attachment_path text,
-  created_at      timestamptz not null default now(),
+  -- clock_timestamp(), not now(): now() is the transaction's start time, so
+  -- messages written in the same transaction all share it and the "latest
+  -- message" in a conversation becomes whichever one the planner happens to
+  -- return. A message log wants the instant of the write.
+  created_at      timestamptz not null default clock_timestamp(),
   constraint message_not_empty check (body is not null or attachment_path is not null)
 );
 
-create index on messages (thread_id, created_at desc);
+-- id breaks the remaining tie, so ordering a conversation is a total order.
+create index on messages (thread_id, created_at desc, id desc);
 
 create table tickets (
   id          uuid primary key default gen_random_uuid(),

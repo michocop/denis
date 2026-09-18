@@ -135,7 +135,6 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         if !draft.phone.isEmpty { values["filleul_phone"] = AnyEncodable(draft.phone) }
         if !draft.email.isEmpty { values["filleul_email"] = AnyEncodable(draft.email) }
         if !draft.company.isEmpty { values["filleul_company"] = AnyEncodable(draft.company) }
-        if let offerID = draft.offerID { values["offer_id"] = AnyEncodable(offerID.uuidString) }
 
         struct Created: Decodable { let id: UUID }
         let created: [Created] = try await client.insert("recommendations", values: values)
@@ -252,69 +251,36 @@ public struct SupabaseRemindersRepository: RemindersRepository {
     }
 }
 
-// MARK: - Catalogue
-
-public struct SupabaseCatalogueRepository: CatalogueRepository {
-    private let client: SupabaseClient
-    public init(client: SupabaseClient) { self.client = client }
-
-    public func loadOffers() async throws -> [Offer] {
-        try await client.get("offers", query: [
-            URLQueryItem(name: "order", value: "position.asc")
-        ])
-    }
-
-    public func save(_ offer: Offer) async throws -> Offer {
-        let values: [String: AnyEncodable] = [
-            "title": AnyEncodable(offer.title),
-            "description": AnyEncodable(offer.description ?? ""),
-            "category": AnyEncodable(offer.category),
-            "price_mode": AnyEncodable(offer.priceMode.rawValue),
-            "availability_label": AnyEncodable(offer.availabilityLabel),
-            "is_active": AnyEncodable(offer.isActive),
-            "position": AnyEncodable(offer.position)
-        ]
-        let rows: [Offer] = try await client.update(
-            "offers", values: values,
-            match: [URLQueryItem(name: "id", value: "eq.\(offer.id.uuidString)")]
-        )
-        return rows.first ?? offer
-    }
-
-    public func delete(offerID: UUID) async throws {
-        // Unpublishing rather than deleting: recommendations reference offers,
-        // and a removed offer would blank out their history.
-        let _: [Offer] = try await client.update(
-            "offers", values: ["is_active": AnyEncodable(false)],
-            match: [URLQueryItem(name: "id", value: "eq.\(offerID.uuidString)")]
-        )
-    }
-}
-
 // MARK: - Chat
 
 public struct SupabaseChatRepository: ChatRepository {
     private let client: SupabaseClient
     public init(client: SupabaseClient) { self.client = client }
 
+    /// Reads `thread_overview`, not `threads`: the raw table has no name on a
+    /// direct conversation, no last message and no unread count, which is why
+    /// the list used to render "Conversation / Aucun message" for every row.
     private struct ThreadRow: Decodable {
         let id: UUID
         let kind: ChatThread.Kind
         let title: String?
-        let createdAt: Date
+        let counterpartName: String
+        let lastMessage: String?
+        let lastMessageAt: Date?
+        let unreadCount: Int
+        let pinned: Bool
+        let archived: Bool
     }
 
     public func loadThreads() async throws -> [ChatThread] {
-        let rows: [ThreadRow] = try await client.get("threads", query: [
-            URLQueryItem(name: "order", value: "created_at.desc")
+        let rows: [ThreadRow] = try await client.get("thread_overview", query: [
+            URLQueryItem(name: "order", value: "last_message_at.desc.nullslast")
         ])
-        let unread: [String: Int] = try await client.rpc("unread_counts")
-
-        return rows.map { row in
-            ChatThread(id: row.id, kind: row.kind, title: row.title,
-                       counterpartName: row.title ?? "Conversation",
-                       lastMessageAt: row.createdAt,
-                       unreadCount: unread[row.id.uuidString.lowercased()] ?? 0)
+        return rows.map {
+            ChatThread(id: $0.id, kind: $0.kind, title: $0.title,
+                       counterpartName: $0.counterpartName,
+                       lastMessage: $0.lastMessage, lastMessageAt: $0.lastMessageAt,
+                       unreadCount: $0.unreadCount, pinned: $0.pinned, archived: $0.archived)
         }
     }
 
@@ -322,19 +288,17 @@ public struct SupabaseChatRepository: ChatRepository {
         let id: UUID
         let threadId: UUID
         let senderId: UUID
+        let senderName: String?
         let body: String?
         let createdAt: Date
     }
 
     public func loadMessages(threadID: UUID) async throws -> [ChatMessage] {
-        let rows: [MessageRow] = try await client.get("messages", query: [
+        let rows: [MessageRow] = try await client.get("message_feed", query: [
             URLQueryItem(name: "thread_id", value: "eq.\(threadID.uuidString)"),
-            URLQueryItem(name: "order", value: "created_at.asc")
+            URLQueryItem(name: "order", value: "created_at.asc,id.asc")
         ])
-        return rows.map {
-            ChatMessage(id: $0.id, threadID: $0.threadId, senderID: $0.senderId,
-                        senderName: "", body: $0.body, createdAt: $0.createdAt)
-        }
+        return rows.map(Self.message)
     }
 
     public func send(body: String, threadID: UUID) async throws -> ChatMessage {
@@ -344,14 +308,22 @@ public struct SupabaseChatRepository: ChatRepository {
         ])
         guard let sender = me.first?.id else { throw SupabaseError.unauthenticated }
 
+        // The INSERT returns the messages row, which carries no sender name;
+        // the name is resolved by message_feed on the next read. The composer
+        // labels its own bubble "Vous" anyway.
         let rows: [MessageRow] = try await client.insert("messages", values: [
             "thread_id": AnyEncodable(threadID.uuidString),
             "sender_id": AnyEncodable(sender.uuidString),
             "body": AnyEncodable(body)
         ])
         guard let row = rows.first else { throw SupabaseError.decoding("no message returned") }
-        return ChatMessage(id: row.id, threadID: row.threadId, senderID: row.senderId,
-                           senderName: "", body: row.body, createdAt: row.createdAt)
+        return Self.message(row)
+    }
+
+    private static func message(_ row: MessageRow) -> ChatMessage {
+        ChatMessage(id: row.id, threadID: row.threadId, senderID: row.senderId,
+                    senderName: row.senderName ?? "", body: row.body,
+                    createdAt: row.createdAt)
     }
 
     public func markRead(threadID: UUID) async throws {
@@ -365,6 +337,24 @@ public struct SupabaseChatRepository: ChatRepository {
             "p_subject": AnyEncodable(subject),
             "p_body": AnyEncodable(body)
         ])
+    }
+
+    /// An apporteur should not have to know which administrator to write to.
+    public func startSupportThread() async throws -> UUID {
+        try await client.rpc("start_support_thread")
+    }
+
+    public func startDirectThread(with profileID: UUID) async throws -> UUID {
+        try await client.rpc("start_direct_thread", body: [
+            "p_other_profile_id": AnyEncodable(profileID.uuidString)
+        ])
+    }
+
+    public func setFlags(threadID: UUID, pinned: Bool?, archived: Bool?) async throws {
+        var body: [String: AnyEncodable] = ["p_thread_id": AnyEncodable(threadID.uuidString)]
+        if let pinned { body["p_pinned"] = AnyEncodable(pinned) }
+        if let archived { body["p_archived"] = AnyEncodable(archived) }
+        try await client.rpcVoid("set_thread_flags", body: body)
     }
 }
 

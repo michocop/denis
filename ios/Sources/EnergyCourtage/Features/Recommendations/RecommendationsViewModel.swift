@@ -56,7 +56,6 @@ public struct RecommendationDraft: Hashable, Sendable {
     public var phone: String = ""
     public var email: String = ""
     public var company: String = ""
-    public var offerID: UUID?
     public var consentConfirmed: Bool = false
 
     public init() {}

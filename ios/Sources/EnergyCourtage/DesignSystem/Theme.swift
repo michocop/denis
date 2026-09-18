@@ -134,8 +134,8 @@ public extension Color {
 }
 
 public extension View {
-    /// The card treatment shared by recommendations, catalogue products and
-    /// the refresh banner.
+    /// The card treatment shared by recommendations, members and the
+    /// refresh banner.
     func cardSurface(radius: CGFloat = Theme.Radius.card) -> some View {
         background(
             RoundedRectangle(cornerRadius: radius, style: .continuous)

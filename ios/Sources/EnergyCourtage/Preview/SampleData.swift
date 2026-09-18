@@ -152,81 +152,174 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
 // Enough behaviour to exercise the states each screen actually has, so a
 // preview shows something real rather than an empty frame.
 
-public struct PreviewCatalogueRepository: CatalogueRepository {
-    public init() {}
+/// Demo chat that actually holds what you type. A stateless fake looked fine
+/// in a screenshot and was useless in the simulator: every message you sent
+/// disappeared on the next read, which is exactly the thing a demo is supposed
+/// to let you try.
+public actor DemoChatStore {
+    static let shared = DemoChatStore()
 
-    public func loadOffers() async throws -> [Offer] {
-        try? await Task.sleep(for: .milliseconds(100))
-        return [
-            Offer(id: UUID(), title: "Suivi",
-                  description: "Nous surveillons vos dates d'échéances pour vous afin de toujours entamer les négociations au meilleur moment",
-                  position: 1),
-            Offer(id: UUID(), title: "Optimisation",
-                  description: "Nous vous trouvons le meilleur prix de molécule, optimisons les puissances de vos compteurs et analysons votre éligibilité à l'exonération de certaines taxes",
-                  position: 2),
-            Offer(id: UUID(), title: "Conseil",
-                  description: "Suite à l'audit de votre situation, nous vous présentons les solutions les plus adaptées",
-                  position: 3)
+    public static let me = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+    public static let them = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+
+    private let supportThread = UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000001")!
+    private let mariThread    = UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000002")!
+    private let ticketThread  = UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000003")!
+
+    private var threads: [ChatThread]
+    private var messages: [UUID: [ChatMessage]]
+
+    public init() {
+        let now = Date.now
+        threads = [
+            ChatThread(id: supportThread, kind: .direct,
+                       counterpartName: "Pierre-Louis Tettamanti",
+                       lastMessage: "Je vous réponds tout de suite.",
+                       lastMessageAt: now.addingTimeInterval(-600), unreadCount: 1),
+            ChatThread(id: mariThread, kind: .direct, counterpartName: "Marie Durand",
+                       lastMessage: "Merci !",
+                       lastMessageAt: now.addingTimeInterval(-7200), pinned: true),
+            ChatThread(id: ticketThread, kind: .ticket, title: "Problème de virement",
+                       counterpartName: "Support",
+                       lastMessage: "Je n'ai pas reçu mon paiement.",
+                       lastMessageAt: now.addingTimeInterval(-86_400))
+        ]
+        messages = [
+            supportThread: [
+                ChatMessage(id: UUID(), threadID: supportThread, senderID: Self.me,
+                            senderName: "Johann Lefeuvre",
+                            body: "Bonjour, une question sur Thomas Dubois.",
+                            createdAt: now.addingTimeInterval(-900)),
+                ChatMessage(id: UUID(), threadID: supportThread, senderID: Self.them,
+                            senderName: "Pierre-Louis Tettamanti",
+                            body: "Je vous réponds tout de suite.",
+                            createdAt: now.addingTimeInterval(-600))
+            ],
+            mariThread: [
+                ChatMessage(id: UUID(), threadID: mariThread, senderID: Self.me,
+                            senderName: "Johann Lefeuvre", body: "C'est signé pour Boulangerie Petit.",
+                            createdAt: now.addingTimeInterval(-7400)),
+                ChatMessage(id: UUID(), threadID: mariThread, senderID: UUID(),
+                            senderName: "Marie Durand", body: "Merci !",
+                            createdAt: now.addingTimeInterval(-7200))
+            ],
+            ticketThread: [
+                ChatMessage(id: UUID(), threadID: ticketThread, senderID: Self.me,
+                            senderName: "Johann Lefeuvre",
+                            body: "Je n'ai pas reçu mon paiement.",
+                            createdAt: now.addingTimeInterval(-86_400))
+            ]
         ]
     }
 
-    public func save(_ offer: Offer) async throws -> Offer { offer }
-    public func delete(offerID: UUID) async throws {}
+    /// A direct conversation is named after the other person, so the name
+    /// depends on who is reading -- the admin demo must not see a thread
+    /// labelled with the admin's own name.
+    func loadThreads(as viewer: UUID) -> [ChatThread] {
+        guard viewer == Self.them else { return threads }
+        return threads.map { thread in
+            guard thread.id == supportThread else { return thread }
+            var flipped = thread
+            flipped.counterpartName = "Johann Lefeuvre"
+            return flipped
+        }
+    }
+    func loadMessages(_ id: UUID) -> [ChatMessage] { messages[id] ?? [] }
+
+    func send(_ body: String, to id: UUID, from sender: UUID) -> ChatMessage {
+        let name = sender == Self.them ? "Pierre-Louis Tettamanti" : "Johann Lefeuvre"
+        let message = ChatMessage(id: UUID(), threadID: id, senderID: sender,
+                                  senderName: name, body: body, createdAt: .now)
+        messages[id, default: []].append(message)
+        update(id) { $0.lastMessage = body; $0.lastMessageAt = message.createdAt }
+        return message
+    }
+
+    func markRead(_ id: UUID) { update(id) { $0.unreadCount = 0 } }
+
+    func setFlags(_ id: UUID, pinned: Bool?, archived: Bool?) {
+        update(id) {
+            if let pinned { $0.pinned = pinned }
+            if let archived { $0.archived = archived }
+        }
+    }
+
+    func startSupport() -> UUID { supportThread }
+
+    func startDirect(with profileID: UUID) -> UUID {
+        if let existing = threads.first(where: { $0.id == profileID }) { return existing.id }
+        let thread = ChatThread(id: profileID, kind: .direct, counterpartName: "Nouvelle discussion")
+        threads.append(thread)
+        return thread.id
+    }
+
+    private func update(_ id: UUID, _ change: (inout ChatThread) -> Void) {
+        guard let index = threads.firstIndex(where: { $0.id == id }) else { return }
+        change(&threads[index])
+    }
 }
 
 public struct PreviewChatRepository: ChatRepository {
-    public init() {}
+    /// The viewer decides how a direct conversation is named, so the demo
+    /// repository is told which side of it the app is showing.
+    private let viewer: UUID
+    public init(viewer: UUID = DemoChatStore.me) { self.viewer = viewer }
 
     public func loadThreads() async throws -> [ChatThread] {
-        try? await Task.sleep(for: .milliseconds(100))
-        return [
-            ChatThread(id: UUID(), kind: .direct, counterpartName: "Johann Lefeuvre",
-                       lastMessage: "Bonjour, une question sur Thomas Dubois.",
-                       lastMessageAt: .now, unreadCount: 2),
-            ChatThread(id: UUID(), kind: .direct, counterpartName: "Marie Durand",
-                       lastMessage: "Merci !",
-                       lastMessageAt: .now.addingTimeInterval(-7200), pinned: true),
-            ChatThread(id: UUID(), kind: .ticket, title: "Problème de virement",
-                       counterpartName: "Support",
-                       lastMessage: "Je n'ai pas reçu mon paiement.",
-                       lastMessageAt: .now.addingTimeInterval(-86_400))
-        ]
+        await DemoChatStore.shared.loadThreads(as: viewer)
     }
 
     public func loadMessages(threadID: UUID) async throws -> [ChatMessage] {
-        let me = UUID()
-        return [
-            ChatMessage(id: UUID(), threadID: threadID, senderID: UUID(),
-                        senderName: "Johann Lefeuvre",
-                        body: "Bonjour, une question sur Thomas Dubois.",
-                        createdAt: .now.addingTimeInterval(-3600)),
-            ChatMessage(id: UUID(), threadID: threadID, senderID: me,
-                        senderName: "Vous",
-                        body: "Bien sûr, je vous écoute.",
-                        createdAt: .now.addingTimeInterval(-3400))
-        ]
+        await DemoChatStore.shared.loadMessages(threadID)
     }
 
     public func send(body: String, threadID: UUID) async throws -> ChatMessage {
-        ChatMessage(id: UUID(), threadID: threadID, senderID: UUID(),
-                    senderName: "Vous", body: body, createdAt: .now)
+        await DemoChatStore.shared.send(body, to: threadID, from: viewer)
     }
 
-    public func markRead(threadID: UUID) async throws {}
+    public func markRead(threadID: UUID) async throws {
+        await DemoChatStore.shared.markRead(threadID)
+    }
+
     public func openTicket(subject: String, body: String) async throws -> UUID { UUID() }
+
+    public func startSupportThread() async throws -> UUID {
+        await DemoChatStore.shared.startSupport()
+    }
+
+    public func startDirectThread(with profileID: UUID) async throws -> UUID {
+        await DemoChatStore.shared.startDirect(with: profileID)
+    }
+
+    public func setFlags(threadID: UUID, pinned: Bool?, archived: Bool?) async throws {
+        await DemoChatStore.shared.setFlags(threadID, pinned: pinned, archived: archived)
+    }
 }
 
 public struct PreviewProfileRepository: ProfileRepository {
     /// Drives the mandate notice on Accueil, which only appears when one is
     /// missing — the state worth seeing in a preview.
     private let hasMandate: Bool
-    public init(hasMandate: Bool = false) { self.hasMandate = hasMandate }
+    private let role: UserRole
+    public init(hasMandate: Bool = false, role: UserRole = .apporteur) {
+        self.hasMandate = hasMandate
+        self.role = role
+    }
 
     public func currentProfile() async throws -> Profile {
-        Profile(id: UUID(), role: .apporteur, firstName: "Johann", lastName: "Lefeuvre",
-                email: "johann@example.test", companyName: "Lefeuvre Conseil",
-                city: "Lille",
-                billingMandateSignedAt: hasMandate ? .now.addingTimeInterval(-86_400 * 90) : nil)
+        // Stable id, not a fresh UUID per call: the chat decides which bubbles
+        // are yours by comparing sender ids, and a random id put every message
+        // on the same side of the conversation.
+        let isAdmin = role.isAdmin
+        return Profile(
+            id: isAdmin ? DemoChatStore.them : DemoChatStore.me,
+            role: role,
+            firstName: isAdmin ? "Pierre-Louis" : "Johann",
+            lastName: isAdmin ? "Tettamanti" : "Lefeuvre",
+            email: isAdmin ? "pl@trinity-energie.test" : "johann@example.test",
+            companyName: isAdmin ? "Trinity Énergie" : "Lefeuvre Conseil",
+            city: "Lille",
+            billingMandateSignedAt: hasMandate ? .now.addingTimeInterval(-86_400 * 90) : nil)
     }
 
     public func save(_ profile: Profile) async throws -> Profile { profile }

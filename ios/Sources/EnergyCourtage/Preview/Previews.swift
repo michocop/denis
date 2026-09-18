@@ -4,7 +4,6 @@ import SwiftUI
 private func previewDependencies() -> Dependencies {
     Dependencies(
         recommendations: PreviewRecommendationsRepository(),
-        catalogue: PreviewCatalogueRepository(),
         chat: PreviewChatRepository(),
         profiles: PreviewProfileRepository(),
         invoices: PreviewInvoiceRepository(),
@@ -34,13 +33,9 @@ private func previewDependencies() -> Dependencies {
     )
 }
 
-#Preview("Catalogue — admin") {
-    CatalogueView(model: CatalogueViewModel(repository: PreviewCatalogueRepository(),
-                                            role: .admin))
-}
-
 #Preview("Chat") {
-    ChatView(model: ChatViewModel(repository: PreviewChatRepository()))
+    ChatView(model: ChatViewModel(repository: PreviewChatRepository(),
+                                  profiles: PreviewProfileRepository()))
 }
 
 #Preview("Accueil") {

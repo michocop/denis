@@ -10,21 +10,17 @@ public struct CreateRecommendationView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var draft = RecommendationDraft()
-    @State private var offers: [Offer] = []
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var duplicate = DuplicateCheck()
     @State private var duplicateTask: Task<Void, Never>?
 
     private let recommendations: RecommendationsRepository
-    private let catalogue: CatalogueRepository
     private let onCreated: (Recommendation) -> Void
 
     public init(recommendations: RecommendationsRepository,
-                catalogue: CatalogueRepository,
                 onCreated: @escaping (Recommendation) -> Void) {
         self.recommendations = recommendations
-        self.catalogue = catalogue
         self.onCreated = onCreated
     }
 
@@ -59,19 +55,6 @@ public struct CreateRecommendationView: View {
                         TextField("Raison sociale", text: $draft.company)
                     }
 
-                    if !offers.isEmpty {
-                        LabelledField("Prestation") {
-                            Picker("Prestation", selection: $draft.offerID) {
-                                Text("Non précisée").tag(UUID?.none)
-                                ForEach(offers) { offer in
-                                    Text(offer.title).tag(UUID?.some(offer.id))
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            .tint(Theme.Palette.textPrimary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
 
                     if let warning = duplicate.warning {
                         DuplicateWarning(text: warning, blocking: duplicate.blocksSubmission)
@@ -101,9 +84,6 @@ public struct CreateRecommendationView: View {
                     Button("Annuler") { dismiss() }
                 }
             }
-        }
-        .task {
-            offers = (try? await catalogue.loadOffers()) ?? []
         }
         // Checked as they type rather than on submit: being told after filling
         // the whole form that the lead is already taken is the worst moment

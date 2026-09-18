@@ -914,6 +914,64 @@ begin
     'and when it was recorded');
 end $$;
 
+\echo ''
+\echo '=== 22. The chat list has something to show ======================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_thread uuid;
+  v_row    thread_overview%rowtype;
+  n int;
+begin
+  perform login(v_johann);
+  select start_support_thread() into v_thread;
+  insert into messages (thread_id, sender_id, body)
+  values (v_thread, v_johann, 'Bonjour, une question sur Thomas Dubois.');
+
+  perform login(v_pierre);
+  insert into messages (thread_id, sender_id, body)
+  values (v_thread, v_pierre, 'Je vous réponds tout de suite.');
+
+  perform login(v_johann);
+  select * into v_row from thread_overview where id = v_thread;
+  perform assert(v_row.counterpart_name = 'Pierre-Louis Tettamanti',
+    'a direct conversation is named after the other person, not yourself');
+  perform assert(v_row.last_message = 'Je vous réponds tout de suite.',
+    'the row carries the latest message');
+  perform assert(v_row.unread_count = 1,
+    'and counts only what the reader has not seen');
+
+  -- the author's name has to survive the join, or the bubble is anonymous
+  perform assert(
+    (select sender_name from message_feed
+      where thread_id = v_thread order by created_at desc limit 1)
+      = 'Pierre-Louis Tettamanti',
+    'an apporteur can read the name of the admin writing to them');
+
+  perform mark_thread_read(v_thread);
+  select * into v_row from thread_overview where id = v_thread;
+  perform assert(v_row.unread_count = 0, 'opening it clears the count');
+
+  perform set_thread_flags(v_thread, p_pinned => true);
+  select * into v_row from thread_overview where id = v_thread;
+  perform assert(v_row.pinned, 'pinning is recorded for this reader');
+
+  perform login(v_pierre);
+  select * into v_row from thread_overview where id = v_thread;
+  perform assert(not v_row.pinned,
+    'and not for the other one: pinning is per reader, not per thread');
+  perform assert(v_row.counterpart_name = 'Johann Lefeuvre',
+    'each side sees the conversation named after the other');
+
+  perform login(v_marie);
+  select count(*) into n from thread_overview where id = v_thread;
+  perform assert(n = 0, 'someone outside the conversation sees nothing of it');
+  select count(*) into n from message_feed where thread_id = v_thread;
+  perform assert(n = 0, 'not even the messages');
+end $$;
+
 reset role;
 insert into auth.users (id, email) values
   ('44444444-4444-4444-4444-444444444444', 'nouveau@example.test'),

@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The five-tab shell. One binary serves both populations: the tabs are the
+/// The four-tab shell. One binary serves both populations: the tabs are the
 /// same, and `role` decides which affordances appear inside them.
 public struct RootView: View {
-    public enum Tab: Hashable { case home, recommendations, catalogue, chat, profile }
+    public enum Tab: Hashable { case home, recommendations, chat, profile }
 
     @State private var tab: Tab = .home
     @State private var showsCreate = false
@@ -59,13 +59,9 @@ public struct RootView: View {
             .tabItem { Label("Reco", systemImage: "doc.badge.plus") }
             .tag(Tab.recommendations)
 
-            CatalogueView(
-                model: CatalogueViewModel(repository: dependencies.catalogue, role: role)
-            )
-            .tabItem { Label("Catalogue", systemImage: "book") }
-            .tag(Tab.catalogue)
-
-            ChatView(model: ChatViewModel(repository: dependencies.chat))
+            ChatView(model: ChatViewModel(repository: dependencies.chat,
+                                          profiles: dependencies.profiles,
+                                          admin: role.isAdmin ? dependencies.admin : nil))
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
                 .tag(Tab.chat)
 
@@ -77,8 +73,7 @@ public struct RootView: View {
         }
         .tint(Theme.Palette.brand)
         .sheet(isPresented: $showsCreate) {
-            CreateRecommendationView(recommendations: dependencies.recommendations,
-                                     catalogue: dependencies.catalogue) { _ in
+            CreateRecommendationView(recommendations: dependencies.recommendations) { _ in
                 tab = .recommendations
             }
         }

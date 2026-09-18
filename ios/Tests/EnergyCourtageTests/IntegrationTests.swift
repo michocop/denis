@@ -141,13 +141,6 @@ final class IntegrationTests: XCTestCase {
         XCTAssertTrue(profile.canBeInvoiced, "the seed signs his mandate")
     }
 
-    func testCatalogueLoads() async throws {
-        let catalogue = SupabaseCatalogueRepository(client: await signedIn(as: Self.johann))
-        let offers = try await catalogue.loadOffers()
-        XCTAssertEqual(Set(offers.map(\.title)), ["Suivi", "Optimisation", "Conseil"])
-        XCTAssertTrue(offers.allSatisfy { $0.priceLabel == "Sur devis" })
-    }
-
     // MARK: - Writes
 
     func testCreatingARecommendationRoundTrips() async throws {

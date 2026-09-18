@@ -7,7 +7,6 @@
 
 alter table profiles                     enable row level security;
 alter table stages                       enable row level security;
-alter table offers                       enable row level security;
 alter table recommendations              enable row level security;
 alter table recommendation_stage_events  enable row level security;
 alter table invoices                     enable row level security;
@@ -41,11 +40,6 @@ create policy profiles_update on profiles for update to authenticated
 -- ------------------------------------------------------- reference tables
 create policy stages_select on stages for select to authenticated using (true);
 create policy stages_write  on stages for all    to authenticated
-  using (is_admin(auth.uid())) with check (is_admin(auth.uid()));
-
-create policy offers_select on offers for select to authenticated
-  using (is_active or is_admin(auth.uid()));
-create policy offers_write  on offers for all to authenticated
   using (is_admin(auth.uid())) with check (is_admin(auth.uid()));
 
 -- --------------------------------------------------------- recommendations

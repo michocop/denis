@@ -29,15 +29,3 @@ Je vous informe que nous allons procéder au paiement de vos honoraires. Vous re
 N'oubliez pas de procéder à votre déclaration de revenu en fin d'année.
 Si vous êtes un apporteur d'affaire occasionnel, vous devez déclarer les sommes perçues au titre des bénéfices non commerciaux (BNC) via votre déclaration de revenus - CERFA 2042 C -
 Bonne journée.$tpl$);
-
--- The catalogue sells the brokerage's own services, all quoted rather than priced.
-insert into offers (title, description, category, price_mode, availability_label, position) values
-('Suivi',
- $tpl$Nous surveillons vos dates d'échéances pour vous afin de toujours entamer les négociations au meilleur moment$tpl$,
- 'Energie', 'quote', 'Disponible', 1),
-('Optimisation',
- $tpl$Nous vous trouvons le meilleur prix de molécule, optimisons les puissances de vos compteurs et analysons votre éligibilité à l'exonération de certaines taxes$tpl$,
- 'Energie', 'quote', 'Disponible', 2),
-('Conseil',
- $tpl$Suite à l'audit de votre situation, nous vous présentons les solutions les plus adaptées$tpl$,
- 'Energie', 'quote', 'Disponible', 3);

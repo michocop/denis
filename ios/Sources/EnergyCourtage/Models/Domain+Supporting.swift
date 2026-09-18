@@ -1,52 +1,5 @@
 import Foundation
 
-/// A catalogue entry. The source app sells the brokerage's own services —
-/// Suivi, Optimisation, Conseil — all quoted rather than priced, so the price
-/// is a mode, not a number.
-public struct Offer: Identifiable, Hashable, Codable, Sendable {
-    public enum PriceMode: String, Codable, Sendable { case quote, fixed }
-
-    public let id: UUID
-    public var title: String
-    public var description: String?
-    public var category: String
-    public var priceMode: PriceMode
-    public var price: Decimal?
-    public var availabilityLabel: String
-    public var defaultRewardAmount: Decimal?
-    public var mediaUrl: String?
-    public var isActive: Bool
-    public var position: Int
-
-    public init(id: UUID, title: String, description: String? = nil, category: String = "Energie",
-                priceMode: PriceMode = .quote, price: Decimal? = nil,
-                availabilityLabel: String = "Disponible", defaultRewardAmount: Decimal? = nil,
-                mediaUrl: String? = nil, isActive: Bool = true, position: Int = 0) {
-        self.id = id; self.title = title; self.description = description
-        self.category = category; self.priceMode = priceMode; self.price = price
-        self.availabilityLabel = availabilityLabel
-        self.defaultRewardAmount = defaultRewardAmount
-        self.mediaUrl = mediaUrl; self.isActive = isActive; self.position = position
-    }
-
-    public var priceLabel: String {
-        switch priceMode {
-        case .quote: return "Sur devis"
-        case .fixed:
-            guard let price else { return "Sur devis" }
-            return Self.currency.string(from: price as NSDecimalNumber) ?? "Sur devis"
-        }
-    }
-
-    private static let currency: NumberFormatter = {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "EUR"
-        f.locale = Locale(identifier: "fr_FR")
-        return f
-    }()
-}
-
 // MARK: - Profile
 
 public struct Profile: Identifiable, Hashable, Codable, Sendable {

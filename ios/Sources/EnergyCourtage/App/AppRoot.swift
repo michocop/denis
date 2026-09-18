@@ -47,9 +47,8 @@ public final class AppModel {
         phase = .ready(
             Dependencies(
                 recommendations: PreviewRecommendationsRepository(),
-                catalogue: PreviewCatalogueRepository(),
-                chat: PreviewChatRepository(),
-                profiles: PreviewProfileRepository(),
+                chat: PreviewChatRepository(viewer: asAdmin ? DemoChatStore.them : DemoChatStore.me),
+                profiles: PreviewProfileRepository(role: asAdmin ? .admin : .apporteur),
                 invoices: PreviewInvoiceRepository(),
                 reminders: PreviewRemindersRepository(),
                 admin: PreviewAdminRepository(),
@@ -168,7 +167,6 @@ public final class AppModel {
                 return .ready(
                     Dependencies(
                         recommendations: SupabaseRecommendationsRepository(client: client),
-                        catalogue: SupabaseCatalogueRepository(client: client),
                         chat: SupabaseChatRepository(client: client),
                         profiles: profiles,
                         invoices: SupabaseInvoiceRepository(client: client),

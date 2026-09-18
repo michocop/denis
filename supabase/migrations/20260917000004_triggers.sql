@@ -4,8 +4,6 @@
 
 create trigger profiles_touch    before update on profiles
   for each row execute function public.touch_updated_at();
-create trigger offers_touch      before update on offers
-  for each row execute function public.touch_updated_at();
 create trigger recos_touch       before update on recommendations
   for each row execute function public.touch_updated_at();
 create trigger invoices_touch    before update on invoices

@@ -1,17 +1,17 @@
 import Foundation
 
-public protocol CatalogueRepository: Sendable {
-    func loadOffers() async throws -> [Offer]
-    func save(_ offer: Offer) async throws -> Offer
-    func delete(offerID: UUID) async throws
-}
-
 public protocol ChatRepository: Sendable {
     func loadThreads() async throws -> [ChatThread]
     func loadMessages(threadID: UUID) async throws -> [ChatMessage]
     func send(body: String, threadID: UUID) async throws -> ChatMessage
     func markRead(threadID: UUID) async throws
     func openTicket(subject: String, body: String) async throws -> UUID
+    /// Returns the thread id, creating it only if it does not already exist:
+    /// the apporteur does not know which administrator to write to.
+    func startSupportThread() async throws -> UUID
+    func startDirectThread(with profileID: UUID) async throws -> UUID
+    /// Pinning and archiving are per reader, not per thread.
+    func setFlags(threadID: UUID, pinned: Bool?, archived: Bool?) async throws
 }
 
 public protocol ProfileRepository: Sendable {
@@ -34,7 +34,6 @@ public protocol InvoiceRepository: Sendable {
 /// be previewed against fakes.
 public struct Dependencies: Sendable {
     public let recommendations: RecommendationsRepository
-    public let catalogue: CatalogueRepository
     public let chat: ChatRepository
     public let profiles: ProfileRepository
     public let invoices: InvoiceRepository
@@ -44,7 +43,6 @@ public struct Dependencies: Sendable {
     public let changeMonitor: ChangeMonitor
 
     public init(recommendations: RecommendationsRepository,
-                catalogue: CatalogueRepository,
                 chat: ChatRepository,
                 profiles: ProfileRepository,
                 invoices: InvoiceRepository,
@@ -53,7 +51,6 @@ public struct Dependencies: Sendable {
                 commissions: CommissionsRepository,
                 changeMonitor: ChangeMonitor = InertChangeMonitor()) {
         self.recommendations = recommendations
-        self.catalogue = catalogue
         self.chat = chat
         self.profiles = profiles
         self.invoices = invoices

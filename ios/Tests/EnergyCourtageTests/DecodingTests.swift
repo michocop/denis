@@ -87,16 +87,6 @@ final class DecodingTests: XCTestCase {
         XCTAssertFalse(profile.canBeInvoiced)
     }
 
-    func testOfferPricing() throws {
-        let offer = try decode(Offer.self, """
-        { "id": "33333333-3333-3333-3333-333333333333", "title": "Suivi",
-          "description": "Nous surveillons vos dates d'échéances",
-          "category": "Energie", "price_mode": "quote", "price": null,
-          "availability_label": "Disponible", "is_active": true, "position": 1 }
-        """)
-        XCTAssertEqual(offer.priceLabel, "Sur devis")
-        XCTAssertEqual(offer.availabilityLabel, "Disponible")
-    }
 }
 
 final class FormAndFilterTests: XCTestCase {
@@ -124,7 +114,8 @@ final class FormAndFilterTests: XCTestCase {
     }
 
     func testTicketsAndDiscussionsAreSeparateTabs() {
-        let model = ChatViewModel(repository: StubChatRepository())
+        let model = ChatViewModel(repository: StubChatRepository(),
+                                  profiles: PreviewProfileRepository())
         let direct = ChatThread(id: UUID(), kind: .direct, counterpartName: "Johann Lefeuvre")
         let ticket = ChatThread(id: UUID(), kind: .ticket, title: "Problème de virement",
                                 counterpartName: "Support")
@@ -138,7 +129,8 @@ final class FormAndFilterTests: XCTestCase {
     }
 
     func testPinnedConversationsSortFirst() {
-        let model = ChatViewModel(repository: StubChatRepository())
+        let model = ChatViewModel(repository: StubChatRepository(),
+                                  profiles: PreviewProfileRepository())
         let recent = ChatThread(id: UUID(), kind: .direct, counterpartName: "Récent",
                                 lastMessageAt: .now)
         let pinned = ChatThread(id: UUID(), kind: .direct, counterpartName: "Épinglé",
@@ -157,6 +149,9 @@ struct StubChatRepository: ChatRepository {
     }
     func markRead(threadID: UUID) async throws {}
     func openTicket(subject: String, body: String) async throws -> UUID { UUID() }
+    func startSupportThread() async throws -> UUID { UUID() }
+    func startDirectThread(with profileID: UUID) async throws -> UUID { profileID }
+    func setFlags(threadID: UUID, pinned: Bool?, archived: Bool?) async throws {}
 }
 
 /// Auth routing is driven entirely by `my_account_state()`, so its shape is
