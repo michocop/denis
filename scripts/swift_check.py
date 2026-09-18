@@ -6,8 +6,17 @@ Not a compiler, and deliberately narrow: it catches the two mistakes this
 codebase is most exposed to, having been written without one --
 
   1. a type that claims to conform to a locally-declared protocol but never
-     implements one of its requirements, and
-  2. two top-level declarations sharing a name.
+     implements one of its requirements,
+  2. two top-level declarations sharing a name, and
+  3. a capitalised name used in call or generic position that nothing in the
+     module declares and that is not a known SDK type.
+
+(3) exists because deleting a feature once took a shared control out with it
+-- LabelledField lived inside the catalogue's wizard file -- and seven other
+screens stopped compiling. Nothing here noticed; CI did, two minutes later.
+It works off an explicit SDK allowlist, so a genuinely new Apple type has to
+be added by hand: the alternative is a check that quietly passes on anything
+it does not recognise, which is no check at all.
 
 It tracks brace depth so that a nested type (a private Decodable row struct
 inside a repository, say) is attributed to its parent rather than stealing it,
@@ -39,6 +48,8 @@ protocols = collections.defaultdict(set)      # protocol -> requirement names
 inherits  = collections.defaultdict(set)      # protocol -> parent protocols
 members   = collections.defaultdict(set)      # fully-qualified type -> members
 conform   = []                                # (type, protocol, file, line)
+declared  = set()                             # every name declared anywhere,
+                                              # nested ones included
 
 def scan(path):
     stack = []          # [(name, depth_at_open)]
@@ -51,6 +62,7 @@ def scan(path):
         if m:
             groups = m.groups()
             kind, name = (groups if len(groups) == 2 else ("extension", groups[0]))
+            declared.add(name)
             qualified = name if not stack else f"{stack[-1][0]}.{name}"
             # an extension re-opens the type it names, so it is not nested
             if kind == "extension":
@@ -99,7 +111,52 @@ def requirements(proto, seen=None):
         out |= requirements(parent, seen)
     return out
 
+# Everything the app uses from Foundation, SwiftUI, XCTest, Security,
+# CryptoKit, LocalAuthentication, CoreGraphics and UIKit. Add to it when a new
+# framework type is introduced.
+SDK = {
+    "Array", "AsyncStream", "Binding", "Button", "CGFloat", "CGPoint", "CGRect",
+    "CGSize", "Calendar", "Capsule", "Circle", "Color", "Data", "Date",
+    "DateComponents", "DateFormatter", "DatePicker", "Dictionary", "Divider",
+    "Double", "EdgeInsets", "Environment", "ForEach", "GridItem", "HMAC",
+    "HStack", "HTTPURLResponse", "ISO8601DateFormatter", "Image", "Int",
+    "JSONDecoder", "JSONEncoder", "LAContext", "Label", "LazyVGrid",
+    "LazyVStack", "Link", "List", "Locale", "NSMutableParagraphStyle",
+    "NumberFormatter", "Picker", "Preview", "ProgressView", "Rectangle",
+    "RoundedRectangle", "SHA256", "ScrollView", "ScrollViewReader", "SecItemAdd",
+    "SecItemCopyMatching", "SecItemDelete", "SecureField", "Sendable", "Set",
+    "ShareLink", "Spacer", "State", "String", "SymmetricKey", "TabView", "Task",
+    "Text", "TextEditor", "TextField", "TimeZone", "Toggle", "ToolbarItem",
+    "UIBezierPath", "UIColor", "UIFont", "UIGraphicsPDFRenderer",
+    "UIGraphicsPDFRendererFormat", "URL", "URLQueryItem", "URLRequest",
+    "URLSession", "UUID", "VStack", "ViewBuilder", "XCTFail", "XCTSkipUnless",
+    "XCTUnwrap", "ZStack", "NSString", "NSAttributedString", "NSDecimalNumber",
+    "FileManager", "NavigationStack", "NavigationLink", "Menu", "Section",
+    "Form", "Group", "GeometryReader", "Font", "Angle", "Animation",
+}
+
+# Strings hold French prose, and "TVA (" or "Email :" is not a type.
+STRING = re.compile(r'"(?:[^"\\]|\\.)*"')
+COMMENT = re.compile(r'//.*')
+USE = re.compile(r'(?<![\w.])([A-Z][A-Za-z0-9_]*)\s*[(<]')
+
+undeclared = collections.defaultdict(list)
+for f in FILES:
+    for lineno, line in enumerate(f.read_text().splitlines(), 1):
+        line = STRING.sub('""', COMMENT.sub('', line))
+        for m in USE.finditer(line):
+            name = m.group(1)
+            # a nested type is recorded as Parent.Child, and is referred to
+            # by its short name from inside the parent
+            if name in declared or name in SDK or name.startswith("XCTAssert"):
+                continue
+            undeclared[name].append(f"{f.name}:{lineno}")
+
 problems = []
+
+for name, where in sorted(undeclared.items()):
+    problems.append(f"UNDECLARED {name} — used at {where[0]}"
+                    + (f" and {len(where) - 1} more" if len(where) > 1 else ""))
 
 for name, where in top_level.items():
     if len(where) > 1:
@@ -124,4 +181,4 @@ if problems:
     for p in sorted(set(problems)):
         print(p)
     sys.exit(1)
-print("no conformance or duplicate problems found")
+print("no conformance, duplicate or undeclared-name problems found")

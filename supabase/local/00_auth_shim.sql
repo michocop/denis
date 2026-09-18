@@ -37,3 +37,30 @@ as $$
 $$;
 
 grant usage on schema auth to authenticated, anon;
+
+-- Storage, in the same spirit: Supabase provides storage.buckets and
+-- storage.objects with RLS on objects. The invoice PDF policies are written
+-- against them, and a policy nothing can execute is a policy nobody has
+-- checked -- so the tests get a table shaped like the real one.
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id     text primary key,
+  name   text not null,
+  public boolean not null default false
+);
+
+create table if not exists storage.objects (
+  id        uuid primary key default gen_random_uuid(),
+  bucket_id text not null references storage.buckets(id),
+  name      text not null,
+  owner     uuid,
+  created_at timestamptz not null default now(),
+  unique (bucket_id, name)
+);
+
+alter table storage.objects enable row level security;
+
+grant usage on schema storage to authenticated, anon;
+grant select, insert on storage.objects to authenticated;
+grant select on storage.buckets to authenticated;

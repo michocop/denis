@@ -65,6 +65,7 @@ public actor SupabaseClient: SupabaseTransport {
     private let anonKey: String
     private let restPath: String
     private let authPath: String
+    private let storagePath: String
     private let session: URLSession
     private var accessToken: String?
     private var refreshToken: String?
@@ -78,11 +79,13 @@ public actor SupabaseClient: SupabaseTransport {
                 anonKey: String,
                 restPath: String = "rest/v1",
                 authPath: String = "auth/v1",
+                storagePath: String = "storage/v1",
                 session: URLSession = .shared) {
         self.baseURL = baseURL
         self.anonKey = anonKey
         self.restPath = restPath
         self.authPath = authPath
+        self.storagePath = storagePath
         self.session = session
     }
 
@@ -129,6 +132,11 @@ public actor SupabaseClient: SupabaseTransport {
 
         let session: AuthSession = try await perform(request)
         accessToken = session.accessToken
+        // Kept here as well as in signUp and restore: without it, signing in
+        // normally -- which is how everyone gets in -- left the client with
+        // nothing to refresh with, and every session died an hour later at the
+        // sign-in screen.
+        refreshToken = session.refreshToken
         return session
     }
 
@@ -247,6 +255,30 @@ public actor SupabaseClient: SupabaseTransport {
         request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
         request.httpBody = try JSONEncoder().encode(body)
         _ = try await performRaw(request)   // refresh-on-401 applies here too
+    }
+
+    // MARK: - Storage
+
+    /// Uploads bytes to a Storage bucket. `upsert` is off: an invoice PDF is
+    /// written once and must never be silently replaced afterwards, and the
+    /// server answering 409 is the cheapest way to find out that it was.
+    public func upload(bucket: String, path: String, data: Data,
+                       contentType: String, upsert: Bool = false) async throws {
+        var request = URLRequest(url: makeURL(prefix: storagePath,
+                                              path: "object/\(bucket)/\(path)"))
+        request.httpMethod = "POST"
+        applyHeaders(to: &request)
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue(upsert ? "true" : "false", forHTTPHeaderField: "x-upsert")
+        request.httpBody = data
+        _ = try await performRaw(request)
+    }
+
+    public func download(bucket: String, path: String) async throws -> Data {
+        var request = URLRequest(url: makeURL(prefix: storagePath,
+                                              path: "object/\(bucket)/\(path)"))
+        applyHeaders(to: &request)
+        return try await performRaw(request)
     }
 
     // MARK: - Plumbing

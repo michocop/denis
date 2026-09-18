@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 // MARK: - Recommendations
 
@@ -432,5 +433,47 @@ public struct SupabaseInvoiceRepository: InvoiceRepository {
             "p_invoice_id": AnyEncodable(invoiceID.uuidString),
             "p_document_sha256": AnyEncodable(documentSHA256)
         ])
+    }
+
+    /// Retention (art. 242 nonies A ann. II CGI) is about keeping the document
+    /// that was issued, so the first PDF wins: if one is already on file it is
+    /// downloaded, and a fresh rendering is never substituted for it.
+    ///
+    /// The upload races when two devices open the same invoice at once. The
+    /// bucket refuses the second write and `record_invoice_pdf` hands back the
+    /// path already kept, so the loser ends up reading the winner's file
+    /// rather than seeing an error.
+    public func pdf(for document: InvoiceDocument, invoiceID: UUID) async throws -> Data {
+        if let path = document.pdfPath {
+            return try await client.download(bucket: Self.bucket, path: path)
+        }
+
+        let data = InvoicePDF.render(document)
+        let path = "\(invoiceID.uuidString.lowercased()).pdf"
+
+        // An unsigned invoice has no retained document: it is still a draft,
+        // and the screen offers the PDF only once both signatures are in.
+        guard document.isFullySigned else { return data }
+
+        do {
+            try await client.upload(bucket: Self.bucket, path: path, data: data,
+                                    contentType: "application/pdf")
+        } catch SupabaseError.http(let status, _) where status == 409 {
+            // Someone else got there first; fall through and read theirs.
+        }
+
+        struct Recorded: Decodable { let path: String }
+        let kept: String = try await client.rpc("record_invoice_pdf", body: [
+            "p_invoice_id": AnyEncodable(invoiceID.uuidString),
+            "p_path": AnyEncodable(path),
+            "p_sha256": AnyEncodable(Self.sha256(data))
+        ])
+        return kept == path ? data : try await client.download(bucket: Self.bucket, path: kept)
+    }
+
+    private static let bucket = "invoices"
+
+    private static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }

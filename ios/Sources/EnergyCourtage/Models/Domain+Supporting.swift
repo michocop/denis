@@ -148,6 +148,11 @@ public struct InvoiceDocument: Hashable, Codable, Sendable {
     /// signs this value rather than reproducing the canonicalisation, which
     /// would otherwise have to stay byte-identical between Swift and SQL.
     public var documentSha256: String?
+    /// Set once a PDF has been produced and kept. When it is present the app
+    /// downloads that file instead of rendering a second one, because the
+    /// retained document is the one that was kept, not a fresh rendering that
+    /// happens to look like it.
+    public var pdfPath: String?
     public var issuer: Party
     public var apporteur: Party
     public var attestation: Attestation

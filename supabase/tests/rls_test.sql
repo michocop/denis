@@ -1053,6 +1053,87 @@ begin
     'an admin approval lets them in');
 end $$;
 
+
+\echo ''
+\echo '=== 23. The invoice PDF is written once and kept =================='
+set role authenticated;
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_sealed uuid;
+  v_draft  uuid;
+  v_path   text;
+begin
+  -- as the admin, because the fixtures are read through RLS like anything else
+  perform login(v_pierre);
+  select id into v_sealed from invoices where number = 'FA-2026-0003';
+  select id into v_draft from invoices where status not in ('signed','paid') limit 1;
+
+  -- a document nobody has agreed to must not be retained for ten years
+  perform login(v_johann);
+  perform assert_denied(v_johann,
+    format('select record_invoice_pdf(%L, %L, %L)', v_draft, 'x.pdf', repeat('a', 64)),
+    'an unsigned invoice cannot be given a retained document');
+
+  perform assert_denied(v_marie,
+    format('select record_invoice_pdf(%L, %L, %L)', v_sealed, 'x.pdf', repeat('a', 64)),
+    'a stranger to the invoice cannot record its document');
+
+  perform login(v_johann);
+  select record_invoice_pdf(v_sealed, v_sealed || '.pdf', repeat('a', 64)) into v_path;
+  perform assert(v_path = v_sealed || '.pdf', 'the apporteur records the file');
+  perform assert((select pdf_sha256 from invoices where id = v_sealed) = repeat('a', 64),
+    'and its digest, so a later download can be checked against it');
+
+  -- two devices opening the same invoice both upload; the loser must be handed
+  -- the winner's file rather than an error or a second stored document
+  select record_invoice_pdf(v_sealed, 'other.pdf', repeat('b', 64)) into v_path;
+  perform assert(v_path = v_sealed || '.pdf',
+    'a second attempt returns the file already kept, and does not replace it');
+  perform assert((select pdf_sha256 from invoices where id = v_sealed) = repeat('a', 64),
+    'the digest of the retained document is unchanged');
+
+  perform assert_denied(v_pierre,
+    format('update invoices set pdf_path = %L where id = %L', 'forged.pdf', v_sealed),
+    'nor can the path be overwritten directly');
+  perform assert_denied(v_pierre,
+    format('update invoices set amount_ht = 1 where id = %L', v_sealed),
+    'and the figures on a sealed invoice are still frozen');
+
+  -- the bucket policies decide who may read and write the bytes themselves
+  perform assert_denied(v_marie,
+    format('insert into storage.objects (bucket_id, name) values (%L, %L)',
+           'invoices', v_sealed || '.pdf'),
+    'a stranger cannot upload a document under someone else''s invoice');
+  perform assert_denied(v_johann,
+    format('insert into storage.objects (bucket_id, name) values (%L, %L)',
+           'invoices', v_draft || '.pdf'),
+    'nor can anyone upload one for an invoice that is not signed');
+
+  perform login(v_johann);
+  insert into storage.objects (bucket_id, name) values ('invoices', v_sealed || '.pdf');
+  perform assert(
+    (select count(*) from storage.objects where name = v_sealed || '.pdf') = 1,
+    'the apporteur uploads the document of their own invoice');
+
+  perform login(v_pierre);
+  perform assert(
+    (select count(*) from storage.objects where name = v_sealed || '.pdf') = 1,
+    'and the company can read it');
+
+  perform login(v_marie);
+  perform assert(
+    (select count(*) from storage.objects where name = v_sealed || '.pdf') = 0,
+    'while another apporteur cannot see that it exists');
+
+  perform login(v_johann);
+  perform assert(
+    (select i.pdf_path from invoices i where i.id = v_sealed) is not null,
+    'and the invoice points at it, so nothing re-renders a second document');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

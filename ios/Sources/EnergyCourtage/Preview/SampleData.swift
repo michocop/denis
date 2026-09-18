@@ -337,11 +337,25 @@ public struct PreviewProfileRepository: ProfileRepository {
     public func deleteAccount() async throws {}
 }
 
+/// Demo invoicing that remembers a signature, so the two-signature flow and
+/// the PDF that appears at the end of it can actually be tried rather than
+/// only looked at.
+actor DemoInvoiceStore {
+    static let shared = DemoInvoiceStore()
+
+    private var signedBy: Set<String> = ["apporteur"]
+
+    func sign(as role: String) { signedBy.insert(role) }
+    func isSigned(_ role: String) -> Bool { signedBy.contains(role) }
+}
+
 public struct PreviewInvoiceRepository: InvoiceRepository {
     public init() {}
 
     public func document(invoiceID: UUID) async throws -> InvoiceDocument {
-        InvoiceDocument(
+        let apporteurSigned = await DemoInvoiceStore.shared.isSigned("apporteur")
+        let entrepriseSigned = await DemoInvoiceStore.shared.isSigned("entreprise")
+        return InvoiceDocument(
             number: "FA-2026-0001",
             documentSha256: String(repeating: "a", count: 64),
             issuer: .init(name: "Pierre-Louis Tettamanti", company: "Trinity Énergie",
@@ -360,18 +374,32 @@ public struct PreviewInvoiceRepository: InvoiceRepository {
             place: "AIX-EN-PEVELE",
             issuedOn: "17.09.2026",
             taxNotice: "N'oubliez pas de procéder à votre déclaration de revenu en fin d'année.",
-            status: "awaiting_signatures",
+            status: entrepriseSigned && apporteurSigned ? "signed" : "awaiting_signatures",
             signatures: [
-                .init(role: "apporteur", name: "Johann Lefeuvre", signed: true,
-                      signedAt: .now),
-                .init(role: "entreprise", name: "Pierre-Louis Tettamanti", signed: false,
-                      signedAt: nil)
+                .init(role: "apporteur", name: "Johann Lefeuvre", signed: apporteurSigned,
+                      signedAt: apporteurSigned ? .now : nil),
+                .init(role: "entreprise", name: "Pierre-Louis Tettamanti",
+                      signed: entrepriseSigned, signedAt: entrepriseSigned ? .now : nil)
             ]
         )
     }
 
     public func latestInvoiceID(recommendationID: UUID) async throws -> UUID? { UUID() }
-    public func sign(invoiceID: UUID, documentSHA256: String) async throws {}
+
+    public func sign(invoiceID: UUID, documentSHA256: String) async throws {
+        // The demo has no second party to wait for, so whichever signature is
+        // still missing is the one this tap adds.
+        let role = await DemoInvoiceStore.shared.isSigned("apporteur")
+            ? "entreprise" : "apporteur"
+        await DemoInvoiceStore.shared.sign(as: role)
+    }
+
+    /// Rendered locally and not kept anywhere: the demo has no storage behind
+    /// it, and a PDF it pretended to retain would be a lie about the one
+    /// guarantee this file has.
+    public func pdf(for document: InvoiceDocument, invoiceID: UUID) async throws -> Data {
+        InvoicePDF.render(document)
+    }
 }
 
 public struct PreviewRemindersRepository: RemindersRepository {

@@ -312,3 +312,30 @@ public struct StageCommentDialog: View {
         .transition(.opacity)
     }
 }
+
+/// Label above a bordered field — the form treatment used throughout the app.
+public struct LabelledField<Content: View>: View {
+    private let label: String
+    private let content: Content
+
+    public init(_ label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.content = content()
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            Text(label)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.textPrimary)
+            content
+                .font(Theme.Typography.body)
+                .padding(.horizontal, Theme.Spacing.l)
+                .padding(.vertical, 14)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
+                        .stroke(Theme.Palette.hairline, lineWidth: 1)
+                )
+        }
+    }
+}

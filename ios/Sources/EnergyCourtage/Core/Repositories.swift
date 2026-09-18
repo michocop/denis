@@ -27,6 +27,10 @@ public protocol InvoiceRepository: Sendable {
     func document(invoiceID: UUID) async throws -> InvoiceDocument
     func latestInvoiceID(recommendationID: UUID) async throws -> UUID?
     func sign(invoiceID: UUID, documentSHA256: String) async throws
+    /// The PDF that is legally retained. Returns the stored file if one exists
+    /// and otherwise renders, uploads and records it — so the document kept
+    /// for ten years is written exactly once.
+    func pdf(for document: InvoiceDocument, invoiceID: UUID) async throws -> Data
 }
 
 /// Everything a screen needs, resolved once at launch and handed down through

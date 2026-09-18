@@ -7,12 +7,37 @@ public final class InvoiceViewModel {
     public private(set) var errorMessage: String?
     public var isWorking = false
 
+    /// The PDF, once it has been fetched or produced. Held as a file URL
+    /// rather than bytes because that is what the share sheet and Files want.
+    public private(set) var pdfURL: URL?
+    public var isPreparingPDF = false
+
     private let invoiceID: UUID
     private let repository: InvoiceRepository
 
     public init(invoiceID: UUID, repository: InvoiceRepository) {
         self.invoiceID = invoiceID
         self.repository = repository
+    }
+
+    /// Fetches the retained document, or produces and keeps it the first time.
+    /// Written to a file named after the invoice so what lands in Files or in
+    /// a mail attachment is "FA-2026-0001.pdf" and not "document.pdf".
+    @MainActor
+    public func preparePDF() async {
+        guard let document, pdfURL == nil, !isPreparingPDF else { return }
+        isPreparingPDF = true
+        defer { isPreparingPDF = false }
+        do {
+            let data = try await repository.pdf(for: document, invoiceID: invoiceID)
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("\(document.number).pdf")
+            try data.write(to: url, options: .atomic)
+            pdfURL = url
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     @MainActor
@@ -39,6 +64,9 @@ public final class InvoiceViewModel {
         do {
             try await repository.sign(invoiceID: invoiceID, documentSHA256: digest)
             await load()
+            // The retained document shows both signatures, so it can only be
+            // produced once the second one is in.
+            if document?.isFullySigned == true { await preparePDF() }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -65,6 +93,7 @@ public struct InvoiceView: View {
                     if let document = model.document {
                         documentCard(document)
                         signaturePanel(document)
+                        if document.isFullySigned { pdfPanel }
                     } else if let message = model.errorMessage {
                         Text(message)
                             .font(Theme.Typography.secondary)
@@ -84,7 +113,52 @@ public struct InvoiceView: View {
                 .padding(Theme.Spacing.gutter)
             }
         }
-        .task { await model.load() }
+        .task {
+            await model.load()
+            if model.document?.isFullySigned == true { await model.preparePDF() }
+        }
+    }
+
+    // MARK: - The retained document
+
+    /// Once both parties have signed, the invoice exists as a file that has to
+    /// be kept for ten years (art. 242 nonies A ann. II CGI) — by the company
+    /// and by the apporteur, who declares it. Leaving it inside the app was
+    /// leaving them no way to do that.
+    @ViewBuilder
+    private var pdfPanel: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            Text("DOCUMENT")
+                .font(Theme.Typography.caption)
+                .tracking(1.1)
+                .foregroundStyle(Theme.Palette.textSecondary)
+
+            if let url = model.pdfURL {
+                ShareLink(item: url) {
+                    Label("Enregistrer ou envoyer le PDF", systemImage: "square.and.arrow.up")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Palette.brand)
+                }
+                Text("À conserver dix ans : c'est cette facture que vous déclarez.")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if model.isPreparingPDF {
+                HStack(spacing: Theme.Spacing.m) {
+                    ProgressView()
+                    Text("Préparation du PDF…")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+            } else {
+                Button("Réessayer") { Task { await model.preparePDF() } }
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.brand)
+            }
+        }
+        .padding(Theme.Spacing.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
     }
 
     // MARK: - The document
