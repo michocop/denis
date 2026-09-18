@@ -9,14 +9,17 @@ blocks what. "You" is whoever is building; "the client" is Trinity Énergie.
 
 | | Owner | Est. |
 |---|---|---|
-| First compile — the iOS package has never been built | You, on a Mac | 1–3 d |
+| ~~First compile~~ — **done.** CI builds the package on a macOS runner and runs its 24 tests on every push | — | — |
+| **Run against a real Supabase project** — every network path is still theoretical | You + me | 2 d |
 | Supabase project created, `supabase db push` applied, seed loaded | You | 1 h |
 | App runs on a real device against the real project | You | 0.5 d |
 | Every screen walked by hand on device: create a reco, advance it, issue an invoice, sign both sides, open a conversation, schedule a reminder | You | 1 d |
 | The four remaining screens reworked to match the real app | You, once screenshots arrive | 6 d |
 
-**Nothing below matters until the first row is done.** The backend is verified
-(105 assertions); the app is not.
+The backend is verified (134 assertions) and the app compiles with its tests
+passing. What has never happened is the two talking to each other: no request
+this client makes has ever reached a real PostgREST. That is now the largest
+single unknown, and it is the next thing worth doing.
 
 ## 2. It matches
 

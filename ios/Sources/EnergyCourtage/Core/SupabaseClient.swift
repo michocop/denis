@@ -65,6 +65,7 @@ public actor SupabaseClient: SupabaseTransport {
     private let anonKey: String
     private let session: URLSession
     private var accessToken: String?
+    private var refreshToken: String?
 
     public init(baseURL: URL, anonKey: String, session: URLSession = .shared) {
         self.baseURL = baseURL
@@ -73,6 +74,11 @@ public actor SupabaseClient: SupabaseTransport {
     }
 
     public func setAccessToken(_ token: String?) { accessToken = token }
+
+    /// Keeping the refresh token lets the client renew a session that expires
+    /// while someone is using the app, rather than failing every request until
+    /// they quit and reopen it.
+    public func setRefreshToken(_ token: String?) { refreshToken = token }
 
     // MARK: - Auth
 
@@ -112,6 +118,7 @@ public actor SupabaseClient: SupabaseTransport {
 
         let session: AuthSession = try await perform(request)
         accessToken = session.accessToken
+        refreshToken = session.refreshToken
         return session
     }
 
@@ -125,8 +132,11 @@ public actor SupabaseClient: SupabaseTransport {
         applyHeaders(to: &request, authenticated: false)
         request.httpBody = try JSONEncoder().encode(["refresh_token": refreshToken])
 
-        let session: AuthSession = try await perform(request)
+        // allowRefresh is off: this request IS the refresh, and retrying it on
+        // a 401 would recurse until the stack gave out.
+        let session: AuthSession = try await perform(request, allowRefresh: false)
         accessToken = session.accessToken
+        refreshToken = session.refreshToken
         return session
     }
 
@@ -142,6 +152,7 @@ public actor SupabaseClient: SupabaseTransport {
 
     public func signOut() async {
         accessToken = nil
+        refreshToken = nil
     }
 
     // MARK: - PostgREST
@@ -208,7 +219,7 @@ public actor SupabaseClient: SupabaseTransport {
         applyHeaders(to: &request)
         request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
         request.httpBody = try JSONEncoder().encode(body)
-        _ = try await performRaw(request)
+        _ = try await performRaw(request)   // refresh-on-401 applies here too
     }
 
     // MARK: - Plumbing
@@ -229,11 +240,24 @@ public actor SupabaseClient: SupabaseTransport {
         }
     }
 
-    private func performRaw(_ request: URLRequest) async throws -> Data {
+    private func performRaw(_ request: URLRequest,
+                            allowRefresh: Bool = true) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw SupabaseError.http(status: -1, message: "")
         }
+
+        // A Supabase access token lasts an hour. Without this, an app left open
+        // over lunch answers every request with "vous n'avez pas les droits"
+        // until it is force-quit -- a permissions error for what is only an
+        // expired session. Retried exactly once, so a genuine 401 still surfaces.
+        if http.statusCode == 401, allowRefresh, let token = refreshToken {
+            _ = try? await restore(refreshToken: token)
+            var retry = request
+            applyHeaders(to: &retry)
+            return try await performRaw(retry, allowRefresh: false)
+        }
+
         guard (200..<300).contains(http.statusCode) else {
             throw SupabaseError.http(status: http.statusCode,
                                      message: Self.message(from: data))
@@ -241,8 +265,9 @@ public actor SupabaseClient: SupabaseTransport {
         return data
     }
 
-    private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let data = try await performRaw(request)
+    private func perform<T: Decodable>(_ request: URLRequest,
+                                       allowRefresh: Bool = true) async throws -> T {
+        let data = try await performRaw(request, allowRefresh: allowRefresh)
         do {
             return try Self.decoder.decode(T.self, from: data)
         } catch {

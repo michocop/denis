@@ -53,6 +53,7 @@ public final class AppModel {
             do {
                 let session = try await client.restore(refreshToken: refreshToken)
                 try sessionStore.save(refreshToken: session.refreshToken)
+                await client.setRefreshToken(session.refreshToken)
                 email = session.user.email ?? ""
                 // A restored session was earned earlier, not now: make the
                 // person prove the device is theirs before it is reused.
@@ -81,6 +82,7 @@ public final class AppModel {
         guard let client else { throw SupabaseError.notConfigured }
         let session = try await client.signIn(email: email, password: password)
         try? sessionStore.save(refreshToken: session.refreshToken)
+        await client.setRefreshToken(session.refreshToken)
         self.email = session.user.email ?? email
         phase = await resolvePhase()
     }
@@ -91,6 +93,7 @@ public final class AppModel {
         guard let client else { throw SupabaseError.notConfigured }
         let session = try await client.signUp(email: email, password: password)
         try? sessionStore.save(refreshToken: session.refreshToken)
+        await client.setRefreshToken(session.refreshToken)
         self.email = session.user.email ?? email
 
         // The auth account exists but owns nothing until the invitation is

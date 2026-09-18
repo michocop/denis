@@ -887,6 +887,33 @@ begin
   perform set_member_status(v_marie, 'active');
 end $$;
 
+\echo ''
+\echo '=== 21. Payment details are recorded, not held ===================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_cols   int;
+begin
+  -- the column that claimed encryption it never had must be gone
+  select count(*) into v_cols from information_schema.columns
+   where table_name = 'profiles' and column_name = 'iban_encrypted';
+  perform assert(v_cols = 0, 'no column pretends to hold an encrypted IBAN');
+
+  perform assert_denied(v_johann,
+    format('select * from set_bank_details_on_file(%L, true)', v_johann),
+    'an apporteur cannot mark themselves payable');
+
+  perform login(v_pierre);
+  perform set_bank_details_on_file(v_johann, true, 'COMPTA-4471');
+  perform assert(
+    (select bank_details_on_file from profiles where id = v_johann),
+    'an admin records that details are held elsewhere');
+  perform assert(
+    (select bank_details_updated_at from profiles where id = v_johann) is not null,
+    'and when it was recorded');
+end $$;
+
 reset role;
 insert into auth.users (id, email) values
   ('44444444-4444-4444-4444-444444444444', 'nouveau@example.test'),
