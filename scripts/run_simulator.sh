@@ -21,10 +21,42 @@ for arg in "$@"; do
   esac
 done
 
-command -v xcodegen >/dev/null || { echo "xcodegen missing: brew install xcodegen"; exit 1; }
-
 cd "$(dirname "$0")/.."
-(cd ios && xcodegen generate)
+
+# XcodeGen turns project.yml into the .xcodeproj that hosts the package. It is
+# usually installed with Homebrew, but not everyone has Homebrew, and telling
+# someone to go and get a package manager before they can look at their own app
+# is a poor trade -- so fetch a local copy instead.
+ensure_xcodegen() {
+  if command -v xcodegen >/dev/null 2>&1; then
+    XCODEGEN="xcodegen"
+    return
+  fi
+
+  local dir="ios/.build/tools"
+  local found
+  found="$(find "$dir" -type f -name xcodegen -perm -u+x 2>/dev/null | head -1 || true)"
+
+  if [ -z "$found" ]; then
+    echo "==> XcodeGen not found; downloading a local copy into $dir"
+    mkdir -p "$dir"
+    curl -fsSL -o "$dir/xcodegen.zip" \
+      https://github.com/yonaskolb/XcodeGen/releases/latest/download/xcodegen.zip \
+      || { echo "Could not download XcodeGen. Install it with: brew install xcodegen" >&2; exit 1; }
+    unzip -q -o "$dir/xcodegen.zip" -d "$dir"
+    # Gatekeeper quarantines anything downloaded, which makes the binary refuse
+    # to run with a dialog rather than an error.
+    xattr -dr com.apple.quarantine "$dir" 2>/dev/null || true
+    found="$(find "$dir" -type f -name xcodegen -perm -u+x 2>/dev/null | head -1 || true)"
+  fi
+
+  [ -n "$found" ] || { echo "XcodeGen download did not contain a binary." >&2; exit 1; }
+  XCODEGEN="$(cd "$(dirname "$found")" && pwd)/$(basename "$found")"
+}
+
+ensure_xcodegen
+echo "==> Generating the Xcode project"
+(cd ios && "$XCODEGEN" generate)
 
 if [ "$MODE" = "live" ] && [ -z "${SUPABASE_URL:-}" ]; then
   echo "--live needs SUPABASE_URL and SUPABASE_ANON_KEY in the environment." >&2
