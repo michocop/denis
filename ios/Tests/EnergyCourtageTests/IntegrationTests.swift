@@ -299,6 +299,38 @@ final class IntegrationTests: XCTestCase {
                        "nobody is notified of their own message")
     }
 
+    // MARK: - Identity
+
+    /// The bug this pins: the client used to work out who it was by reading
+    /// `profiles` with `limit 1`. RLS narrows that to one row for an
+    /// apporteur and not for an admin, who can read everyone — so an admin
+    /// got back whichever row came first. It showed them someone else's
+    /// profile, and stamped the wrong sender on a message, which RLS
+    /// refused. That refusal is the only reason it was ever noticed.
+    func testAnAdminIsToldWhoTheyAreAndNotWhoIsFirst() async throws {
+        let client = await signedIn(as: Self.pierre)
+        let profiles = SupabaseProfileRepository(client: client)
+
+        let me = try await profiles.currentProfile()
+        XCTAssertEqual(me.id, Self.pierre)
+        XCTAssertEqual(me.firstName, "Pierre-Louis")
+        XCTAssertTrue(me.role.isAdmin)
+
+        // and the precondition that made the old shape unsound
+        struct Row: Decodable { let id: UUID }
+        let everyone: [Row] = try await client.get("profiles",
+                                                   query: [URLQueryItem(name: "select", value: "id")])
+        XCTAssertGreaterThan(everyone.count, 1,
+                             "an admin reads more than one profile, so the first is not an identity")
+    }
+
+    func testAnApporteurIsToldWhoTheyAre() async throws {
+        let profiles = SupabaseProfileRepository(client: await signedIn(as: Self.johann))
+        let me = try await profiles.currentProfile()
+        XCTAssertEqual(me.id, Self.johann)
+        XCTAssertFalse(me.role.isAdmin)
+    }
+
     func testRegisteringTheSameDeviceTwiceIsNotAnError() async throws {
         let inbox = SupabaseNotificationsRepository(client: await signedIn(as: Self.johann))
         try await inbox.register(deviceToken: "integration-token")

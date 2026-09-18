@@ -1197,6 +1197,40 @@ begin
   perform assert(n = 0, 'and nobody can read anyone else''s device token');
 end $$;
 
+
+\echo ''
+\echo '=== 25. Identity is asked for, never inferred ====================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_n      int;
+  v_me     profiles%rowtype;
+begin
+  -- The shape this replaces: read profiles, take the first row, call it "me".
+  -- Asserting that it returns the WRONG person would itself depend on
+  -- planner order -- which is the whole problem. What is assertable is the
+  -- precondition: an admin can see more than one profile, so the first row
+  -- is not an identity, whichever row that happens to be.
+  perform login(v_pierre);
+  select count(*) into v_n from profiles;
+  perform assert(v_n > 1,
+    'an admin can read more than one profile, so "limit 1" names nobody');
+
+  perform assert(current_profile_id() = v_pierre,
+    'while current_profile_id() names exactly one person: the caller');
+  select * into v_me from my_profile();
+  perform assert(v_me.id = v_pierre and v_me.role = 'admin',
+    'and my_profile() returns their own row, not the first one');
+
+  perform login(v_johann);
+  perform assert(current_profile_id() = v_johann,
+    'an apporteur gets themselves too');
+  select * into v_me from my_profile();
+  perform assert(v_me.id = v_johann,
+    'and their own profile, which is the only one they could see anyway');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

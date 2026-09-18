@@ -213,13 +213,7 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
     }
 
     private func currentUserID() async throws -> UUID {
-        struct Me: Decodable { let id: UUID }
-        let me: [Me] = try await client.get("profiles", query: [
-            URLQueryItem(name: "select", value: "id"),
-            URLQueryItem(name: "limit", value: "1")
-        ])
-        guard let id = me.first?.id else { throw SupabaseError.unauthenticated }
-        return id
+        try await client.currentUserID()
     }
 }
 
@@ -303,11 +297,7 @@ public struct SupabaseChatRepository: ChatRepository {
     }
 
     public func send(body: String, threadID: UUID) async throws -> ChatMessage {
-        struct Me: Decodable { let id: UUID }
-        let me: [Me] = try await client.get("profiles", query: [
-            URLQueryItem(name: "select", value: "id"), URLQueryItem(name: "limit", value: "1")
-        ])
-        guard let sender = me.first?.id else { throw SupabaseError.unauthenticated }
+        let sender = try await client.currentUserID()
 
         // The INSERT returns the messages row, which carries no sender name;
         // the name is resolved by message_feed on the next read. The composer
@@ -366,10 +356,12 @@ public struct SupabaseProfileRepository: ProfileRepository {
     public init(client: SupabaseClient) { self.client = client }
 
     public func currentProfile() async throws -> Profile {
-        // RLS already restricts this to the caller's own row.
-        let rows: [Profile] = try await client.get("profiles",
-                                                   query: [URLQueryItem(name: "limit", value: "1")])
-        guard let profile = rows.first else { throw SupabaseError.unauthenticated }
+        // my_profile() rather than "profiles, limit 1": RLS narrows profiles
+        // to the caller for an apporteur but not for an admin, who can read
+        // everyone -- so the first row was somebody else's, and the Profil
+        // screen showed it as theirs.
+        let profile: Profile? = try await client.rpc("my_profile")
+        guard let profile else { throw SupabaseError.unauthenticated }
         return profile
     }
 

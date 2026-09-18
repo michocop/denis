@@ -69,6 +69,8 @@ public actor SupabaseClient: SupabaseTransport {
     private let session: URLSession
     private var accessToken: String?
     private var refreshToken: String?
+    private var cachedUserID: UUID?
+    private var cachedUserIDToken: String?
 
     /// The path prefixes default to what hosted Supabase serves, where
     /// PostgREST and GoTrue sit behind a gateway at /rest/v1 and /auth/v1.
@@ -188,6 +190,10 @@ public actor SupabaseClient: SupabaseTransport {
     public func signOut() async {
         accessToken = nil
         refreshToken = nil
+        // Or the next person to sign in on this device inherits the last
+        // one's identity for as long as the cache lives.
+        cachedUserID = nil
+        cachedUserIDToken = nil
     }
 
     // MARK: - PostgREST
@@ -255,6 +261,26 @@ public actor SupabaseClient: SupabaseTransport {
         request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
         request.httpBody = try JSONEncoder().encode(body)
         _ = try await performRaw(request)   // refresh-on-401 applies here too
+    }
+
+    // MARK: - Identity
+
+    /// Who the current session belongs to, according to the database.
+    ///
+    /// Not "read profiles and take the first row": that reasoning assumed RLS
+    /// narrows profiles to the caller, which holds for an apporteur and not
+    /// for an admin, whose policy lets them read everyone. An admin asking
+    /// who they were got back whichever row came first.
+    ///
+    /// Cached against the access token, so it costs one call per session and
+    /// cannot survive a sign-out into the next person's session.
+    public func currentUserID() async throws -> UUID {
+        if let cachedUserID, cachedUserIDToken == accessToken { return cachedUserID }
+        let id: UUID? = try await rpc("current_profile_id")
+        guard let id else { throw SupabaseError.unauthenticated }
+        cachedUserID = id
+        cachedUserIDToken = accessToken
+        return id
     }
 
     // MARK: - Storage
