@@ -124,13 +124,16 @@ public actor SupabaseClient: SupabaseTransport {
 
     /// Exchanges a stored refresh token for a live session, so a returning user
     /// does not retype their password.
-    public func restore(refreshToken: String) async throws -> AuthSession {
+    // The parameter is named separately from the property on purpose: called
+    // `refreshToken`, it shadowed the stored one and the assignment below
+    // silently targeted the parameter instead.
+    public func restore(refreshToken token: String) async throws -> AuthSession {
         let url = baseURL.appending(path: "auth/v1/token")
             .appending(queryItems: [URLQueryItem(name: "grant_type", value: "refresh_token")])
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         applyHeaders(to: &request, authenticated: false)
-        request.httpBody = try JSONEncoder().encode(["refresh_token": refreshToken])
+        request.httpBody = try JSONEncoder().encode(["refresh_token": token])
 
         // allowRefresh is off: this request IS the refresh, and retrying it on
         // a 401 would recurse until the stack gave out.
