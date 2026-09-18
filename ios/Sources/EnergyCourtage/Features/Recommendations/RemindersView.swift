@@ -1,28 +1,5 @@
 import SwiftUI
 
-public struct Reminder: Identifiable, Hashable, Codable, Sendable {
-    public enum Status: String, Codable, Sendable {
-        case scheduled, sent, done, cancelled
-    }
-
-    public let id: UUID
-    public var label: String
-    public var dueAt: Date
-    public var status: Status
-
-    public init(id: UUID, label: String, dueAt: Date, status: Status) {
-        self.id = id; self.label = label; self.dueAt = dueAt; self.status = status
-    }
-
-    public var isOverdue: Bool { status == .scheduled && dueAt < .now }
-}
-
-public protocol RemindersRepository: Sendable {
-    func reminders(recommendationID: UUID) async throws -> [Reminder]
-    func schedule(recommendationID: UUID, label: String, dueAt: Date) async throws -> Reminder
-    func complete(reminderID: UUID) async throws
-}
-
 /// `Rappels` from the action sheet. The source app shows the entry but no
 /// screen behind it in anything I have seen, so this is built from what the
 /// job needs: a quick preset, a real date, and a way to tick one off.

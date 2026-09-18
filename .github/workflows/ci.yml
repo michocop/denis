@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  database:
+    name: Database (RLS + business rules)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Apply migrations and run the suite
+        env:
+          PGPASSWORD: postgres
+        run: scripts/db_test.sh -h localhost -p 5432 -U postgres
+
+  swift-static-check:
+    name: Swift static check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/swift_check.py
+
+  ios-build:
+    name: iOS build and tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: swift --version && xcodebuild -version
+      # The package targets iOS, so it is built for the simulator SDK rather
+      # than for the host. This is the step that has never run: everything in
+      # ios/ was written without a compiler.
+      - name: Build
+        working-directory: ios
+        run: |
+          xcodebuild build \
+            -scheme EnergyCourtage \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty || exit ${PIPESTATUS[0]}
+      - name: Test
+        working-directory: ios
+        run: |
+          xcodebuild test \
+            -scheme EnergyCourtage \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty || exit ${PIPESTATUS[0]}
