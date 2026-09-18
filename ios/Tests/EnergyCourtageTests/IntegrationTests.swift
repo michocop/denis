@@ -205,6 +205,9 @@ final class IntegrationTests: XCTestCase {
 
         // written twice: the upsert must replace, not accumulate
         try await repository.saveNote(recommendationID: target.id, body: "Rappeler mardi")
-        XCTAssertEqual(try await repository.note(recommendationID: target.id), "Rappeler mardi")
+        // hoisted out of the assertion: XCTAssert takes an autoclosure, which
+        // cannot contain an await
+        let rewritten = try await repository.note(recommendationID: target.id)
+        XCTAssertEqual(rewritten, "Rappeler mardi")
     }
 }
