@@ -96,7 +96,8 @@ public struct RecommendationsView: View {
                 InvoiceView(
                     model: InvoiceViewModel(invoiceID: invoiceID,
                                             repository: dependencies.invoices),
-                    signerName: signerName
+                    signerName: signerName,
+                    isAdmin: model.role.isAdmin
                 )
 
             case .detail(let reco):
@@ -154,6 +155,13 @@ public struct RecommendationsView: View {
                 try await repository.archive(recommendationID: reco.id, won: false)
             case .delete:
                 try await repository.softDelete(recommendationID: reco.id)
+            case .issueInvoice:
+                // Straight into the invoice: it needs both signatures before
+                // anyone is paid, and the admin's is one of them.
+                let invoiceID = try await dependencies.invoices.issue(recommendationID: reco.id)
+                await model.load()
+                sheet = .invoice(invoiceID)
+                return
             }
             await model.load()
         } catch {

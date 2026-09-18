@@ -41,6 +41,16 @@ public struct SupabaseAdminRepository: AdminRepository {
         ])
     }
 
+    public func setBankDetailsOnFile(profileID: UUID, onFile: Bool,
+                                     reference: String?) async throws {
+        var body: [String: AnyEncodable] = [
+            "p_profile_id": AnyEncodable(profileID.uuidString),
+            "p_on_file": AnyEncodable(onFile)
+        ]
+        if let reference, !reference.isEmpty { body["p_reference"] = AnyEncodable(reference) }
+        try await client.rpcVoid("set_bank_details_on_file", body: body)
+    }
+
     public func payBatch(invoiceIDs: [UUID], reference: String?) async throws {
         var body: [String: AnyEncodable] = [
             "p_invoice_ids": AnyEncodable(invoiceIDs.map(\.uuidString))

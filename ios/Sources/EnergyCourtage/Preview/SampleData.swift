@@ -400,6 +400,9 @@ public struct PreviewInvoiceRepository: InvoiceRepository {
     public func pdf(for document: InvoiceDocument, invoiceID: UUID) async throws -> Data {
         InvoicePDF.render(document)
     }
+
+    public func issue(recommendationID: UUID) async throws -> UUID { UUID() }
+    public func createCreditNote(invoiceID: UUID, reason: String) async throws -> UUID { UUID() }
 }
 
 public struct PreviewRemindersRepository: RemindersRepository {
@@ -430,19 +433,22 @@ public struct PreviewAdminRepository: AdminRepository {
             MemberOverview(id: UUID(), fullName: "Johann Lefeuvre",
                            email: "johann@example.test", phone: "+33 6 11 11 11 11",
                            role: .apporteur, status: "active", vatLiable: false,
-                           hasMandate: true, totalRecommendations: 18,
+                           hasMandate: true, bankDetailsOnFile: true,
+                           totalRecommendations: 18,
                            activeRecommendations: 4, paidTotal: 2300, owedTotal: 1000,
                            lastRecommendationAt: .now),
             MemberOverview(id: UUID(), fullName: "Marie Durand",
                            email: "marie@example.test", phone: nil,
                            role: .apporteur, status: "pending", vatLiable: false,
-                           hasMandate: false, totalRecommendations: 0,
+                           hasMandate: false, bankDetailsOnFile: false,
+                           totalRecommendations: 0,
                            activeRecommendations: 0, paidTotal: 0, owedTotal: 0,
                            lastRecommendationAt: nil),
             MemberOverview(id: UUID(), fullName: "Paul Riviere",
                            email: "paul@example.test", phone: nil,
                            role: .apporteur, status: "active", vatLiable: true,
-                           hasMandate: true, totalRecommendations: 0,
+                           hasMandate: true, bankDetailsOnFile: false,
+                           totalRecommendations: 0,
                            activeRecommendations: 0, paidTotal: 0, owedTotal: 0,
                            lastRecommendationAt: nil)
         ]
@@ -477,6 +483,8 @@ public struct PreviewAdminRepository: AdminRepository {
     }
 
     public func payBatch(invoiceIDs: [UUID], reference: String?) async throws {}
+    public func setBankDetailsOnFile(profileID: UUID, onFile: Bool,
+                                     reference: String?) async throws {}
 }
 
 public struct PreviewCommissionsRepository: CommissionsRepository {

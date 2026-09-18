@@ -31,6 +31,12 @@ public protocol InvoiceRepository: Sendable {
     /// and otherwise renders, uploads and records it — so the document kept
     /// for ten years is written exactly once.
     func pdf(for document: InvoiceDocument, invoiceID: UUID) async throws -> Data
+    /// Issues the invoice for an earned commission. The amount comes from the
+    /// recommendation, never from the caller.
+    func issue(recommendationID: UUID) async throws -> UUID
+    /// The only lawful correction to a signed invoice: a new document in the
+    /// same series carrying the negative amount.
+    func createCreditNote(invoiceID: UUID, reason: String) async throws -> UUID
 }
 
 /// Everything a screen needs, resolved once at launch and handed down through

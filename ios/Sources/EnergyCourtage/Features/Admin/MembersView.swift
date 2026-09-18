@@ -49,6 +49,19 @@ public final class MembersViewModel {
     }
 
     @MainActor
+    /// Recording that payment details are held elsewhere. Nothing here ever
+    /// touches an account number: the app only needs to know whether someone
+    /// CAN be paid, which is a boolean, and the details themselves live in the
+    /// client's banking system where the transfer is actually made.
+    @MainActor
+    public func setBankDetails(_ member: MemberOverview, onFile: Bool) async {
+        do {
+            try await repository.setBankDetailsOnFile(profileID: member.id,
+                                                      onFile: onFile, reference: nil)
+            await load()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
     public func setStatus(_ member: MemberOverview, to status: String) async {
         do { try await repository.setStatus(profileID: member.id, status: status); await load() }
         catch { errorMessage = error.localizedDescription }
@@ -104,7 +117,10 @@ public struct MembersView: View {
                             member: member,
                             onApprove: { Task { await model.approve(member) } },
                             onSuspend: { Task { await model.setStatus(member, to: "suspended") } },
-                            onReactivate: { Task { await model.setStatus(member, to: "active") } }
+                            onReactivate: { Task { await model.setStatus(member, to: "active") } },
+                            onSetBankDetails: { onFile in
+                                Task { await model.setBankDetails(member, onFile: onFile) }
+                            }
                         )
                     }
 
@@ -133,6 +149,7 @@ struct MemberRow: View {
     let onApprove: () -> Void
     let onSuspend: () -> Void
     let onReactivate: () -> Void
+    let onSetBankDetails: (Bool) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
@@ -170,6 +187,9 @@ struct MemberRow: View {
             if member.hasNeverRecommended && member.isActive {
                 flag("Aucune recommandation envoyée", tint: Theme.Palette.textSecondary)
             }
+            if !member.bankDetailsOnFile {
+                flag("Coordonnées bancaires non renseignées", tint: Theme.Palette.rewardText)
+            }
 
             HStack(spacing: Theme.Spacing.m) {
                 if member.isPending {
@@ -183,6 +203,12 @@ struct MemberRow: View {
                         Button("Suspendre", role: .destructive, action: onSuspend)
                     } else {
                         Button("Réactiver", action: onReactivate)
+                    }
+                    Divider()
+                    if member.bankDetailsOnFile {
+                        Button("Coordonnées bancaires manquantes") { onSetBankDetails(false) }
+                    } else {
+                        Button("Coordonnées bancaires enregistrées") { onSetBankDetails(true) }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")

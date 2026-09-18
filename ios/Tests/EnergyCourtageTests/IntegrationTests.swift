@@ -331,6 +331,84 @@ final class IntegrationTests: XCTestCase {
         XCTAssertFalse(me.role.isAdmin)
     }
 
+    // MARK: - The money, all the way through
+
+    /// Until issue_invoice existed nothing in the app could create an invoice
+    /// at all: advancing to the reward stage set reward_status and stopped.
+    /// Everything after that point — numbering, VAT, the mandate gate, both
+    /// signatures, the PDF, the payout — was only ever exercised against
+    /// invoices the seed had inserted by hand.
+    func testACommissionBecomesAnInvoiceAndCanBeCorrected() async throws {
+        let johann = SupabaseRecommendationsRepository(client: await signedIn(as: Self.johann))
+        let admin = SupabaseRecommendationsRepository(client: await signedIn(as: Self.pierre))
+        let invoices = SupabaseInvoiceRepository(client: await signedIn(as: Self.pierre))
+
+        var draft = RecommendationDraft()
+        draft.firstName = "Claire"
+        draft.lastName = "Moreau\(Int.random(in: 1000...9999))"
+        draft.phone = "06\(Int.random(in: 10_000_000...99_999_999))"
+        draft.consentConfirmed = true
+        let created = try await johann.create(draft)
+
+        // walk it to the stage that earns the commission
+        let pipeline = try await admin.loadPipeline()
+        for stage in pipeline {
+            _ = try await admin.advanceStage(recommendationID: created.id, stageKey: stage.key)
+            if stage.isRewardTrigger { break }
+        }
+
+        // an earned commission with no agreed amount is not invoiceable
+        do {
+            _ = try await invoices.issue(recommendationID: created.id)
+            XCTFail("issuing with no agreed amount should be refused")
+        } catch {}
+
+        try await setRewardAmount(450, on: created.id)
+
+        let invoiceID = try await invoices.issue(recommendationID: created.id)
+        let document = try await invoices.document(invoiceID: invoiceID)
+        XCTAssertEqual(document.amount.ttc, "450.00",
+                       "the invoice carries the agreed commission, not a typed figure")
+        XCTAssertFalse(document.number.isEmpty, "and is numbered on the way in")
+        XCTAssertNotNil(document.documentSha256, "and sealed, so it can be signed")
+
+        // a second invoice for the same recommendation is a duplicate claim
+        do {
+            _ = try await invoices.issue(recommendationID: created.id)
+            XCTFail("a second invoice for the same recommendation should be refused")
+        } catch {}
+
+        // both signatures, then the correction
+        let apporteurSide = SupabaseInvoiceRepository(client: await signedIn(as: Self.johann))
+        let digest = try XCTUnwrap(document.documentSha256)
+        try await apporteurSide.sign(invoiceID: invoiceID, documentSHA256: digest)
+        try await invoices.sign(invoiceID: invoiceID, documentSHA256: digest)
+
+        let noteID = try await invoices.createCreditNote(invoiceID: invoiceID,
+                                                         reason: "Montant erroné")
+        let note = try await invoices.document(invoiceID: noteID)
+        XCTAssertNotEqual(note.number, document.number,
+                          "the avoir has its own number in the same series")
+        XCTAssertTrue(note.amount.ttc.hasPrefix("-"),
+                      "and carries the negative amount, cancelling the original")
+
+        // the original is kept exactly as it was
+        let original = try await invoices.document(invoiceID: invoiceID)
+        XCTAssertEqual(original.number, document.number)
+        XCTAssertEqual(original.amount.ttc, "450.00")
+    }
+
+    /// The commission is agreed on the recommendation, and there is no
+    /// repository call for it yet — the admin sets it in the back-office.
+    private func setRewardAmount(_ amount: Int, on id: UUID) async throws {
+        struct Row: Decodable { let id: UUID }
+        let client = await signedIn(as: Self.pierre)
+        let _: [Row] = try await client.update(
+            "recommendations",
+            values: ["reward_amount": AnyEncodable(amount)],
+            match: [URLQueryItem(name: "id", value: "eq.\(id.uuidString)")])
+    }
+
     func testRegisteringTheSameDeviceTwiceIsNotAnError() async throws {
         let inbox = SupabaseNotificationsRepository(client: await signedIn(as: Self.johann))
         try await inbox.register(deviceToken: "integration-token")

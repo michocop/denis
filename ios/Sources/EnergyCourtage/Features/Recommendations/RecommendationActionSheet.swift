@@ -9,7 +9,7 @@ public struct RecommendationActionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     public enum Action: Hashable {
-        case reassign, reminders, reset, archive, delete
+        case reassign, reminders, reset, archive, delete, issueInvoice
     }
 
     private let recommendation: Recommendation
@@ -37,7 +37,9 @@ public struct RecommendationActionSheet: View {
             set: { if !$0 { confirming = nil } }
         ), titleVisibility: .visible) {
             if let action = confirming {
-                Button(confirmVerb(action), role: action == .reset ? nil : .destructive) {
+                Button(confirmVerb(action),
+                       role: action == .reset || action == .issueInvoice
+                             ? nil : .destructive) {
                     onAction(action)
                     confirming = nil
                     dismiss()
@@ -116,8 +118,21 @@ public struct RecommendationActionSheet: View {
         .font(Theme.Typography.body)
     }
 
+    /// The commission is earned and no invoice exists yet, so somebody has to
+    /// issue one. Until this button existed the money stopped here: the whole
+    /// chain after it — numbering, signatures, the PDF, the payout — was
+    /// reachable only for invoices the seed had inserted.
+    private var canIssueInvoice: Bool {
+        recommendation.rewardStatus == .earned && recommendation.invoiceNumber == nil
+    }
+
     private var actions: some View {
         VStack(spacing: 0) {
+            if canIssueInvoice {
+                actionRow("Établir la facture", icon: "doc.badge.plus",
+                          tint: Theme.Palette.brand) { confirming = .issueInvoice }
+                Divider().padding(.leading, 56)
+            }
             actionRow("Réassigner", icon: "arrow.left.arrow.right") { onAction(.reassign); dismiss() }
             Divider().padding(.leading, 56)
             actionRow("Rappels", icon: "bell") { onAction(.reminders); dismiss() }
@@ -160,6 +175,7 @@ public struct RecommendationActionSheet: View {
         case .reset:   return "Remettre le suivi à zéro ?"
         case .archive: return "Archiver cette recommandation ?"
         case .delete:  return "Supprimer cette recommandation ?"
+        case .issueInvoice: return "Établir la facture ?"
         default:       return ""
         }
     }
@@ -172,6 +188,10 @@ public struct RecommendationActionSheet: View {
             return "Elle passera dans l'onglet Archivées. Une affaire perdue annule la récompense si elle n'a pas encore été facturée."
         case .delete:
             return "Elle disparaîtra des listes. Si une facture existe, elle est conservée : la loi impose de garder les factures dix ans."
+        case .issueInvoice:
+            // Said out loud because it is irreversible: the number is assigned
+            // at issuing and a mistake is corrected by an avoir, not an edit.
+            return "La facture sera établie au montant de la commission convenue, puis numérotée définitivement. Une erreur se corrige ensuite par un avoir, jamais par une modification."
         default:
             return ""
         }
@@ -182,6 +202,7 @@ public struct RecommendationActionSheet: View {
         case .reset:   return "Remettre à zéro"
         case .archive: return "Archiver"
         case .delete:  return "Supprimer"
+        case .issueInvoice: return "Établir la facture"
         default:       return "Confirmer"
         }
     }

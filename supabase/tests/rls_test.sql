@@ -216,8 +216,10 @@ begin
   begin
     insert into invoices (recommendation_id, apporteur_id, issuer_id, prestation_label,
                           intervened_on, issued_on, place, amount_ht, amount_ttc, legal_mentions)
+    -- zero, not -1: a negative amount became legal when credit notes arrived,
+    -- so -1 no longer fails and this test silently stopped testing anything.
     values (v_reco, v_johann, v_pierre, 'x', current_date, date '2026-09-18', 'X',
-            -1, -1, 'x');   -- violates amount_ht > 0
+            0, 0, 'x');   -- violates amount_ht <> 0
   exception when check_violation then null;
   end;
 
@@ -1229,6 +1231,123 @@ begin
   select * into v_me from my_profile();
   perform assert(v_me.id = v_johann,
     'and their own profile, which is the only one they could see anyway');
+end $$;
+
+
+\echo ''
+\echo '=== 26. Issuing an invoice, and correcting one ===================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_stage  text;
+  v_inv    invoices%rowtype;
+  v_note   invoices%rowtype;
+  n int;
+begin
+  -- a fresh recommendation of Johann's, so this does not ride on earlier state
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+  values ('Claire', 'Moreau', v_johann) returning id into v_reco;
+
+  perform login(v_pierre);
+  perform assert_denied(v_pierre,
+    format('select issue_invoice(%L)', v_reco),
+    'a recommendation that has not reached the reward stage cannot be invoiced');
+
+  -- walk it to the reward stage
+  for v_stage in select key from stages order by position loop
+    perform advance_stage(v_reco, v_stage);
+    exit when (select is_reward_trigger from stages where key = v_stage);
+  end loop;
+  perform assert((select reward_status from recommendations where id = v_reco) = 'earned',
+    'reaching the reward stage marks the commission earned');
+
+  perform assert_denied(v_pierre,
+    format('select issue_invoice(%L)', v_reco),
+    'but with no agreed amount there is nothing to invoice');
+
+  update recommendations set reward_amount = 450 where id = v_reco;
+
+  perform assert_denied(v_johann,
+    format('select issue_invoice(%L)', v_reco),
+    'an apporteur cannot invoice themselves');
+
+  perform login(v_pierre);
+  select * into v_inv from issue_invoice(v_reco);
+  perform assert(v_inv.amount_ht = 450,
+    'the invoice carries the commission agreed on the recommendation, not a typed figure');
+  perform assert(v_inv.number is not null and v_inv.document_sha256 is not null,
+    'and is numbered and sealed by the triggers');
+  perform assert(v_inv.vat_mode = 'franchise_293b' and v_inv.amount_ttc = 450,
+    'with VAT derived from the apporteur, who is not liable');
+  perform assert((select reward_status from recommendations where id = v_reco) = 'invoiced',
+    'and the recommendation moves on');
+
+  perform assert_denied(v_pierre,
+    format('select issue_invoice(%L)', v_reco),
+    'a second invoice for the same recommendation is refused');
+
+  -- Marie has no mandate on file: invoicing in her name is unlawful
+  perform login(v_marie);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+  values ('Hugo', 'Blanc', v_marie) returning id into v_reco;
+  perform login(v_pierre);
+  for v_stage in select key from stages order by position loop
+    perform advance_stage(v_reco, v_stage);
+    exit when (select is_reward_trigger from stages where key = v_stage);
+  end loop;
+  update recommendations set reward_amount = 100 where id = v_reco;
+  perform assert_denied(v_pierre,
+    format('select issue_invoice(%L)', v_reco),
+    'an apporteur with no self-billing mandate cannot be invoiced in their name');
+
+  -- ------------------------------------------------------- the credit note
+  perform assert_denied(v_pierre,
+    format('select create_credit_note(%L, %L)', v_inv.id, 'erreur'),
+    'an unsigned invoice needs no credit note: it can still be voided');
+
+  perform login(v_johann);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform login(v_pierre);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert((select status from invoices where id = v_inv.id) = 'signed',
+    'both signatures seal it');
+
+  perform assert_denied(v_johann,
+    format('select create_credit_note(%L, %L)', v_inv.id, 'erreur'),
+    'an apporteur cannot issue a credit note');
+  perform assert_denied(v_pierre,
+    format('select create_credit_note(%L, %L)', v_inv.id, '   '),
+    'and a credit note must say why it was issued');
+
+  select * into v_note from create_credit_note(v_inv.id, 'Montant erroné');
+  perform assert(v_note.amount_ht = -450,
+    'the avoir carries the negative amount, cancelling the original');
+  perform assert(v_note.number <> v_inv.number and v_note.number is not null,
+    'and its own number in the same series, so the series stays continuous');
+  perform assert(v_note.prestation_label like 'Avoir sur facture %Montant erroné%',
+    'naming the invoice it cancels and why');
+  perform assert((select status from invoices where id = v_inv.id) = 'signed',
+    'the original is untouched: it is kept, not edited');
+
+  select count(*) into n from payable_invoices where invoice_id = v_inv.id;
+  perform assert(n = 0,
+    'a credited invoice drops off the payables list, so it is not paid twice');
+
+  perform assert_denied(v_pierre,
+    format('select create_credit_note(%L, %L)', v_note.id, 'again'),
+    'a credit note cannot itself be credited');
+  perform assert_denied(v_pierre,
+    format('select create_credit_note(%L, %L)', v_inv.id, 'encore'),
+    'nor can one invoice be credited twice');
+
+  perform assert(
+    (select reward_status from recommendations
+      where id = (select recommendation_id from invoices where id = v_inv.id)) = 'earned',
+    'and the commission is owed again, so a corrected invoice can be issued');
 end $$;
 
 reset role;

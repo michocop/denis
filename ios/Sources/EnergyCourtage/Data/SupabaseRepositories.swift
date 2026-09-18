@@ -463,6 +463,23 @@ public struct SupabaseInvoiceRepository: InvoiceRepository {
         return kept == path ? data : try await client.download(bucket: Self.bucket, path: kept)
     }
 
+    public func issue(recommendationID: UUID) async throws -> UUID {
+        struct Issued: Decodable { let id: UUID }
+        let issued: Issued = try await client.rpc("issue_invoice", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString)
+        ])
+        return issued.id
+    }
+
+    public func createCreditNote(invoiceID: UUID, reason: String) async throws -> UUID {
+        struct Issued: Decodable { let id: UUID }
+        let issued: Issued = try await client.rpc("create_credit_note", body: [
+            "p_invoice_id": AnyEncodable(invoiceID.uuidString),
+            "p_reason": AnyEncodable(reason)
+        ])
+        return issued.id
+    }
+
     private static let bucket = "invoices"
 
     private static func sha256(_ data: Data) -> String {

@@ -11,6 +11,9 @@ public final class InvoiceViewModel {
     /// rather than bytes because that is what the share sheet and Files want.
     public private(set) var pdfURL: URL?
     public var isPreparingPDF = false
+    /// Set once a credit note has been issued against this invoice, so the
+    /// screen stops offering to issue a second one.
+    public private(set) var creditNoteIssued = false
 
     private let invoiceID: UUID
     private let repository: InvoiceRepository
@@ -50,6 +53,22 @@ public final class InvoiceViewModel {
         }
     }
 
+    /// The only lawful correction to a signed invoice. It is not an edit and
+    /// not a deletion: a new document in the same series carrying the negative
+    /// amount, which is what keeps the numbering continuous.
+    @MainActor
+    public func issueCreditNote(reason: String) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            _ = try await repository.createCreditNote(invoiceID: invoiceID, reason: reason)
+            creditNoteIssued = true
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Signs the digest the server issued with the document. The server checks
     /// it against the invoice and refuses a mismatch, so a signature can only
     /// ever attach to the document that was served.
@@ -77,11 +96,15 @@ public final class InvoiceViewModel {
 public struct InvoiceView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model: InvoiceViewModel
+    @State private var showsCreditNote = false
+    @State private var creditNoteReason = ""
     private let signerName: String
+    private let isAdmin: Bool
 
-    public init(model: InvoiceViewModel, signerName: String) {
+    public init(model: InvoiceViewModel, signerName: String, isAdmin: Bool = false) {
         _model = State(wrappedValue: model)
         self.signerName = signerName
+        self.isAdmin = isAdmin
     }
 
     public var body: some View {
@@ -94,6 +117,7 @@ public struct InvoiceView: View {
                         documentCard(document)
                         signaturePanel(document)
                         if document.isFullySigned { pdfPanel }
+                        if isAdmin && document.isFullySigned { correctionPanel }
                     } else if let message = model.errorMessage {
                         Text(message)
                             .font(Theme.Typography.secondary)
@@ -116,6 +140,56 @@ public struct InvoiceView: View {
         .task {
             await model.load()
             if model.document?.isFullySigned == true { await model.preparePDF() }
+        }
+    }
+
+    // MARK: - Correcting a sealed invoice
+
+    /// A signed invoice cannot be edited or deleted — the delete guard says so
+    /// and the law requires keeping it ten years. The supported correction was
+    /// documented in the runbook and implemented nowhere, which left an admin
+    /// with a wrong invoice and no move.
+    @ViewBuilder
+    private var correctionPanel: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            Text("CORRECTION")
+                .font(Theme.Typography.caption)
+                .tracking(1.1)
+                .foregroundStyle(Theme.Palette.textSecondary)
+
+            if model.creditNoteIssued {
+                Label("Avoir établi", systemImage: "checkmark.circle.fill")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.success)
+                Text("La commission est de nouveau due : une facture corrigée peut être établie.")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Cette facture est scellée. Une erreur se corrige par un avoir — une nouvelle pièce du même registre portant le montant négatif — jamais par une modification.")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Établir un avoir") { showsCreditNote = true }
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.destructive)
+            }
+        }
+        .padding(Theme.Spacing.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
+        .alert("Établir un avoir", isPresented: $showsCreditNote) {
+            TextField("Motif", text: $creditNoteReason)
+            Button("Annuler", role: .cancel) { creditNoteReason = "" }
+            Button("Établir", role: .destructive) {
+                let reason = creditNoteReason
+                creditNoteReason = ""
+                Task { await model.issueCreditNote(reason: reason) }
+            }
+            .disabled(creditNoteReason.trimmingCharacters(in: .whitespaces).isEmpty)
+        } message: {
+            Text("Le motif figure sur l'avoir et reste au registre. La facture d'origine est conservée telle quelle.")
         }
     }
 

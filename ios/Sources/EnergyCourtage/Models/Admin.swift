@@ -10,6 +10,9 @@ public struct MemberOverview: Identifiable, Hashable, Codable, Sendable {
     public var status: String
     public var vatLiable: Bool
     public var hasMandate: Bool
+    /// Whether payment details are held in the client's own banking system.
+    /// The account number itself is deliberately not stored here.
+    public var bankDetailsOnFile: Bool
     public var totalRecommendations: Int
     public var activeRecommendations: Int
     public var paidTotal: Decimal
@@ -60,6 +63,9 @@ public protocol AdminRepository: Sendable {
     func createInvite(email: String?, role: UserRole, autoActivate: Bool) async throws -> Invite
     func payableInvoices() async throws -> [PayableInvoice]
     func payBatch(invoiceIDs: [UUID], reference: String?) async throws
+    /// Whether this member's payment details are held in the client's own
+    /// banking system. Without a way to set it, nobody was ever payable.
+    func setBankDetailsOnFile(profileID: UUID, onFile: Bool, reference: String?) async throws
 }
 
 /// A line of the apporteur's own statement — what the app's closing message
