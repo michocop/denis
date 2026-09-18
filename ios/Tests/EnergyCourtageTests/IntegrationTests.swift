@@ -21,6 +21,19 @@ final class IntegrationTests: XCTestCase {
 
     override func setUpWithError() throws {
         let env = ProcessInfo.processInfo.environment
+
+        // Skipping is right on a laptop with no server running, and wrong in
+        // CI, where a skipped suite is indistinguishable from a passing one --
+        // which is exactly how 12 of these reported success without making a
+        // single request.
+        if env["REQUIRE_INTEGRATION"] == "1" {
+            XCTAssertNotNil(env["SUPABASE_TEST_URL"],
+                            "REQUIRE_INTEGRATION is set but SUPABASE_TEST_URL is missing: "
+                            + "the test process is not seeing its configuration")
+            XCTAssertFalse((env["SUPABASE_TEST_JWT_SECRET"] ?? "").isEmpty,
+                           "REQUIRE_INTEGRATION is set but no JWT secret reached the tests")
+        }
+
         try XCTSkipUnless(env["SUPABASE_TEST_URL"] != nil,
                           "integration tests need a live PostgREST")
         baseURL = URL(string: env["SUPABASE_TEST_URL"]!)!

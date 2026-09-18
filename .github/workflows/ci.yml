@@ -135,8 +135,15 @@ jobs:
         working-directory: ios
         shell: bash
         env:
-          SUPABASE_TEST_URL: http://localhost:3000
-          SUPABASE_TEST_JWT_SECRET: integration-only-secret-not-used-anywhere-else-0123456789
+          # The TEST_RUNNER_ prefix is not decoration: tests run inside the
+          # simulator, which inherits nothing from this shell. xcodebuild
+          # forwards variables with that prefix into the test process with the
+          # prefix stripped. Without it the suite skipped all 12 tests and
+          # reported success.
+          TEST_RUNNER_SUPABASE_TEST_URL: http://localhost:3000
+          TEST_RUNNER_SUPABASE_TEST_JWT_SECRET: integration-only-secret-not-used-anywhere-else-0123456789
+          # and refuse to pass by skipping
+          TEST_RUNNER_REQUIRE_INTEGRATION: "1"
         run: |
           set -o pipefail
           xcodebuild test \
