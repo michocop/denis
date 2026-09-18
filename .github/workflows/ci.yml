@@ -131,6 +131,11 @@ jobs:
           curl -sf "http://localhost:3000/stages?select=key&order=position.asc" \
             || { echo '--- postgrest log ---'; cat "$RUNNER_TEMP/postgrest.log"; exit 1; }
 
+      # -sdk iphonesimulator here too, and for the same reason as the build
+      # job: without it xcodebuild resolves the destination against the host
+      # and compiles the package for macOS, where UIKit does not exist. It
+      # was missing from this job alone, so the build job went green while
+      # this one failed on APIs that are perfectly valid on iOS.
       - name: Run the integration tests
         working-directory: ios
         shell: bash
@@ -148,6 +153,7 @@ jobs:
           set -o pipefail
           xcodebuild test \
             -scheme EnergyCourtage \
+            -sdk iphonesimulator \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -only-testing:EnergyCourtageTests/IntegrationTests \
             -skipPackagePluginValidation \
