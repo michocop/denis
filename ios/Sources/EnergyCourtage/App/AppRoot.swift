@@ -1,89 +1,229 @@
 import SwiftUI
 import Observation
 
-/// Owns the session and decides what the app shows: sign-in, or the tabs.
+/// Owns the session and decides what the app shows.
+///
+/// The decision comes from `my_account_state()` rather than from anything the
+/// client works out for itself: whether an account is ready, awaiting approval
+/// or suspended is the server's answer, and a client that decided locally
+/// would be one patched build away from letting a suspended member back in.
 @Observable
 public final class AppModel {
-    public enum State {
-        case loading
+
+    public enum Phase {
+        case launching
         case signedOut(String?)
-        case signedIn(Dependencies, UserRole, String)
+        case needsInvite(email: String)
+        case pendingApproval(email: String)
+        case suspended
+        case locked
+        case ready(Dependencies, UserRole, String)
     }
 
-    public private(set) var state: State = .loading
-    private var client: SupabaseClient?
+    public private(set) var phase: Phase = .launching
 
-    public init() {}
+    private var client: SupabaseClient?
+    private let sessionStore: SessionStore
+    private var email: String = ""
+
+    public init(sessionStore: SessionStore = SessionStore()) {
+        self.sessionStore = sessionStore
+    }
+
+    private struct AccountState: Decodable {
+        let state: String
+        let role: UserRole?
+        let fullName: String?
+    }
+
+    // MARK: - Launch
 
     @MainActor
     public func start() async {
         do {
             let config = try AppConfig.supabase()
-            client = SupabaseClient(baseURL: config.url, anonKey: config.key)
-            state = .signedOut(nil)
+            let client = SupabaseClient(baseURL: config.url, anonKey: config.key)
+            self.client = client
+
+            guard let refreshToken = sessionStore.refreshToken() else {
+                phase = .signedOut(nil)
+                return
+            }
+
+            do {
+                let session = try await client.restore(refreshToken: refreshToken)
+                try sessionStore.save(refreshToken: session.refreshToken)
+                email = session.user.email ?? ""
+                // A restored session was earned earlier, not now: make the
+                // person prove the device is theirs before it is reused.
+                phase = BiometricGate.isAvailable ? .locked : await resolvePhase()
+            } catch {
+                // A refresh token that no longer works is not an error worth
+                // showing; it just means signing in again.
+                sessionStore.clear()
+                phase = .signedOut(nil)
+            }
         } catch {
-            state = .signedOut(error.localizedDescription)
+            phase = .signedOut(error.localizedDescription)
         }
     }
 
     @MainActor
+    public func unlock() async {
+        guard await BiometricGate.authenticate() else { return }
+        phase = await resolvePhase()
+    }
+
+    // MARK: - Credentials
+
+    @MainActor
     public func signIn(email: String, password: String) async throws {
         guard let client else { throw SupabaseError.notConfigured }
-        _ = try await client.signIn(email: email, password: password)
+        let session = try await client.signIn(email: email, password: password)
+        try? sessionStore.save(refreshToken: session.refreshToken)
+        self.email = session.user.email ?? email
+        phase = await resolvePhase()
+    }
 
-        let profiles = SupabaseProfileRepository(client: client)
-        let profile = try await profiles.currentProfile()
+    @MainActor
+    public func register(code: String, firstName: String, lastName: String,
+                         email: String, password: String) async throws {
+        guard let client else { throw SupabaseError.notConfigured }
+        let session = try await client.signUp(email: email, password: password)
+        try? sessionStore.save(refreshToken: session.refreshToken)
+        self.email = session.user.email ?? email
 
-        state = .signedIn(
-            Dependencies(
-                recommendations: SupabaseRecommendationsRepository(client: client),
-                catalogue: SupabaseCatalogueRepository(client: client),
-                chat: SupabaseChatRepository(client: client),
-                profiles: profiles,
-                invoices: SupabaseInvoiceRepository(client: client)
-            ),
-            profile.role,
-            profile.fullName
-        )
+        // The auth account exists but owns nothing until the invitation is
+        // redeemed, which is what assigns the role.
+        let _: Profile = try await client.rpc("redeem_invite", body: [
+            "p_code": AnyEncodable(code.uppercased().trimmingCharacters(in: .whitespaces)),
+            "p_first_name": AnyEncodable(firstName),
+            "p_last_name": AnyEncodable(lastName)
+        ])
+        phase = await resolvePhase()
+    }
+
+    @MainActor
+    public func requestPasswordReset(email: String) async {
+        await client?.requestPasswordReset(email: email)
+    }
+
+    @MainActor
+    public func refreshAccountState() async {
+        phase = await resolvePhase()
     }
 
     @MainActor
     public func signOut() async {
         await client?.signOut()
-        state = .signedOut(nil)
+        sessionStore.clear()
+        phase = .signedOut(nil)
+    }
+
+    // MARK: - Routing
+
+    @MainActor
+    private func resolvePhase() async -> Phase {
+        guard let client else { return .signedOut(nil) }
+        do {
+            let account: AccountState = try await client.rpc("my_account_state")
+            switch account.state {
+            case "ready":
+                let profiles = SupabaseProfileRepository(client: client)
+                return .ready(
+                    Dependencies(
+                        recommendations: SupabaseRecommendationsRepository(client: client),
+                        catalogue: SupabaseCatalogueRepository(client: client),
+                        chat: SupabaseChatRepository(client: client),
+                        profiles: profiles,
+                        invoices: SupabaseInvoiceRepository(client: client)
+                    ),
+                    account.role ?? .apporteur,
+                    account.fullName ?? ""
+                )
+            case "pending_approval": return .pendingApproval(email: email)
+            case "needs_invite":     return .needsInvite(email: email)
+            case "suspended":        return .suspended
+            default:                 return .signedOut(nil)
+            }
+        } catch {
+            return .signedOut(error.localizedDescription)
+        }
     }
 }
 
 public struct AppRootView: View {
     @State private var model = AppModel()
+    @State private var showsSignUp = false
+    @State private var showsForgotPassword = false
 
     public init() {}
 
     public var body: some View {
         Group {
-            switch model.state {
-            case .loading:
-                ProgressView()
+            switch model.phase {
+            case .launching:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.Palette.canvas)
 
             case .signedOut(let message):
-                VStack(spacing: Theme.Spacing.m) {
-                    SignInView { email, password in
-                        try await model.signIn(email: email, password: password)
-                    }
-                    if let message {
-                        Text(message)
-                            .font(Theme.Typography.secondary)
-                            .foregroundStyle(Theme.Palette.destructive)
-                            .padding(.horizontal, Theme.Spacing.gutter)
-                    }
+                signedOut(message)
+
+            case .locked:
+                LockedView { await model.unlock() }
+
+            // Registered, but the invitation was never redeemed — most likely
+            // the app was closed mid-sign-up.
+            case .needsInvite:
+                SignUpView { code, first, last, email, password in
+                    try await model.register(code: code, firstName: first, lastName: last,
+                                             email: email, password: password)
                 }
 
-            case .signedIn(let dependencies, let role, let name):
+            case .pendingApproval(let email):
+                PendingApprovalView(
+                    email: email,
+                    onRefresh: { await model.refreshAccountState() },
+                    onSignOut: { Task { await model.signOut() } }
+                )
+
+            case .suspended:
+                SuspendedView { Task { await model.signOut() } }
+
+            case .ready(let dependencies, let role, let name):
                 RootView(dependencies: dependencies, role: role, signerName: name) {
                     Task { await model.signOut() }
                 }
             }
         }
         .task { await model.start() }
+    }
+
+    private func signedOut(_ message: String?) -> some View {
+        VStack(spacing: Theme.Spacing.m) {
+            SignInView(
+                signIn: { email, password in
+                    try await model.signIn(email: email, password: password)
+                },
+                onCreateAccount: { showsSignUp = true },
+                onForgotPassword: { showsForgotPassword = true }
+            )
+            if let message {
+                Text(message)
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.destructive)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.gutter)
+            }
+        }
+        .sheet(isPresented: $showsSignUp) {
+            SignUpView { code, first, last, email, password in
+                try await model.register(code: code, firstName: first, lastName: last,
+                                         email: email, password: password)
+            }
+        }
+        .sheet(isPresented: $showsForgotPassword) {
+            ForgotPasswordView { email in await model.requestPasswordReset(email: email) }
+        }
     }
 }

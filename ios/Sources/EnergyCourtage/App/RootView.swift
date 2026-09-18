@@ -70,9 +70,15 @@ public struct SignInView: View {
     @State private var isWorking = false
 
     private let signIn: (String, String) async throws -> Void
+    private let onCreateAccount: () -> Void
+    private let onForgotPassword: () -> Void
 
-    public init(signIn: @escaping (String, String) async throws -> Void) {
+    public init(signIn: @escaping (String, String) async throws -> Void,
+                onCreateAccount: @escaping () -> Void,
+                onForgotPassword: @escaping () -> Void) {
         self.signIn = signIn
+        self.onCreateAccount = onCreateAccount
+        self.onForgotPassword = onForgotPassword
     }
 
     public var body: some View {
@@ -114,9 +120,18 @@ public struct SignInView: View {
             }
             .disabled(email.isEmpty || password.isEmpty || isWorking)
 
-            Text("L'accès est réservé aux apporteurs inscrits. Contactez votre interlocuteur pour obtenir un compte.")
+            HStack {
+                Button("Mot de passe oublié ?", action: onForgotPassword)
+                Spacer()
+                Button("J'ai un code d'invitation", action: onCreateAccount)
+            }
+            .font(Theme.Typography.secondary)
+            .foregroundStyle(Theme.Palette.brand)
+
+            Text("L'accès est réservé aux apporteurs invités par Trinity Énergie.")
                 .font(Theme.Typography.secondary)
                 .foregroundStyle(Theme.Palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer()
         }
         .padding(Theme.Spacing.gutter)

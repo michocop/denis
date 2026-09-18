@@ -584,6 +584,91 @@ begin
     'and appears in the admin''s ticket list');
 end $$;
 
+\echo ''
+\echo '=== 14. Access is by invitation only ============================='
+-- auth.users belongs to the auth schema, which the authenticated role cannot
+-- write to; these stand in for accounts GoTrue would have created.
+reset role;
+insert into auth.users (id, email) values
+  ('44444444-4444-4444-4444-444444444444', 'nouveau@example.test'),
+  ('55555555-5555-5555-5555-555555555555', 'autre@example.test');
+set role authenticated;
+
+do $$
+declare
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_newbie uuid := '44444444-4444-4444-4444-444444444444';
+  v_other  uuid := '55555555-5555-5555-5555-555555555555';
+  v_invite invites%rowtype;
+  v_state  jsonb;
+  v_prof   profiles%rowtype;
+begin
+  perform assert_denied(v_johann,
+    'select * from create_invite()',
+    'an apporteur cannot mint invitations');
+
+  perform login(v_pierre);
+  select * into v_invite from create_invite('nouveau@example.test');
+  perform assert(v_invite.code ~ '^[A-Z0-9-]{6,32}$',
+    'the generated code is dictatable over the phone');
+  perform assert(v_invite.role = 'apporteur',
+    'the invitation carries the role, so a client cannot ask to be an admin');
+
+  -- before redeeming, the app knows to show the invite screen
+  perform login(v_newbie);
+  select my_account_state() into v_state;
+  perform assert(v_state ->> 'state' = 'needs_invite',
+    'a registered account with no profile is asked for an invitation');
+
+  perform assert_denied(v_newbie,
+    'select * from redeem_invite(''NOPE-NOPE'', ''X'', ''Y'')',
+    'a made-up code is refused');
+
+  -- an invite addressed to someone else is not transferable
+  perform assert_denied(v_other,
+    format('select * from redeem_invite(%L, ''Autre'', ''Personne'')', v_invite.code),
+    'an invitation locked to an address cannot be redeemed by anyone else');
+
+  perform login(v_newbie);
+  select * into v_prof from redeem_invite(v_invite.code, 'Nouveau', 'Venu');
+  perform assert(v_prof.role = 'apporteur' and v_prof.status = 'active',
+    'redeeming creates the profile with the invited role');
+
+  select my_account_state() into v_state;
+  perform assert(v_state ->> 'state' = 'ready', 'and the app can now show the tabs');
+
+  perform assert_denied(v_newbie,
+    format('select * from redeem_invite(%L, ''Encore'', ''Un'')', v_invite.code),
+    'an invitation cannot be redeemed twice');
+
+  -- a vetting invitation parks the member until an admin approves
+  perform login(v_pierre);
+  select * into v_invite from create_invite('autre@example.test', 'apporteur', false);
+  perform login(v_other);
+  perform redeem_invite(v_invite.code, 'Autre', 'Personne');
+  select my_account_state() into v_state;
+  perform assert(v_state ->> 'state' = 'pending_approval',
+    'a vetting invitation leaves the member awaiting approval');
+
+  perform assert((select count(*) from recommendations) = 0,
+    'and a pending member reaches no data');
+  perform assert_denied(v_other,
+    'insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+     values (''X'', ''Y'', ''55555555-5555-5555-5555-555555555555'')',
+    'nor can they create anything');
+
+  perform assert_denied(v_other,
+    format('select * from approve_member(%L)', v_other),
+    'a pending member cannot approve themselves');
+
+  perform login(v_pierre);
+  perform approve_member(v_other);
+  perform login(v_other);
+  perform assert(my_account_state() ->> 'state' = 'ready',
+    'an admin approval lets them in');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

@@ -102,6 +102,44 @@ public actor SupabaseClient: SupabaseTransport {
         return session
     }
 
+    /// Registration is invitation-based, so this only creates the auth account;
+    /// `redeem_invite` turns it into a profile.
+    public func signUp(email: String, password: String) async throws -> AuthSession {
+        var request = URLRequest(url: baseURL.appending(path: "auth/v1/signup"))
+        request.httpMethod = "POST"
+        applyHeaders(to: &request, authenticated: false)
+        request.httpBody = try JSONEncoder().encode(["email": email, "password": password])
+
+        let session: AuthSession = try await perform(request)
+        accessToken = session.accessToken
+        return session
+    }
+
+    /// Exchanges a stored refresh token for a live session, so a returning user
+    /// does not retype their password.
+    public func restore(refreshToken: String) async throws -> AuthSession {
+        let url = baseURL.appending(path: "auth/v1/token")
+            .appending(queryItems: [URLQueryItem(name: "grant_type", value: "refresh_token")])
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        applyHeaders(to: &request, authenticated: false)
+        request.httpBody = try JSONEncoder().encode(["refresh_token": refreshToken])
+
+        let session: AuthSession = try await perform(request)
+        accessToken = session.accessToken
+        return session
+    }
+
+    /// Always reports success to the caller: whether an address has an account
+    /// is not something an unauthenticated request should be able to learn.
+    public func requestPasswordReset(email: String) async {
+        var request = URLRequest(url: baseURL.appending(path: "auth/v1/recover"))
+        request.httpMethod = "POST"
+        applyHeaders(to: &request, authenticated: false)
+        request.httpBody = try? JSONEncoder().encode(["email": email])
+        _ = try? await performRaw(request)
+    }
+
     public func signOut() async {
         accessToken = nil
     }

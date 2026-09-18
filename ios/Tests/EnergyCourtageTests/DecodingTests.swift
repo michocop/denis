@@ -158,3 +158,47 @@ struct StubChatRepository: ChatRepository {
     func markRead(threadID: UUID) async throws {}
     func openTicket(subject: String, body: String) async throws -> UUID { UUID() }
 }
+
+/// Auth routing is driven entirely by `my_account_state()`, so its shape is
+/// worth pinning: a decode failure here would drop every user back to the
+/// sign-in screen with no error to explain why.
+final class AccountStateTests: XCTestCase {
+
+    private struct AccountState: Decodable {
+        let state: String
+        let role: UserRole?
+        let fullName: String?
+    }
+
+    private func decode(_ json: String) throws -> AccountState {
+        try SupabaseClient.decoder.decode(AccountState.self, from: Data(json.utf8))
+    }
+
+    func testReadyAccount() throws {
+        let account = try decode("""
+        { "state": "ready", "role": "admin", "full_name": "Pierre-Louis Tettamanti" }
+        """)
+        XCTAssertEqual(account.state, "ready")
+        XCTAssertEqual(account.role, .admin)
+        XCTAssertTrue(account.role?.isAdmin == true)
+        XCTAssertEqual(account.fullName, "Pierre-Louis Tettamanti")
+    }
+
+    func testStatesWithoutAProfileCarryNoRole() throws {
+        for state in ["needs_invite", "signed_out"] {
+            let account = try decode("{ \"state\": \"\(state)\" }")
+            XCTAssertEqual(account.state, state)
+            XCTAssertNil(account.role)
+        }
+    }
+
+    func testPendingAndSuspendedAreDistinct() throws {
+        XCTAssertEqual(try decode("""
+        { "state": "pending_approval", "role": "apporteur", "full_name": "Autre Personne" }
+        """).state, "pending_approval")
+
+        XCTAssertEqual(try decode("""
+        { "state": "suspended", "role": "apporteur", "full_name": "X Y" }
+        """).state, "suspended")
+    }
+}
