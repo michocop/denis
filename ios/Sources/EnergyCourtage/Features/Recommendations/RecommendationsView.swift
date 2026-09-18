@@ -157,7 +157,7 @@ public struct RecommendationsView: View {
             }
             await model.load()
         } catch {
-            model.report(error)
+            await model.report(error)
         }
     }
 

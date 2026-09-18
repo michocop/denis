@@ -47,19 +47,26 @@ jobs:
       # ios/ was written without a compiler.
       - name: Build
         working-directory: ios
+        # pipefail is load-bearing: without it xcpretty's exit code hides
+        # xcodebuild's, and a failed build reports success. It did exactly
+        # that on the first run.
+        shell: bash
         run: |
+          set -o pipefail
           xcodebuild build \
             -scheme EnergyCourtage \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
-            | xcpretty || exit ${PIPESTATUS[0]}
+            | xcpretty
       - name: Test
         working-directory: ios
+        shell: bash
         run: |
+          set -o pipefail
           xcodebuild test \
             -scheme EnergyCourtage \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
-            | xcpretty || exit ${PIPESTATUS[0]}
+            | xcpretty

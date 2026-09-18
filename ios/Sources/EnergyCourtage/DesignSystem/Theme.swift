@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Design tokens sampled from the source app's screenshots.
 ///
@@ -54,12 +56,19 @@ public enum Theme {
         public static let staleSoft     = adaptive(light: 0xFFF1E6, dark: 0x3A2415)
         public static let staleText     = adaptive(light: 0xC2410C, dark: 0xFDBA74)
 
+        /// Resolved per trait collection so the whole palette follows the
+        /// system appearance. Guarded because UIKit is not present on every
+        /// platform the package can be compiled for.
         private static func adaptive(light: UInt32, dark: UInt32) -> Color {
-            Color(uiColor: UIColor { traits in
+            #if canImport(UIKit)
+            return Color(uiColor: UIColor { traits in
                 traits.userInterfaceStyle == .dark
                     ? UIColor(Color(hex: dark))
                     : UIColor(Color(hex: light))
             })
+            #else
+            return Color(hex: light)
+            #endif
         }
     }
 
