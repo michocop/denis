@@ -14,6 +14,9 @@ public protocol RecommendationsRepository: Sendable {
     // Creation, and the five admin powers behind the action sheet.
     func create(_ draft: RecommendationDraft) async throws -> Recommendation
     func reassign(recommendationID: UUID, to adminID: UUID) async throws
+    /// The commission the apporteur will be paid. Admin only, and refused once
+    /// an invoice exists, because the invoice carries a copy of it.
+    func setRewardAmount(recommendationID: UUID, amount: Decimal) async throws
     func archive(recommendationID: UUID, won: Bool) async throws
     func resetPipeline(recommendationID: UUID) async throws
     func softDelete(recommendationID: UUID) async throws
@@ -76,7 +79,10 @@ public extension RecommendationsRepository {
     }
     func note(recommendationID: UUID) async throws -> String { "" }
     func saveNote(recommendationID: UUID, body: String) async throws {}
-    func reassign(recommendationID: UUID, to adminID: UUID) async throws {}
+    func reassign(recommendationID: UUID, to adminID: UUID) async throws
+    /// The commission the apporteur will be paid. Admin only, and refused once
+    /// an invoice exists, because the invoice carries a copy of it.
+    func setRewardAmount(recommendationID: UUID, amount: Decimal) async throws {}
     func archive(recommendationID: UUID, won: Bool) async throws {}
     func resetPipeline(recommendationID: UUID) async throws {}
     func softDelete(recommendationID: UUID) async throws {}

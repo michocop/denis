@@ -98,4 +98,8 @@ public struct SupabaseNotificationsRepository: NotificationsRepository {
             "p_token": AnyEncodable(deviceToken)
         ])
     }
+
+    public func forgetDevices() async throws {
+        try await client.rpcVoid("forget_my_device_tokens")
+    }
 }

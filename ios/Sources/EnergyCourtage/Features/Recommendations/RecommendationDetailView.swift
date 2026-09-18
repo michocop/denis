@@ -9,16 +9,87 @@ public struct RecommendationDetailView: View {
     private let daysSinceActivity: Int
     private let onOpenInvoice: () -> Void
     private let onOpenNotes: () -> Void
+    /// Admin-only. Both were previously unreachable: the action sheet's
+    /// "Réassigner" opened this screen on the grounds that it owned the
+    /// choice, and it had no such control; and the commission was rendered in
+    /// four places and settable in none, which also made issuing an invoice
+    /// impossible, since that refuses a recommendation with no agreed amount.
+    private let admins: [Profile]
+    private let onReassign: ((UUID) async -> Void)?
+    private let onSetAmount: ((Decimal) async -> Void)?
+
+    @State private var amountText = ""
+    @State private var isWorking = false
 
     public init(recommendation: Recommendation, pipeline: [Stage],
                 daysSinceActivity: Int,
+                admins: [Profile] = [],
                 onOpenInvoice: @escaping () -> Void,
-                onOpenNotes: @escaping () -> Void) {
+                onOpenNotes: @escaping () -> Void,
+                onReassign: ((UUID) async -> Void)? = nil,
+                onSetAmount: ((Decimal) async -> Void)? = nil) {
         self.recommendation = recommendation
         self.pipeline = pipeline
         self.daysSinceActivity = daysSinceActivity
+        self.admins = admins
         self.onOpenInvoice = onOpenInvoice
         self.onOpenNotes = onOpenNotes
+        self.onReassign = onReassign
+        self.onSetAmount = onSetAmount
+    }
+
+    /// The invoice copies the amount, so changing it afterwards would make the
+    /// two disagree. A mistake past that point is corrected by an avoir.
+    private var canSetAmount: Bool {
+        onSetAmount != nil && recommendation.invoiceNumber == nil
+    }
+
+    @ViewBuilder
+    private var amountEditor: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            Divider()
+            LabelledField("Définir la commission (€)") {
+                TextField("0", text: $amountText)
+                    .keyboardType(.decimalPad)
+            }
+            Button(isWorking ? "Enregistrement…" : "Enregistrer le montant") {
+                // Comma or point: a French keyboard gives a comma and Decimal
+                // will not parse it, which read as "the button does nothing".
+                let normalised = amountText.replacingOccurrences(of: ",", with: ".")
+                guard let amount = Decimal(string: normalised), amount > 0,
+                      let onSetAmount else { return }
+                Task {
+                    isWorking = true
+                    defer { isWorking = false }
+                    await onSetAmount(amount)
+                    amountText = ""
+                }
+            }
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.Palette.brand)
+            .disabled(isWorking || amountText.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+
+    private func reassignPicker(_ onReassign: @escaping (UUID) async -> Void) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            ForEach(admins) { admin in
+                Button {
+                    Task { await onReassign(admin.id) }
+                } label: {
+                    HStack {
+                        Text(admin.fullName)
+                            .foregroundStyle(Theme.Palette.textPrimary)
+                        Spacer()
+                        Image(systemName: "arrow.right.circle")
+                            .foregroundStyle(Theme.Palette.brand)
+                    }
+                    .font(Theme.Typography.body)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     public var body: some View {
@@ -47,6 +118,11 @@ public struct RecommendationDetailView: View {
                         if let number = recommendation.invoiceNumber {
                             row("Facture", number)
                         }
+                        if canSetAmount { amountEditor }
+                    }
+
+                    if let onReassign, !admins.isEmpty {
+                        section("Suivi par") { reassignPicker(onReassign) }
                     }
 
                     SecondaryActionButton(Strings.Reco.personalNotes, systemImage: "doc",
@@ -165,6 +241,54 @@ public struct PersonalNotesView: View {
         self.initialBody = initialBody
         self.save = save
         _body_ = State(initialValue: initialBody)
+    }
+
+    @ViewBuilder
+    private var amountEditor: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            Divider()
+            LabelledField("Définir la commission (€)") {
+                TextField("0", text: $amountText)
+                    .keyboardType(.decimalPad)
+            }
+            Button(isWorking ? "Enregistrement…" : "Enregistrer le montant") {
+                // Comma or point: a French keyboard gives a comma and Decimal
+                // will not parse it, which read as "the button does nothing".
+                let normalised = amountText.replacingOccurrences(of: ",", with: ".")
+                guard let amount = Decimal(string: normalised), amount > 0,
+                      let onSetAmount else { return }
+                Task {
+                    isWorking = true
+                    defer { isWorking = false }
+                    await onSetAmount(amount)
+                    amountText = ""
+                }
+            }
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.Palette.brand)
+            .disabled(isWorking || amountText.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+
+    private func reassignPicker(_ onReassign: @escaping (UUID) async -> Void) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            ForEach(admins) { admin in
+                Button {
+                    Task { await onReassign(admin.id) }
+                } label: {
+                    HStack {
+                        Text(admin.fullName)
+                            .foregroundStyle(Theme.Palette.textPrimary)
+                        Spacer()
+                        Image(systemName: "arrow.right.circle")
+                            .foregroundStyle(Theme.Palette.brand)
+                    }
+                    .font(Theme.Typography.body)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     public var body: some View {

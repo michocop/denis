@@ -1350,6 +1350,59 @@ begin
     'and the commission is owed again, so a corrected invoice can be issued');
 end $$;
 
+
+\echo ''
+\echo '=== 27. The commission can actually be set ========================'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_stage  text;
+  v_out    recommendations%rowtype;
+begin
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+  values ('Lucie', 'Perrin', v_johann) returning id into v_reco;
+
+  perform assert_denied(v_johann,
+    format('select set_reward_amount(%L, 500)', v_reco),
+    'an apporteur cannot set their own commission');
+
+  perform login(v_pierre);
+  perform assert_denied(v_pierre,
+    format('select set_reward_amount(%L, 0)', v_reco),
+    'nor can it be zero');
+  perform assert_denied(v_pierre,
+    format('select set_reward_amount(%L, -50)', v_reco),
+    'nor negative');
+
+  select * into v_out from set_reward_amount(v_reco, 500);
+  perform assert(v_out.reward_amount = 500, 'an admin sets it');
+  perform assert(
+    (select count(*) from audit_log
+      where entity_id = v_reco and action = 'set_reward_amount') = 1,
+    'and the change is recorded: it is the number the apporteur is paid');
+
+  -- once invoiced the invoice carries a copy, so changing it would make the
+  -- two disagree
+  for v_stage in select key from stages order by position loop
+    perform advance_stage(v_reco, v_stage);
+    exit when (select is_reward_trigger from stages where key = v_stage);
+  end loop;
+  perform issue_invoice(v_reco);
+  perform assert_denied(v_pierre,
+    format('select set_reward_amount(%L, 900)', v_reco),
+    'but not once the invoice exists: that is what an avoir is for');
+
+  -- signing out must not leave a push token pointed at the last person
+  perform login(v_johann);
+  perform register_device_token('token-signout');
+  perform forget_my_device_tokens();
+  perform assert((select count(*) from device_tokens) = 0,
+    'signing out forgets this device, so the next person does not get their notifications');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

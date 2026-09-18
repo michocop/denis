@@ -550,4 +550,5 @@ public struct PreviewNotificationsRepository: NotificationsRepository {
     }
 
     public func register(deviceToken: String) async throws {}
+    public func forgetDevices() async throws {}
 }

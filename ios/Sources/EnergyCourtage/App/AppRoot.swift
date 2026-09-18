@@ -150,6 +150,13 @@ public final class AppModel {
 
     @MainActor
     public func signOut() async {
+        // Before the token is discarded, while the request can still be
+        // authenticated: a push token left attached to whoever registered it
+        // puts their commissions on the next person's lock screen.
+        if let client {
+            try? await SupabaseNotificationsRepository(client: client).forgetDevices()
+        }
+        await LocalNotifications.setBadge(0)
         await client?.signOut()
         sessionStore.clear()
         phase = .signedOut(nil)

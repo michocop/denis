@@ -152,6 +152,13 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         ])
     }
 
+    public func setRewardAmount(recommendationID: UUID, amount: Decimal) async throws {
+        try await client.rpcVoid("set_reward_amount", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString),
+            "p_amount": AnyEncodable(amount)
+        ])
+    }
+
     public func archive(recommendationID: UUID, won: Bool) async throws {
         try await client.rpcVoid("archive_recommendation", body: [
             "p_recommendation_id": AnyEncodable(recommendationID.uuidString),

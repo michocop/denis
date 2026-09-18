@@ -6,6 +6,7 @@ public struct RecommendationsView: View {
     @State private var model: RecommendationsViewModel
     @State private var presentedComment: PresentedComment?
     @State private var sheet: Sheet?
+    @State private var admins: [Profile] = []
 
     private let dependencies: Dependencies
     private let signerName: String
@@ -105,10 +106,27 @@ public struct RecommendationsView: View {
                     recommendation: reco,
                     pipeline: model.pipeline,
                     daysSinceActivity: reco.daysSinceActivity,
+                    admins: model.role.isAdmin ? admins : [],
                     onOpenInvoice: {
                         if let invoiceID = reco.invoiceID { sheet = .invoice(invoiceID) }
                     },
-                    onOpenNotes: { Task { await openNotes(reco) } }
+                    onOpenNotes: { Task { await openNotes(reco) } },
+                    onReassign: model.role.isAdmin ? { adminID in
+                        do {
+                            try await dependencies.recommendations.reassign(
+                                recommendationID: reco.id, to: adminID)
+                            await model.load()
+                            sheet = nil
+                        } catch { await model.report(error) }
+                    } : nil,
+                    onSetAmount: model.role.isAdmin ? { amount in
+                        do {
+                            try await dependencies.recommendations.setRewardAmount(
+                                recommendationID: reco.id, amount: amount)
+                            await model.load()
+                            sheet = nil
+                        } catch { await model.report(error) }
+                    } : nil
                 )
 
             case .actions(let reco):
@@ -126,6 +144,12 @@ public struct RecommendationsView: View {
         .task {
             await model.load()
             model.startWatching()
+            // Needed before "Réassigner" can offer anyone. Loaded once here
+            // rather than each time the sheet opens, because the list of
+            // administrators changes about never.
+            if model.role.isAdmin {
+                admins = (try? await dependencies.recommendations.loadAdmins()) ?? []
+            }
         }
         .onChange(of: model.filter) { _, _ in Task { await model.load() } }
         .onChange(of: model.query) { _, _ in model.searchChanged() }

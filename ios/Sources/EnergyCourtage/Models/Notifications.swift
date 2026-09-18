@@ -46,4 +46,7 @@ public protocol NotificationsRepository: Sendable {
     func markAllRead() async throws
     /// Registering is idempotent: iOS hands the token back on every launch.
     func register(deviceToken: String) async throws
+    /// Called on sign-out. A token left attached to whoever registered it puts
+    /// their commissions on the next person's lock screen.
+    func forgetDevices() async throws
 }

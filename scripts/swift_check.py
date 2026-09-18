@@ -7,9 +7,10 @@ codebase is most exposed to, having been written without one --
 
   1. a type that claims to conform to a locally-declared protocol but never
      implements one of its requirements,
-  2. two top-level declarations sharing a name, and
+  2. two top-level declarations sharing a name,
   3. a capitalised name used in call or generic position that nothing in the
-     module declares and that is not a known SDK type.
+     module declares and that is not a known SDK type, and
+  4. the same attribute written twice on one declaration.
 
 (3) exists because deleting a feature once took a shared control out with it
 -- LabelledField lived inside the catalogue's wizard file -- and seven other
@@ -137,7 +138,7 @@ SDK = {
     "UNMutableNotificationContent", "UNCalendarNotificationTrigger",
     "UNNotificationRequest", "UNTimeIntervalNotificationTrigger", "Notification",
     "NotificationCenter", "Bundle", "Data", "Timer",
-    "RelativeDateTimeFormatter", "UNAuthorizationOptions", "UNNotificationSound", "ToolbarContentBuilder", "ToolbarContent", "UIApplication",
+    "RelativeDateTimeFormatter", "Decimal", "UNAuthorizationOptions", "UNNotificationSound", "ToolbarContentBuilder", "ToolbarContent", "UIApplication",
     "PropertyListSerialization", "MainActor",
 }
 
@@ -158,7 +159,24 @@ for f in FILES:
                 continue
             undeclared[name].append(f"{f.name}:{lineno}")
 
-problems = []
+problems_attrs = []
+
+# An attribute repeated on the same declaration. A string-anchored edit put
+# setStatus's @MainActor above a doc comment and left two of them on the next
+# function, which the conformance pass could not see and CI caught two minutes
+# later.
+for f in FILES:
+    lines = [l.strip() for l in f.read_text().splitlines()]
+    for i, line in enumerate(lines):
+        if not line.startswith("@"):
+            continue
+        j = i + 1
+        while j < len(lines) and (lines[j].startswith("///") or not lines[j]):
+            j += 1
+        if j < len(lines) and lines[j] == line:
+            problems_attrs.append(f"DUPLICATE  attribute {line} — {f.name}:{i + 1}")
+
+problems = list(problems_attrs)
 
 for name, where in sorted(undeclared.items()):
     problems.append(f"UNDECLARED {name} — used at {where[0]}"

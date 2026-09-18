@@ -48,7 +48,6 @@ public final class MembersViewModel {
         catch { errorMessage = error.localizedDescription }
     }
 
-    @MainActor
     /// Recording that payment details are held elsewhere. Nothing here ever
     /// touches an account number: the app only needs to know whether someone
     /// CAN be paid, which is a boolean, and the details themselves live in the
@@ -62,6 +61,7 @@ public final class MembersViewModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    @MainActor
     public func setStatus(_ member: MemberOverview, to status: String) async {
         do { try await repository.setStatus(profileID: member.id, status: status); await load() }
         catch { errorMessage = error.localizedDescription }

@@ -106,6 +106,22 @@ public final class ChatViewModel {
         }
     }
 
+    /// The Tickets tab filtered for thread.kind == .ticket and nothing could
+    /// ever create one: openTicket() had no caller, so the tab was permanently
+    /// empty with an empty state that looked like a feature.
+    @MainActor
+    public func openTicket(subject: String, body: String) async -> ChatThread? {
+        do {
+            let id = try await repository.openTicket(subject: subject, body: body)
+            threads = try await repository.loadThreads()
+            errorMessage = nil
+            return threads.first { $0.id == id }
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     @MainActor
     public func loadContacts() async {
         guard isAdmin, contacts.isEmpty, let admin else { return }
@@ -143,6 +159,9 @@ public struct ChatView: View {
     @State private var model: ChatViewModel
     @State private var route: ChatThread?
     @State private var showsContacts = false
+    @State private var showsTicket = false
+    @State private var ticketSubject = ""
+    @State private var ticketBody = ""
 
     public init(model: ChatViewModel) { _model = State(wrappedValue: model) }
 
@@ -201,6 +220,9 @@ public struct ChatView: View {
             .sheet(isPresented: $showsContacts) {
                 contactPicker
             }
+            .sheet(isPresented: $showsTicket) {
+                ticketComposer
+            }
         }
         .task {
             await model.load()
@@ -239,13 +261,56 @@ public struct ChatView: View {
         .refreshable { await model.load() }
     }
 
-    /// An apporteur has one correspondent and is taken straight there; an admin
-    /// has hundreds and is asked which.
+    /// What the button composes depends on which tab you are on: a ticket is a
+    /// tracked request with a subject, a discussion is a conversation.
     private func compose() {
-        if model.isAdmin {
+        if model.tab == .tickets {
+            showsTicket = true
+        } else if model.isAdmin {
             showsContacts = true
         } else {
             Task { route = await model.startConversation() }
+        }
+    }
+
+    private var ticketComposer: some View {
+        NavigationStack {
+            ZStack {
+                Theme.Palette.canvas.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                    LabelledField("Sujet") {
+                        TextField("Problème de virement", text: $ticketSubject)
+                    }
+                    LabelledField("Description") {
+                        TextEditor(text: $ticketBody)
+                            .frame(minHeight: 120)
+                            .scrollContentBackground(.hidden)
+                    }
+                    Text("Un administrateur est affecté au ticket dès son ouverture.")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+
+                    PrimaryActionButton("Ouvrir le ticket") {
+                        let subject = ticketSubject
+                        let body = ticketBody
+                        showsTicket = false
+                        ticketSubject = ""
+                        ticketBody = ""
+                        Task { route = await model.openTicket(subject: subject, body: body) }
+                    }
+                    .disabled(ticketSubject.trimmingCharacters(in: .whitespaces).isEmpty
+                              || ticketBody.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Spacer()
+                }
+                .padding(Theme.Spacing.gutter)
+            }
+            .navigationTitle("Nouveau ticket")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { showsTicket = false }
+                }
+            }
         }
     }
 
