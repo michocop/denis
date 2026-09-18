@@ -30,6 +30,10 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         let events: [Event]
         let hasContract: Bool
         let invoiceNumber: String?
+        let invoiceId: UUID?
+        let daysSinceActivity: Int
+        let hasNote: Bool
+        let pendingReminders: Int
     }
 
     public func loadPipeline() async throws -> [Stage] {
@@ -84,7 +88,11 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
             rewardStatus: row.rewardStatus,
             status: row.status,
             hasContract: row.hasContract,
-            invoiceNumber: row.invoiceNumber
+            invoiceNumber: row.invoiceNumber,
+            invoiceID: row.invoiceId,
+            daysSinceActivity: row.daysSinceActivity,
+            hasNote: row.hasNote,
+            pendingReminders: row.pendingReminders
         )
     }
 
@@ -162,6 +170,39 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         ])
     }
 
+    public func checkDuplicate(phone: String, email: String) async throws -> DuplicateCheck {
+        try await client.rpc("check_duplicate_filleul", body: [
+            "p_phone": AnyEncodable(phone),
+            "p_email": AnyEncodable(email)
+        ])
+    }
+
+    public func note(recommendationID: UUID) async throws -> String {
+        struct Row: Decodable { let body: String }
+        // RLS already scopes personal_notes to their author, so no filter on
+        // the reader is needed -- or possible.
+        let rows: [Row] = try await client.get("personal_notes", query: [
+            URLQueryItem(name: "select", value: "body"),
+            URLQueryItem(name: "recommendation_id", value: "eq.\(recommendationID.uuidString)"),
+            URLQueryItem(name: "limit", value: "1")
+        ])
+        return rows.first?.body ?? ""
+    }
+
+    public func saveNote(recommendationID: UUID, body: String) async throws {
+        let author = try await currentUserID()
+        struct Row: Decodable { let id: UUID }
+        // One note per reader per recommendation, so this is an upsert.
+        var request: [String: AnyEncodable] = [
+            "recommendation_id": AnyEncodable(recommendationID.uuidString),
+            "author_id": AnyEncodable(author.uuidString),
+            "body": AnyEncodable(body)
+        ]
+        request["updated_at"] = AnyEncodable(ISO8601DateFormatter().string(from: .now))
+        let _: [Row] = try await client.upsert("personal_notes", values: request,
+                                               onConflict: "recommendation_id,author_id")
+    }
+
     private func currentUserID() async throws -> UUID {
         struct Me: Decodable { let id: UUID }
         let me: [Me] = try await client.get("profiles", query: [
@@ -170,6 +211,35 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         ])
         guard let id = me.first?.id else { throw SupabaseError.unauthenticated }
         return id
+    }
+}
+
+// MARK: - Reminders
+
+public struct SupabaseRemindersRepository: RemindersRepository {
+    private let client: SupabaseClient
+    public init(client: SupabaseClient) { self.client = client }
+
+    public func reminders(recommendationID: UUID) async throws -> [Reminder] {
+        try await client.get("reminders", query: [
+            URLQueryItem(name: "select", value: "id,label,due_at,status"),
+            URLQueryItem(name: "recommendation_id", value: "eq.\(recommendationID.uuidString)"),
+            URLQueryItem(name: "order", value: "due_at.asc")
+        ])
+    }
+
+    public func schedule(recommendationID: UUID, label: String, dueAt: Date) async throws -> Reminder {
+        try await client.rpc("schedule_reminder", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString),
+            "p_label": AnyEncodable(label),
+            "p_due_at": AnyEncodable(ISO8601DateFormatter().string(from: dueAt))
+        ])
+    }
+
+    public func complete(reminderID: UUID) async throws {
+        try await client.rpcVoid("complete_reminder", body: [
+            "p_reminder_id": AnyEncodable(reminderID.uuidString)
+        ])
     }
 }
 

@@ -202,3 +202,52 @@ final class AccountStateTests: XCTestCase {
         """).state, "suspended")
     }
 }
+
+final class DuplicateCheckTests: XCTestCase {
+
+    private func decode(_ json: String) throws -> DuplicateCheck {
+        try SupabaseClient.decoder.decode(DuplicateCheck.self, from: Data(json.utf8))
+    }
+
+    /// A lead already in your own list is a mistake worth blocking. One held by
+    /// another apporteur is a judgement call that stays theirs to make — the app
+    /// warns and gets out of the way.
+    func testOwnDuplicateBlocksButContestedOneDoesNot() throws {
+        let mine = try decode("""
+        { "already_yours": true, "held_by_someone_else": false }
+        """)
+        XCTAssertTrue(mine.blocksSubmission)
+        XCTAssertEqual(mine.warning, Strings.Duplicate.alreadyYours)
+
+        let contested = try decode("""
+        { "already_yours": false, "held_by_someone_else": true }
+        """)
+        XCTAssertFalse(contested.blocksSubmission)
+        XCTAssertEqual(contested.warning, Strings.Duplicate.heldByAnother)
+    }
+
+    func testCleanLeadProducesNoWarning() throws {
+        let clean = try decode("""
+        { "already_yours": false, "held_by_someone_else": false }
+        """)
+        XCTAssertNil(clean.warning)
+        XCTAssertFalse(clean.blocksSubmission)
+    }
+
+    func testReminderDecodesAndFlagsOverdue() throws {
+        let reminder = try SupabaseClient.decoder.decode(Reminder.self, from: Data("""
+        { "id": "66666666-6666-6666-6666-666666666666", "label": "Relancer Thomas",
+          "due_at": "2020-01-01T09:00:00+00:00", "status": "scheduled" }
+        """.utf8))
+        XCTAssertEqual(reminder.label, "Relancer Thomas")
+        XCTAssertTrue(reminder.isOverdue)
+    }
+
+    func testCompletedReminderIsNeverOverdue() throws {
+        let reminder = try SupabaseClient.decoder.decode(Reminder.self, from: Data("""
+        { "id": "77777777-7777-7777-7777-777777777777", "label": "Fait",
+          "due_at": "2020-01-01T09:00:00+00:00", "status": "done" }
+        """.utf8))
+        XCTAssertFalse(reminder.isOverdue)
+    }
+}

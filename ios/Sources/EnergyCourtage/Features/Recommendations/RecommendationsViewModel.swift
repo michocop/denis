@@ -15,6 +15,33 @@ public protocol RecommendationsRepository: Sendable {
     func resetPipeline(recommendationID: UUID) async throws
     func softDelete(recommendationID: UUID) async throws
     func loadAdmins() async throws -> [Profile]
+
+    /// Warns before a second apporteur claims a lead someone already holds.
+    func checkDuplicate(phone: String, email: String) async throws -> DuplicateCheck
+    func note(recommendationID: UUID) async throws -> String
+    func saveNote(recommendationID: UUID, body: String) async throws
+}
+
+/// Deliberately says only *that* a lead is held, never by whom: an apporteur
+/// must be warned without being handed a competitor's pipeline.
+public struct DuplicateCheck: Hashable, Codable, Sendable {
+    public var alreadyYours: Bool
+    public var heldBySomeoneElse: Bool
+
+    public init(alreadyYours: Bool = false, heldBySomeoneElse: Bool = false) {
+        self.alreadyYours = alreadyYours
+        self.heldBySomeoneElse = heldBySomeoneElse
+    }
+
+    public var warning: String? {
+        if alreadyYours { return Strings.Duplicate.alreadyYours }
+        if heldBySomeoneElse { return Strings.Duplicate.heldByAnother }
+        return nil
+    }
+
+    /// A lead already in your own list is a mistake worth blocking; one held by
+    /// someone else is a judgement call that stays the apporteur's to make.
+    public var blocksSubmission: Bool { alreadyYours }
 }
 
 /// What the create form collects. `consentConfirmed` is not decoration: the
@@ -42,6 +69,11 @@ public struct RecommendationDraft: Hashable, Sendable {
 /// Previews and tests only need the read path; the admin operations default to
 /// no-ops so a fake does not have to implement six methods it never calls.
 public extension RecommendationsRepository {
+    func checkDuplicate(phone: String, email: String) async throws -> DuplicateCheck {
+        DuplicateCheck()
+    }
+    func note(recommendationID: UUID) async throws -> String { "" }
+    func saveNote(recommendationID: UUID, body: String) async throws {}
     func reassign(recommendationID: UUID, to adminID: UUID) async throws {}
     func archive(recommendationID: UUID, won: Bool) async throws {}
     func resetPipeline(recommendationID: UUID) async throws {}
@@ -77,10 +109,29 @@ public final class RecommendationsViewModel {
 
     public let role: UserRole
     private let repository: RecommendationsRepository
+    private let changeMonitor: ChangeMonitor
+    private var watchTask: Task<Void, Never>?
 
-    public init(repository: RecommendationsRepository, role: UserRole) {
+    public init(repository: RecommendationsRepository, role: UserRole,
+                changeMonitor: ChangeMonitor = InertChangeMonitor()) {
         self.repository = repository
         self.role = role
+        self.changeMonitor = changeMonitor
+    }
+
+    deinit { watchTask?.cancel() }
+
+    /// Watches for server-side changes and raises the banner rather than
+    /// reloading underneath whatever the user is reading.
+    @MainActor
+    public func startWatching() {
+        guard watchTask == nil else { return }
+        watchTask = Task { [weak self, changeMonitor] in
+            for await _ in changeMonitor.changes() {
+                guard let self else { return }
+                await MainActor.run { self.hasStaleData = true }
+            }
+        }
     }
 
     /// Search covers the filleul and the parrain, which is what the source
@@ -139,6 +190,11 @@ public final class RecommendationsViewModel {
         pipeline
             .sorted { $0.position < $1.position }
             .first { recommendation.event(for: $0) == nil }
+    }
+
+    @MainActor
+    public func report(_ error: Error) {
+        state = .failed(error.localizedDescription)
     }
 
     public func stage(with id: UUID) -> Stage? {

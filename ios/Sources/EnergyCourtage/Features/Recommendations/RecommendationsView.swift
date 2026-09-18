@@ -5,6 +5,10 @@ public struct RecommendationsView: View {
 
     @State private var model: RecommendationsViewModel
     @State private var presentedComment: PresentedComment?
+    @State private var sheet: Sheet?
+
+    private let dependencies: Dependencies
+    private let signerName: String
 
     private struct PresentedComment: Identifiable {
         let id = UUID()
@@ -12,8 +16,32 @@ public struct RecommendationsView: View {
         let message: String
     }
 
-    public init(model: RecommendationsViewModel) {
+    /// One enum for every sheet this screen can raise: two `.sheet` modifiers
+    /// on the same view silently fight, and an identified item makes the
+    /// presented value and its data arrive together.
+    private enum Sheet: Identifiable {
+        case notes(Recommendation, String)
+        case invoice(UUID)
+        case detail(Recommendation)
+        case actions(Recommendation)
+        case reminders(Recommendation)
+
+        var id: String {
+            switch self {
+            case .notes(let r, _):   return "notes-\(r.id)"
+            case .invoice(let id):   return "invoice-\(id)"
+            case .detail(let r):     return "detail-\(r.id)"
+            case .actions(let r):    return "actions-\(r.id)"
+            case .reminders(let r):  return "reminders-\(r.id)"
+            }
+        }
+    }
+
+    public init(model: RecommendationsViewModel, dependencies: Dependencies,
+                signerName: String) {
         _model = State(wrappedValue: model)
+        self.dependencies = dependencies
+        self.signerName = signerName
     }
 
     public var body: some View {
@@ -54,9 +82,82 @@ public struct RecommendationsView: View {
                 .zIndex(1)
             }
         }
+        .sheet(item: $sheet) { presented in
+            switch presented {
+            case .notes(let reco, let body):
+                PersonalNotesView(initialBody: body) { text in
+                    try await dependencies.recommendations.saveNote(
+                        recommendationID: reco.id, body: text
+                    )
+                    await model.load()
+                }
+
+            case .invoice(let invoiceID):
+                InvoiceView(
+                    model: InvoiceViewModel(invoiceID: invoiceID,
+                                            repository: dependencies.invoices),
+                    signerName: signerName
+                )
+
+            case .detail(let reco):
+                RecommendationDetailView(
+                    recommendation: reco,
+                    pipeline: model.pipeline,
+                    daysSinceActivity: reco.daysSinceActivity,
+                    onOpenInvoice: {
+                        if let invoiceID = reco.invoiceID { sheet = .invoice(invoiceID) }
+                    },
+                    onOpenNotes: { Task { await openNotes(reco) } }
+                )
+
+            case .actions(let reco):
+                RecommendationActionSheet(recommendation: reco) { action in
+                    Task { await perform(action, on: reco) }
+                }
+
+            case .reminders(let reco):
+                RemindersView(recommendationID: reco.id,
+                              filleulName: reco.filleulName,
+                              repository: dependencies.reminders)
+            }
+        }
         .animation(.snappy(duration: 0.25), value: model.hasStaleData)
-        .task { await model.load() }
+        .task {
+            await model.load()
+            model.startWatching()
+        }
         .onChange(of: model.filter) { _, _ in Task { await model.load() } }
+    }
+
+    private func openNotes(_ reco: Recommendation) async {
+        let body = (try? await dependencies.recommendations.note(recommendationID: reco.id)) ?? ""
+        sheet = .notes(reco, body)
+    }
+
+    private func perform(_ action: RecommendationActionSheet.Action,
+                         on reco: Recommendation) async {
+        let repository = dependencies.recommendations
+        do {
+            switch action {
+            case .reassign:
+                // Reassignment needs a person picked, which the sheet cannot
+                // do on its own; the detail screen owns that choice.
+                sheet = .detail(reco)
+                return
+            case .reminders:
+                sheet = .reminders(reco)
+                return
+            case .reset:
+                try await repository.resetPipeline(recommendationID: reco.id)
+            case .archive:
+                try await repository.archive(recommendationID: reco.id, won: false)
+            case .delete:
+                try await repository.softDelete(recommendationID: reco.id)
+            }
+            await model.load()
+        } catch {
+            model.report(error)
+        }
     }
 
     @ViewBuilder
@@ -88,11 +189,23 @@ public struct RecommendationsView: View {
                                                                     message: message)
                             }
                         },
-                        onNotes: {},
-                        onContract: {},
-                        onMore: {},
+                        onNotes: { Task { await openNotes(reco) } },
+                        onContract: {
+                            if let invoiceID = reco.invoiceID { sheet = .invoice(invoiceID) }
+                        },
+                        onMore: { sheet = .detail(reco) },
                         onValidate: { Task { await model.validateNextStage(for: reco) } }
                     )
+                    // The action sheet is admin-only, and reached by pressing
+                    // the card rather than by a control that would clutter it
+                    // for the apporteur, who has none of these powers.
+                    .contextMenu {
+                        if model.role.isAdmin {
+                            Button("Gérer la recommandation", systemImage: "slider.horizontal.3") {
+                                sheet = .actions(reco)
+                            }
+                        }
+                    }
                 }
             }
         }

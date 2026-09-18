@@ -13,6 +13,8 @@ public struct CreateRecommendationView: View {
     @State private var offers: [Offer] = []
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var duplicate = DuplicateCheck()
+    @State private var duplicateTask: Task<Void, Never>?
 
     private let recommendations: RecommendationsRepository
     private let catalogue: CatalogueRepository
@@ -71,6 +73,10 @@ public struct CreateRecommendationView: View {
                         }
                     }
 
+                    if let warning = duplicate.warning {
+                        DuplicateWarning(text: warning, blocking: duplicate.blocksSubmission)
+                    }
+
                     consentToggle
 
                     if let errorMessage {
@@ -82,8 +88,8 @@ public struct CreateRecommendationView: View {
                     PrimaryActionButton(isSaving ? "Envoi…" : "Envoyer la recommandation") {
                         Task { await submit() }
                     }
-                    .disabled(!draft.isValid || isSaving)
-                    .opacity(draft.isValid && !isSaving ? 1 : 0.5)
+                    .disabled(!canSubmit || isSaving)
+                    .opacity(canSubmit && !isSaving ? 1 : 0.5)
                 }
                 .padding(Theme.Spacing.gutter)
             }
@@ -99,6 +105,12 @@ public struct CreateRecommendationView: View {
         .task {
             offers = (try? await catalogue.loadOffers()) ?? []
         }
+        // Checked as they type rather than on submit: being told after filling
+        // the whole form that the lead is already taken is the worst moment
+        // to find out.
+        .onChange(of: draft.phone) { _, _ in scheduleDuplicateCheck() }
+        .onChange(of: draft.email) { _, _ in scheduleDuplicateCheck() }
+        .onDisappear { duplicateTask?.cancel() }
     }
 
     private var consentToggle: some View {
@@ -116,6 +128,26 @@ public struct CreateRecommendationView: View {
         )
     }
 
+    private var canSubmit: Bool { draft.isValid && !duplicate.blocksSubmission }
+
+    /// Debounced, so a phone number typed digit by digit is one request.
+    private func scheduleDuplicateCheck() {
+        duplicateTask?.cancel()
+        let phone = draft.phone
+        let email = draft.email
+        guard phone.filter(\.isNumber).count >= 9 || email.contains("@") else {
+            duplicate = DuplicateCheck()
+            return
+        }
+        duplicateTask = Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            if let result = try? await recommendations.checkDuplicate(phone: phone, email: email) {
+                await MainActor.run { duplicate = result }
+            }
+        }
+    }
+
     private func submit() async {
         isSaving = true
         defer { isSaving = false }
@@ -126,5 +158,32 @@ public struct CreateRecommendationView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+
+/// Amber when the lead is merely contested, red when it is already yours —
+/// the second is a mistake, the first is a decision.
+struct DuplicateWarning: View {
+    let text: String
+    let blocking: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.m) {
+            Image(systemName: blocking ? "exclamationmark.octagon.fill"
+                                       : "exclamationmark.triangle.fill")
+                .foregroundStyle(blocking ? Theme.Palette.destructive : Theme.Palette.rewardText)
+            Text(text)
+                .font(Theme.Typography.secondary)
+                .foregroundStyle(Theme.Palette.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Theme.Spacing.l)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
+                .fill(blocking ? Theme.Palette.destructive.opacity(0.12)
+                               : Theme.Palette.rewardSoft)
+        )
+        .accessibilityElement(children: .combine)
     }
 }

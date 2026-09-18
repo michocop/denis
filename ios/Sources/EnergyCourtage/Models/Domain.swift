@@ -90,6 +90,12 @@ public struct Recommendation: Identifiable, Hashable, Codable, Sendable {
     public var status: RecommendationStatus
     public var hasContract: Bool
     public var invoiceNumber: String?
+    public var invoiceID: UUID?
+    /// How long this has sat untouched. Nothing in the source app surfaces it,
+    /// and it is the first thing an admin needs when the list gets long.
+    public var daysSinceActivity: Int
+    public var hasNote: Bool
+    public var pendingReminders: Int
 
     public var filleulName: String { "\(filleulFirstName) \(filleulLastName)" }
 
@@ -98,7 +104,9 @@ public struct Recommendation: Identifiable, Hashable, Codable, Sendable {
                 currentStageID: UUID, events: [StageEvent] = [],
                 rewardAmount: Decimal? = nil, rewardStatus: RewardStatus = .pending,
                 status: RecommendationStatus = .active, hasContract: Bool = false,
-                invoiceNumber: String? = nil) {
+                invoiceNumber: String? = nil, invoiceID: UUID? = nil,
+                daysSinceActivity: Int = 0, hasNote: Bool = false,
+                pendingReminders: Int = 0) {
         self.id = id
         self.filleulFirstName = filleulFirstName
         self.filleulLastName = filleulLastName
@@ -112,7 +120,14 @@ public struct Recommendation: Identifiable, Hashable, Codable, Sendable {
         self.status = status
         self.hasContract = hasContract
         self.invoiceNumber = invoiceNumber
+        self.invoiceID = invoiceID
+        self.daysSinceActivity = daysSinceActivity
+        self.hasNote = hasNote
+        self.pendingReminders = pendingReminders
     }
+
+    /// A week of silence is the threshold at which a lead starts going cold.
+    public var isStale: Bool { status == .active && daysSinceActivity >= 7 }
 
     // MARK: Derived presentation
 

@@ -166,6 +166,22 @@ public actor SupabaseClient: SupabaseTransport {
         return try await perform(request)
     }
 
+    /// Insert-or-replace against a unique constraint. Used for the personal
+    /// note, which is one row per reader per recommendation.
+    public func upsert<T: Decodable>(_ table: String,
+                                     values: [String: AnyEncodable],
+                                     onConflict: String) async throws -> T {
+        var request = URLRequest(url: restURL(table, query: [
+            URLQueryItem(name: "on_conflict", value: onConflict)
+        ]))
+        request.httpMethod = "POST"
+        applyHeaders(to: &request)
+        request.setValue("resolution=merge-duplicates,return=representation",
+                         forHTTPHeaderField: "Prefer")
+        request.httpBody = try JSONEncoder().encode(values)
+        return try await perform(request)
+    }
+
     public func update<T: Decodable>(_ table: String,
                                      values: [String: AnyEncodable],
                                      match: [URLQueryItem]) async throws -> T {

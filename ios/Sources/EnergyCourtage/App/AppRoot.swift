@@ -136,7 +136,9 @@ public final class AppModel {
                         catalogue: SupabaseCatalogueRepository(client: client),
                         chat: SupabaseChatRepository(client: client),
                         profiles: profiles,
-                        invoices: SupabaseInvoiceRepository(client: client)
+                        invoices: SupabaseInvoiceRepository(client: client),
+                        reminders: SupabaseRemindersRepository(client: client),
+                        changeMonitor: PollingChangeMonitor(client: client)
                     ),
                     account.role ?? .apporteur,
                     account.fullName ?? ""

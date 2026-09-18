@@ -31,7 +31,10 @@ public struct RootView: View {
 
             RecommendationsView(
                 model: RecommendationsViewModel(repository: dependencies.recommendations,
-                                                role: role)
+                                                role: role,
+                                                changeMonitor: dependencies.changeMonitor),
+                dependencies: dependencies,
+                signerName: signerName
             )
             .tabItem { Label("Reco", systemImage: "doc.badge.plus") }
             .tag(Tab.recommendations)

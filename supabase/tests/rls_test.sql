@@ -588,6 +588,158 @@ end $$;
 \echo '=== 14. Access is by invitation only ============================='
 -- auth.users belongs to the auth schema, which the authenticated role cannot
 -- write to; these stand in for accounts GoTrue would have created.
+\echo ''
+\echo '=== 15. Duplicate leads are caught before they become disputes ===='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_check  jsonb;
+begin
+  -- Johann already holds Thomas Dubois, entered as "+33 6 11 22 33 44"
+  perform login(v_marie);
+  select check_duplicate_filleul('06 11 22 33 44') into v_check;
+  perform assert((v_check ->> 'held_by_someone_else')::boolean,
+    'a differently formatted phone number still matches an existing lead');
+  perform assert(not (v_check ->> 'already_yours')::boolean,
+    'and Marie is told only that someone holds it, never who');
+
+  perform login(v_johann);
+  select check_duplicate_filleul('+33 6 11 22 33 44') into v_check;
+  perform assert((v_check ->> 'already_yours')::boolean,
+    'Johann is told it is his own existing lead');
+
+  select check_duplicate_filleul('06 99 99 99 99') into v_check;
+  perform assert(not (v_check ->> 'already_yours')::boolean
+                 and not (v_check ->> 'held_by_someone_else')::boolean,
+    'an unknown number is free to recommend');
+end $$;
+
+\echo ''
+\echo '=== 16. The feed surfaces what an admin needs to chase ============'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_row    recommendation_feed%rowtype;
+begin
+  perform login(v_johann);
+  select * into v_row from recommendation_feed
+   where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  perform assert(v_row.days_since_activity is not null and v_row.days_since_activity >= 0,
+    'every card reports how long it has been sitting');
+  perform assert(v_row.invoice_id is not null,
+    'and carries the invoice id, so the viewer opens without a second lookup');
+
+  insert into personal_notes (recommendation_id, author_id, body)
+  values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', v_johann, 'Rappeler lundi')
+  on conflict (recommendation_id, author_id) do update set body = excluded.body;
+
+  select * into v_row from recommendation_feed
+   where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  perform assert(v_row.has_note, 'the card knows the reader has a private note on it');
+
+  -- has_note is per reader: an admin must not see that a note exists
+  perform login(v_pierre);
+  select * into v_row from recommendation_feed
+   where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  perform assert(not v_row.has_note,
+    'and an admin is not even told that the apporteur wrote one');
+end $$;
+
+\echo ''
+\echo '=== 17. Stage changes notify the apporteur ========================'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_n      int;
+begin
+  perform login(v_johann);
+  insert into recommendations (id, filleul_first_name, filleul_last_name,
+                               filleul_phone, parrain_id, reward_amount)
+  values ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'Luc', 'Martin',
+          '0600000001', v_johann, 750)
+  returning id into v_reco;
+
+  perform mark_notifications_read();
+
+  perform login(v_pierre);
+  perform advance_stage(v_reco, 'a_contacter');
+
+  perform login(v_johann);
+  perform assert(unread_notification_count() = 1,
+    'advancing a stage notifies the apporteur');
+  perform assert(
+    (select kind from notifications where profile_id = v_johann and read_at is null) = 'stage_advanced',
+    'an ordinary stage reads as stage_advanced');
+
+  perform login(v_pierre);
+  perform advance_stage(v_reco, 'rdv_programme');
+  perform advance_stage(v_reco, 'proposition_envoyee');
+  perform advance_stage(v_reco, 'devis_signe');
+
+  perform login(v_johann);
+  perform assert(
+    exists (select 1 from notifications
+             where profile_id = v_johann and kind = 'reward_earned' and read_at is null),
+    'reaching the reward stage is a different kind of notification');
+
+  -- Marie has notifications of her own from her own recommendation, so the
+  -- question is not whether she has any but whether Johann's reach her.
+  perform login(v_marie);
+  select count(*) into v_n from notifications
+   where payload ->> 'recommendation_id' = v_reco::text;
+  perform assert(v_n = 0, 'one apporteur never receives another''s notifications');
+
+  perform login(v_johann);
+  perform mark_notifications_read();
+  perform assert(unread_notification_count() = 0, 'and can be cleared');
+end $$;
+
+\echo ''
+\echo '=== 18. Reminders and the commission statement ===================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid := 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  v_rem    reminders%rowtype;
+  v_total  numeric;
+begin
+  perform assert_denied(v_johann,
+    format('select * from schedule_reminder(%L, ''Relancer'', now() + interval ''2 days'')', v_reco),
+    'an apporteur cannot schedule a reminder');
+
+  perform login(v_pierre);
+  perform assert_denied(v_pierre,
+    format('select * from schedule_reminder(%L, ''Hier'', now() - interval ''1 day'')', v_reco),
+    'a reminder in the past is refused');
+
+  select * into v_rem from schedule_reminder(v_reco, 'Relancer Luc Martin',
+                                             now() + interval '2 days');
+  perform assert(v_rem.status = 'scheduled', 'an admin can schedule one');
+  perform assert(
+    (select pending_reminders from recommendation_feed where id = v_reco) = 1,
+    'and the card shows it is pending');
+
+  perform complete_reminder(v_rem.id);
+  perform assert(
+    (select pending_reminders from recommendation_feed where id = v_reco) = 0,
+    'completing it clears the count');
+
+  -- the statement an apporteur needs at tax time
+  perform login(v_johann);
+  select sum(reward_amount) into v_total from commission_statement
+   where parrain_id = v_johann;
+  perform assert(v_total > 0, 'the commission statement totals the earned rewards');
+  perform assert(
+    (select count(*) from commission_statement where parrain_id <> v_johann) = 0,
+    'and shows nobody else''s');
+end $$;
+
 reset role;
 insert into auth.users (id, email) values
   ('44444444-4444-4444-4444-444444444444', 'nouveau@example.test'),

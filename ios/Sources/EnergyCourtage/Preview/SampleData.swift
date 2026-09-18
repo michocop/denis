@@ -62,7 +62,10 @@ public enum SampleData {
             rewardAmount: 1000,
             rewardStatus: .invoiced,
             hasContract: true,
-            invoiceNumber: "FA-2026-0001"
+            invoiceNumber: "FA-2026-0001",
+            invoiceID: UUID(uuidString: "dddddddd-dddd-dddd-dddd-dddddddddddd")!,
+            daysSinceActivity: 0,
+            hasNote: true
         )
     }
 
@@ -79,7 +82,9 @@ public enum SampleData {
             events: [event("a_contacter", minutesAgo: 60)],
             rewardAmount: 1000,
             rewardStatus: .pending,
-            hasContract: false
+            hasContract: false,
+            // Deliberately stale, so the staleness banner has something to show.
+            daysSinceActivity: 11
         )
     }
 }
@@ -134,4 +139,157 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
     }
 
     enum PreviewError: Error { case notFound }
+}
+
+// MARK: - Fakes for the other screens
+//
+// Enough behaviour to exercise the states each screen actually has, so a
+// preview shows something real rather than an empty frame.
+
+public struct PreviewCatalogueRepository: CatalogueRepository {
+    public init() {}
+
+    public func loadOffers() async throws -> [Offer] {
+        try? await Task.sleep(for: .milliseconds(100))
+        return [
+            Offer(id: UUID(), title: "Suivi",
+                  description: "Nous surveillons vos dates d'échéances pour vous afin de toujours entamer les négociations au meilleur moment",
+                  position: 1),
+            Offer(id: UUID(), title: "Optimisation",
+                  description: "Nous vous trouvons le meilleur prix de molécule, optimisons les puissances de vos compteurs et analysons votre éligibilité à l'exonération de certaines taxes",
+                  position: 2),
+            Offer(id: UUID(), title: "Conseil",
+                  description: "Suite à l'audit de votre situation, nous vous présentons les solutions les plus adaptées",
+                  position: 3)
+        ]
+    }
+
+    public func save(_ offer: Offer) async throws -> Offer { offer }
+    public func delete(offerID: UUID) async throws {}
+}
+
+public struct PreviewChatRepository: ChatRepository {
+    public init() {}
+
+    public func loadThreads() async throws -> [ChatThread] {
+        try? await Task.sleep(for: .milliseconds(100))
+        return [
+            ChatThread(id: UUID(), kind: .direct, counterpartName: "Johann Lefeuvre",
+                       lastMessage: "Bonjour, une question sur Thomas Dubois.",
+                       lastMessageAt: .now, unreadCount: 2),
+            ChatThread(id: UUID(), kind: .direct, counterpartName: "Marie Durand",
+                       lastMessage: "Merci !",
+                       lastMessageAt: .now.addingTimeInterval(-7200), pinned: true),
+            ChatThread(id: UUID(), kind: .ticket, title: "Problème de virement",
+                       counterpartName: "Support",
+                       lastMessage: "Je n'ai pas reçu mon paiement.",
+                       lastMessageAt: .now.addingTimeInterval(-86_400))
+        ]
+    }
+
+    public func loadMessages(threadID: UUID) async throws -> [ChatMessage] {
+        let me = UUID()
+        return [
+            ChatMessage(id: UUID(), threadID: threadID, senderID: UUID(),
+                        senderName: "Johann Lefeuvre",
+                        body: "Bonjour, une question sur Thomas Dubois.",
+                        createdAt: .now.addingTimeInterval(-3600)),
+            ChatMessage(id: UUID(), threadID: threadID, senderID: me,
+                        senderName: "Vous",
+                        body: "Bien sûr, je vous écoute.",
+                        createdAt: .now.addingTimeInterval(-3400))
+        ]
+    }
+
+    public func send(body: String, threadID: UUID) async throws -> ChatMessage {
+        ChatMessage(id: UUID(), threadID: threadID, senderID: UUID(),
+                    senderName: "Vous", body: body, createdAt: .now)
+    }
+
+    public func markRead(threadID: UUID) async throws {}
+    public func openTicket(subject: String, body: String) async throws -> UUID { UUID() }
+}
+
+public struct PreviewProfileRepository: ProfileRepository {
+    /// Drives the mandate notice on Accueil, which only appears when one is
+    /// missing — the state worth seeing in a preview.
+    private let hasMandate: Bool
+    public init(hasMandate: Bool = false) { self.hasMandate = hasMandate }
+
+    public func currentProfile() async throws -> Profile {
+        Profile(id: UUID(), role: .apporteur, firstName: "Johann", lastName: "Lefeuvre",
+                email: "johann@example.test", companyName: "Lefeuvre Conseil",
+                city: "Lille",
+                billingMandateSignedAt: hasMandate ? .now.addingTimeInterval(-86_400 * 90) : nil)
+    }
+
+    public func save(_ profile: Profile) async throws -> Profile { profile }
+
+    public func dashboardStats() async throws -> DashboardStats {
+        try? await Task.sleep(for: .milliseconds(100))
+        return DashboardStats(activeCount: 3, archivedCount: 1, pendingTotal: 1500,
+                              earnedTotal: 1300, paidTotal: 300, conversionRate: 25)
+    }
+
+    public func signBillingMandate() async throws -> Profile {
+        try await PreviewProfileRepository(hasMandate: true).currentProfile()
+    }
+
+    public func deleteAccount() async throws {}
+}
+
+public struct PreviewInvoiceRepository: InvoiceRepository {
+    public init() {}
+
+    public func document(invoiceID: UUID) async throws -> InvoiceDocument {
+        InvoiceDocument(
+            number: "FA-2026-0001",
+            documentSha256: String(repeating: "a", count: 64),
+            issuer: .init(name: "Pierre-Louis Tettamanti", company: "Trinity Énergie",
+                          city: "AIX-EN-PEVELE", siret: nil),
+            apporteur: .init(name: "Johann Lefeuvre", company: "Lefeuvre Conseil",
+                             city: nil, siret: "12345678900011"),
+            attestation: .init(soussigne: "Johann Lefeuvre",
+                               misEnRelation: "Trinity Énergie",
+                               avec: "Thomas Dubois",
+                               prestation: "Apport d'affaires - mise en relation",
+                               intervenueLe: "17.09.2026"),
+            amount: .init(ht: "300.00", vatRate: 0, vat: "0.00", ttc: "300.00",
+                          currency: "EUR"),
+            legalMentions: "TVA non applicable – Régime d'exonération de TVA (Article 293B du Code général des impôts)",
+            paymentMethod: "Virement bancaire",
+            place: "AIX-EN-PEVELE",
+            issuedOn: "17.09.2026",
+            taxNotice: "N'oubliez pas de procéder à votre déclaration de revenu en fin d'année.",
+            status: "awaiting_signatures",
+            signatures: [
+                .init(role: "apporteur", name: "Johann Lefeuvre", signed: true,
+                      signedAt: .now),
+                .init(role: "entreprise", name: "Pierre-Louis Tettamanti", signed: false,
+                      signedAt: nil)
+            ]
+        )
+    }
+
+    public func latestInvoiceID(recommendationID: UUID) async throws -> UUID? { UUID() }
+    public func sign(invoiceID: UUID, documentSHA256: String) async throws {}
+}
+
+public struct PreviewRemindersRepository: RemindersRepository {
+    public init() {}
+
+    public func reminders(recommendationID: UUID) async throws -> [Reminder] {
+        [
+            Reminder(id: UUID(), label: "Relancer Thomas Dubois",
+                     dueAt: .now.addingTimeInterval(86_400), status: .scheduled),
+            Reminder(id: UUID(), label: "Envoyer la proposition",
+                     dueAt: .now.addingTimeInterval(-86_400), status: .scheduled)
+        ]
+    }
+
+    public func schedule(recommendationID: UUID, label: String, dueAt: Date) async throws -> Reminder {
+        Reminder(id: UUID(), label: label, dueAt: dueAt, status: .scheduled)
+    }
+
+    public func complete(reminderID: UUID) async throws {}
 }

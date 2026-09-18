@@ -1,11 +1,24 @@
 #if DEBUG
 import SwiftUI
 
+private func previewDependencies() -> Dependencies {
+    Dependencies(
+        recommendations: PreviewRecommendationsRepository(),
+        catalogue: PreviewCatalogueRepository(),
+        chat: PreviewChatRepository(),
+        profiles: PreviewProfileRepository(),
+        invoices: PreviewInvoiceRepository(),
+        reminders: PreviewRemindersRepository()
+    )
+}
+
 #Preview("Recommandations — apporteur") {
     RecommendationsView(
         model: RecommendationsViewModel(
             repository: PreviewRecommendationsRepository(), role: .apporteur
-        )
+        ),
+        dependencies: previewDependencies(),
+        signerName: "Johann Lefeuvre"
     )
 }
 
@@ -13,8 +26,28 @@ import SwiftUI
     RecommendationsView(
         model: RecommendationsViewModel(
             repository: PreviewRecommendationsRepository(), role: .admin
-        )
+        ),
+        dependencies: previewDependencies(),
+        signerName: "Pierre-Louis Tettamanti"
     )
+}
+
+#Preview("Catalogue — admin") {
+    CatalogueView(model: CatalogueViewModel(repository: PreviewCatalogueRepository(),
+                                            role: .admin))
+}
+
+#Preview("Chat") {
+    ChatView(model: ChatViewModel(repository: PreviewChatRepository()))
+}
+
+#Preview("Accueil") {
+    HomeView(model: HomeViewModel(profiles: PreviewProfileRepository())) {}
+}
+
+#Preview("Rappels") {
+    RemindersView(recommendationID: UUID(), filleulName: "Thomas Dubois",
+                  repository: PreviewRemindersRepository())
 }
 
 /// Reference state A — screenshot 1.
