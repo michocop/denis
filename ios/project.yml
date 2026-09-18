@@ -31,8 +31,11 @@ targets:
     platform: iOS
     sources:
       - path: App
-    info:
-      path: App/Info.plist
+    # No `info:` block on purpose. That key makes XcodeGen GENERATE an
+    # Info.plist at the given path, overwriting the committed one -- which is
+    # how the app lost its UILaunchScreen and ran letterboxed, and how the
+    # Supabase keys disappeared from the bundle. INFOPLIST_FILE below points
+    # at the real file instead.
     dependencies:
       - package: EnergyCourtage
         product: EnergyCourtage
@@ -41,3 +44,6 @@ targets:
         INFOPLIST_FILE: App/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.trinityenergie.energycourtage
         GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"      # iPhone; the source app is phone-only
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.1"
