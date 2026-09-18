@@ -175,7 +175,9 @@ public struct RecommendationsView: View {
                 return
             case .reset:
                 try await repository.resetPipeline(recommendationID: reco.id)
-            case .archive:
+            case .archiveWon:
+                try await repository.archive(recommendationID: reco.id, won: true)
+            case .archiveLost:
                 try await repository.archive(recommendationID: reco.id, won: false)
             case .delete:
                 try await repository.softDelete(recommendationID: reco.id)

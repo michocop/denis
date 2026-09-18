@@ -9,7 +9,7 @@ public struct RecommendationActionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     public enum Action: Hashable {
-        case reassign, reminders, reset, archive, delete, issueInvoice
+        case reassign, reminders, reset, archiveWon, archiveLost, delete, issueInvoice
     }
 
     private let recommendation: Recommendation
@@ -39,7 +39,7 @@ public struct RecommendationActionSheet: View {
             if let action = confirming {
                 Button(confirmVerb(action),
                        role: action == .reset || action == .issueInvoice
-                             ? nil : .destructive) {
+                             || action == .archiveWon ? nil : .destructive) {
                     onAction(action)
                     confirming = nil
                     dismiss()
@@ -139,7 +139,9 @@ public struct RecommendationActionSheet: View {
             Divider().padding(.leading, 56)
             actionRow("Remettre à zéro", icon: "arrow.counterclockwise") { confirming = .reset }
             Divider().padding(.leading, 56)
-            actionRow("Archiver", icon: "archivebox") { confirming = .archive }
+            actionRow("Affaire gagnée", icon: "checkmark.seal") { confirming = .archiveWon }
+            Divider().padding(.leading, 56)
+            actionRow("Affaire perdue", icon: "archivebox") { confirming = .archiveLost }
             Divider().padding(.leading, 56)
             actionRow("Supprimer", icon: "trash", tint: Theme.Palette.destructive) {
                 confirming = .delete
@@ -173,7 +175,8 @@ public struct RecommendationActionSheet: View {
     private var confirmTitle: String {
         switch confirming {
         case .reset:   return "Remettre le suivi à zéro ?"
-        case .archive: return "Archiver cette recommandation ?"
+        case .archiveWon:  return "Clôturer comme gagnée ?"
+        case .archiveLost: return "Clôturer comme perdue ?"
         case .delete:  return "Supprimer cette recommandation ?"
         case .issueInvoice: return "Établir la facture ?"
         default:       return ""
@@ -184,8 +187,13 @@ public struct RecommendationActionSheet: View {
         switch confirming {
         case .reset:
             return "Toutes les étapes validées seront annulées. L'historique est conservé."
-        case .archive:
-            return "Elle passera dans l'onglet Archivées. Une affaire perdue annule la récompense si elle n'a pas encore été facturée."
+        case .archiveWon:
+            return "Elle passera dans l'onglet Archivées. La commission est conservée."
+        case .archiveLost:
+            // Said explicitly: this is the one that takes money off the
+            // apporteur, and until now it was the only archive the app could
+            // perform — every closed deal cancelled the commission.
+            return "Elle passera dans l'onglet Archivées et la commission sera annulée, sauf si elle a déjà été facturée."
         case .delete:
             return "Elle disparaîtra des listes. Si une facture existe, elle est conservée : la loi impose de garder les factures dix ans."
         case .issueInvoice:
@@ -200,7 +208,8 @@ public struct RecommendationActionSheet: View {
     private func confirmVerb(_ action: Action) -> String {
         switch action {
         case .reset:   return "Remettre à zéro"
-        case .archive: return "Archiver"
+        case .archiveWon:  return "Affaire gagnée"
+        case .archiveLost: return "Affaire perdue"
         case .delete:  return "Supprimer"
         case .issueInvoice: return "Établir la facture"
         default:       return "Confirmer"

@@ -1403,6 +1403,50 @@ begin
     'signing out forgets this device, so the next person does not get their notifications');
 end $$;
 
+
+\echo ''
+\echo '=== 28. Winning a deal keeps the commission ======================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_won    uuid;
+  v_lost   uuid;
+  v_stage  text;
+begin
+  -- Only the losing half was covered, and only the losing half was reachable
+  -- from the app: every archive it could perform passed won = false, which
+  -- cancels an uninvoiced commission. Closing a successful deal took the
+  -- money off the apporteur.
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+  values ('Sofia', 'Nunes', v_johann) returning id into v_won;
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+  values ('Karim', 'Benali', v_johann) returning id into v_lost;
+
+  perform login(v_pierre);
+  for v_stage in select key from stages order by position loop
+    perform advance_stage(v_won, v_stage);
+    perform advance_stage(v_lost, v_stage);
+    exit when (select is_reward_trigger from stages where key = v_stage);
+  end loop;
+
+  perform assert((select reward_status from recommendations where id = v_won) = 'earned',
+    'both commissions are earned to begin with');
+
+  perform archive_recommendation(v_won, true);
+  perform assert((select status from recommendations where id = v_won) = 'archived_won',
+    'a won deal is archived as won');
+  perform assert((select reward_status from recommendations where id = v_won) = 'earned',
+    'and the commission survives it');
+
+  perform archive_recommendation(v_lost, false);
+  perform assert((select status from recommendations where id = v_lost) = 'archived_lost',
+    'a lost deal is archived as lost');
+  perform assert((select reward_status from recommendations where id = v_lost) = 'cancelled',
+    'and that one does cancel the commission');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

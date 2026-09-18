@@ -176,6 +176,28 @@ for f in FILES:
         if j < len(lines) and lines[j] == line:
             problems_attrs.append(f"DUPLICATE  attribute {line} — {f.name}:{i + 1}")
 
+# A `func` with no body outside a protocol. Only a protocol may declare one;
+# anywhere else it is a syntax error. Twice now a string-anchored edit has
+# inserted a protocol requirement into the extension that implements it,
+# because the same signature appears in both and replace() took the first.
+for f in FILES:
+    depth = 0
+    in_protocol_at = None
+    for lineno, raw in enumerate(f.read_text().splitlines(), 1):
+        line = raw.split("//")[0]
+        if re.match(rf"^\s*{MODS}protocol\s+\w+", line):
+            in_protocol_at = depth
+        stripped = line.strip()
+        if (in_protocol_at is None
+                and re.match(rf"^\s*{MODS}func\s+\w+", line)
+                and stripped.endswith(("throws", "async", ")"))
+                and "{" not in line and "->" not in line.split(")")[-1]):
+            problems_attrs.append(
+                f"NO BODY    func declared without a body outside a protocol — {f.name}:{lineno}")
+        depth += line.count("{") - line.count("}")
+        if in_protocol_at is not None and depth <= in_protocol_at:
+            in_protocol_at = None
+
 problems = list(problems_attrs)
 
 for name, where in sorted(undeclared.items()):
