@@ -220,4 +220,88 @@ final class IntegrationTests: XCTestCase {
         let rewritten = try await repository.note(recommendationID: target.id)
         XCTAssertEqual(rewritten, "Rappeler mardi")
     }
+
+    // MARK: - Messaging
+
+    /// The chat list read from `threads` for a long time, which has no name on
+    /// a direct conversation, no last message and no unread count -- so every
+    /// row said "Conversation / Aucun message" and the decoder was perfectly
+    /// happy. Only a real round trip catches that.
+    func testAConversationComesBackWithSomethingToShow() async throws {
+        let johann = SupabaseChatRepository(client: await signedIn(as: Self.johann))
+        let pierre = SupabaseChatRepository(client: await signedIn(as: Self.pierre))
+
+        let threadID = try await johann.startSupportThread()
+        _ = try await johann.send(body: "Une question sur Thomas Dubois.", threadID: threadID)
+        // Read first, so the count below is about this test's message and not
+        // whatever an earlier test left in the same conversation. These run
+        // against one database, in one order, and a test that only passes
+        // first is worse than no test.
+        try await johann.markRead(threadID: threadID)
+        _ = try await pierre.send(body: "Je vous réponds tout de suite.", threadID: threadID)
+
+        let mine = try await johann.loadThreads()
+        let row = try XCTUnwrap(mine.first { $0.id == threadID })
+        XCTAssertEqual(row.counterpartName, "Pierre-Louis Tettamanti",
+                       "a direct conversation is named after the other person")
+        XCTAssertEqual(row.lastMessage, "Je vous réponds tout de suite.")
+        XCTAssertEqual(row.unreadCount, 1, "and counts only what I have not read")
+
+        // The name has to survive: an apporteur can read only their own row in
+        // profiles, so a naive join would drop every message an admin sent.
+        let messages = try await johann.loadMessages(threadID: threadID)
+        XCTAssertEqual(messages.last?.senderName, "Pierre-Louis Tettamanti")
+
+        try await johann.markRead(threadID: threadID)
+        let cleared = try await johann.loadThreads()
+        XCTAssertEqual(cleared.first { $0.id == threadID }?.unreadCount, 0)
+
+        // pinning is per reader, not per thread
+        try await johann.setFlags(threadID: threadID, pinned: true, archived: nil)
+        let pinned = try await johann.loadThreads()
+        XCTAssertTrue(pinned.first { $0.id == threadID }?.pinned == true)
+        let theirs = try await pierre.loadThreads()
+        XCTAssertFalse(theirs.first { $0.id == threadID }?.pinned == true)
+
+        // and starting the conversation again must reuse it
+        let again = try await johann.startSupportThread()
+        XCTAssertEqual(again, threadID)
+    }
+
+    // MARK: - Notifications
+
+    func testAMessageNotifiesTheOtherSideAndNotTheSender() async throws {
+        let johann = SupabaseChatRepository(client: await signedIn(as: Self.johann))
+        let pierre = SupabaseChatRepository(client: await signedIn(as: Self.pierre))
+        let inbox = SupabaseNotificationsRepository(client: await signedIn(as: Self.johann))
+
+        let threadID = try await johann.startSupportThread()
+        _ = try await pierre.send(body: "Pouvez-vous rappeler Thomas Dubois ?",
+                                  threadID: threadID)
+
+        let items = try await inbox.notifications()
+        let arrived = try XCTUnwrap(items.first { $0.kind == "message_received" })
+        XCTAssertEqual(arrived.title, "Pierre-Louis Tettamanti")
+        XCTAssertEqual(arrived.body, "Pouvez-vous rappeler Thomas Dubois ?")
+        XCTAssertEqual(arrived.threadId, threadID,
+                       "so tapping it can open the conversation it is about")
+
+        let before = try await inbox.unreadCount()
+        XCTAssertGreaterThan(before, 0)
+        try await inbox.markAllRead()
+        let after = try await inbox.unreadCount()
+        XCTAssertEqual(after, 0)
+
+        // writing to yourself notifies nobody
+        _ = try await johann.send(body: "Je le rappelle cet après-midi.", threadID: threadID)
+        let mine = try await inbox.notifications()
+        XCTAssertFalse(mine.contains { $0.title == "Johann Lefeuvre" },
+                       "nobody is notified of their own message")
+    }
+
+    func testRegisteringTheSameDeviceTwiceIsNotAnError() async throws {
+        let inbox = SupabaseNotificationsRepository(client: await signedIn(as: Self.johann))
+        try await inbox.register(deviceToken: "integration-token")
+        try await inbox.register(deviceToken: "integration-token")
+    }
 }
