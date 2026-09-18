@@ -34,6 +34,16 @@ supabase link --project-ref <your-project-ref>
 supabase db push                            # applies supabase/migrations/ in order
 ```
 
+**Run these from the repository root.** `supabase/config.toml` is committed, so
+`supabase init` is neither needed nor wanted — run it elsewhere and `db push`
+finds no migrations and cheerfully applies nothing.
+
+Then check the result in one command:
+
+```bash
+scripts/verify_supabase.sh https://<ref>.supabase.co <publishable-key>
+```
+
 `db push` applies only `supabase/migrations/`. Never apply
 `supabase/local/00_auth_shim.sql` — it fakes `auth.users` and `auth.uid()` for
 the offline test harness, and a real project already has them.
