@@ -8,7 +8,9 @@
 # Requires Xcode and xcodegen (brew install xcodegen).
 set -euo pipefail
 
-DEVICE="${DEVICE:-iPhone 15}"
+# Left empty on purpose: a hardcoded name like "iPhone 15" only exists on the
+# machine it was written on. Set DEVICE="iPhone 17 Pro" to force one.
+DEVICE="${DEVICE:-}"
 BUNDLE_ID="com.trinityenergie.energycourtage"
 MODE="demo"
 EXTRA_ARGS=()
@@ -63,12 +65,71 @@ if [ "$MODE" = "live" ] && [ -z "${SUPABASE_URL:-}" ]; then
   exit 1
 fi
 
+# Resolve a real simulator on THIS machine and address it by UDID, which
+# cannot be ambiguous the way a name can.
+pick_device() {
+  local json
+  json="$(xcrun simctl list devices available -j)" || {
+    echo "Could not list simulators. Is Xcode installed and its license accepted?" >&2
+    echo "Try: sudo xcodebuild -license accept" >&2
+    exit 1
+  }
+
+  UDID="$(printf '%s' "$json" | DEVICE_NAME="$DEVICE" python3 -c '
+import json, os, re, sys
+
+wanted = os.environ.get("DEVICE_NAME", "").strip()
+runtimes = json.load(sys.stdin)["devices"]
+
+def ios_version(runtime):
+    digits = re.findall(r"\d+", runtime.split(".")[-1])
+    return tuple(int(d) for d in digits) or (0,)
+
+def model_rank(name):
+    numbers = re.findall(r"\d+", name)
+    return (int(numbers[0]) if numbers else 0, "Pro" in name, "Max" in name)
+
+candidates = []
+for runtime, devices in runtimes.items():
+    if "iOS" not in runtime:
+        continue
+    for device in devices:
+        if not device.get("isAvailable"):
+            continue
+        if wanted:
+            if device["name"] == wanted:
+                candidates.append((ios_version(runtime), (0,), device))
+        elif "iPhone" in device["name"]:
+            candidates.append((ios_version(runtime), model_rank(device["name"]), device))
+
+if not candidates:
+    sys.exit(0)
+candidates.sort(key=lambda item: (item[0], item[1]))
+print(candidates[-1][2]["udid"], candidates[-1][2]["name"], sep="\t")
+')"
+
+  if [ -z "$UDID" ]; then
+    echo "No available iPhone simulator found." >&2
+    echo "Installed simulators:" >&2
+    xcrun simctl list devices available >&2
+    echo >&2
+    echo "Install one in Xcode: Settings > Components." >&2
+    exit 1
+  fi
+
+  DEVICE_NAME="$(printf '%s' "$UDID" | cut -f2)"
+  UDID="$(printf '%s' "$UDID" | cut -f1)"
+  echo "==> Using $DEVICE_NAME ($UDID)"
+}
+
+pick_device
+
 echo "==> Building"
 xcodebuild build \
   -project ios/EnergyCourtage.xcodeproj \
   -scheme EnergyCourtageApp \
   -sdk iphonesimulator \
-  -destination "platform=iOS Simulator,name=$DEVICE" \
+  -destination "id=$UDID" \
   -derivedDataPath ios/.build \
   CODE_SIGNING_ALLOWED=NO \
   SUPABASE_URL="${SUPABASE_URL:-}" \
@@ -87,20 +148,20 @@ if [ ! -d "$APP" ]; then
   exit 1
 fi
 
-echo "==> Booting $DEVICE"
+echo "==> Booting $DEVICE_NAME"
 # `boot` fails if it is already booted, which is not an error here.
-xcrun simctl boot "$DEVICE" 2>/dev/null || true
+xcrun simctl boot "$UDID" 2>/dev/null || true
 open -a Simulator
-xcrun simctl bootstatus "$DEVICE" -b
+xcrun simctl bootstatus "$UDID" -b
 
 echo "==> Installing"
-xcrun simctl install booted "$APP"
+xcrun simctl install "$UDID" "$APP"
 
 echo "==> Launching"
 if [ "$MODE" = "demo" ]; then
-  xcrun simctl launch booted "$BUNDLE_ID" -demo "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+  xcrun simctl launch "$UDID" "$BUNDLE_ID" -demo "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
 else
-  xcrun simctl launch booted "$BUNDLE_ID"
+  xcrun simctl launch "$UDID" "$BUNDLE_ID"
 fi
 
 # simctl returns before the app is on screen, and the Simulator window can
@@ -108,4 +169,4 @@ fi
 open -a Simulator
 echo
 echo "If the Simulator window is empty, bring it to the front (Cmd-Tab)."
-echo "App: $BUNDLE_ID  Device: $DEVICE"
+echo "App: $BUNDLE_ID  Device: $DEVICE_NAME"
