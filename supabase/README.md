@@ -69,3 +69,38 @@ row is invisible to its own author fails outright. `threads` needed
   invoice's canonical text. The client signs that value rather than
   recomputing it, because a canonicalisation shared between Swift and SQL would
   have to stay byte-identical forever.
+
+## Performance
+
+`scripts/db_bench.sh` builds a synthetic database — 2 000 apporteurs, 40 000
+recommendations, 80 000 stage events — and times the queries the app makes.
+Run it after any schema change.
+
+| | Before | After |
+|---|---:|---:|
+| Apporteur opens the list | 13 ms | 13 ms |
+| Apporteur dashboard | **211 ms** | **7 ms** |
+| Admin opens the list | **269 ms / 24 025 rows** | **9 ms / 20 rows** |
+| Admin dashboard | **225 ms** | 10 ms |
+| Search by filleul | **255 ms** (client-side, whole table) | 10 ms |
+| Search by apporteur | not possible | 11 ms |
+
+Three things caused all of it:
+
+**A policy written `x = auth.uid() or is_admin(auth.uid())` runs once per
+row**, and the OR stops the planner using the index on `x` at all — an
+apporteur's own dashboard was scanning 40 000 rows to aggregate 14. Wrapping
+each call in a scalar subquery — `(select auth.uid())` — makes it an InitPlan,
+evaluated once per statement. Same policy, same meaning, thirty times faster.
+Any new policy must follow the same shape.
+
+**The list had no pagination.** `recommendation_page()` is keyset-paginated —
+"everything older than the row I last saw" — rather than OFFSET, which
+re-reads and discards every skipped row (page 200 costs 200× page 1) and
+skips or repeats entries when rows shift underneath the reader.
+
+**Search ran in Swift**, so every search downloaded the whole list first. It
+is now a trigram index over a denormalised `search_text`, covering the filleul
+*and* the apporteur's name. The denormalisation is maintained by trigger, and
+the test suite checks that renaming an apporteur keeps their recommendations
+findable.

@@ -60,12 +60,21 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         }
     }
 
-    public func loadRecommendations(archived: Bool) async throws -> [Recommendation] {
+    public func loadPage(archived: Bool, search: String,
+                         cursor: RecommendationCursor?) async throws -> [Recommendation] {
         let pipeline = try await loadPipeline()
-        let rows: [FeedRow] = try await client.get("recommendation_feed", query: [
-            URLQueryItem(name: "status", value: archived ? "neq.active" : "eq.active"),
-            URLQueryItem(name: "order", value: "created_at.desc")
-        ])
+        // Paging and searching both happen in one RPC, because the index that
+        // makes search fast lives on the base table, not on the view.
+        var body: [String: AnyEncodable] = [
+            "p_archived": AnyEncodable(archived),
+            "p_limit": AnyEncodable(20)
+        ]
+        if !search.isEmpty { body["p_search"] = AnyEncodable(search) }
+        if let cursor {
+            body["p_cursor_at"] = AnyEncodable(ISO8601DateFormatter().string(from: cursor.createdAt))
+            body["p_cursor_id"] = AnyEncodable(cursor.id.uuidString)
+        }
+        let rows: [FeedRow] = try await client.rpc("recommendation_page", body: body)
         return rows.map { row in map(row, pipeline: pipeline) }
     }
 

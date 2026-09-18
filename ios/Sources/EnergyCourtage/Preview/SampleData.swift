@@ -106,9 +106,15 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
         return SampleData.stages
     }
 
-    public func loadRecommendations(archived: Bool) async throws -> [Recommendation] {
+    public func loadPage(archived: Bool, search: String,
+                         cursor: RecommendationCursor?) async throws -> [Recommendation] {
         try? await Task.sleep(for: delay)
-        return items.filter { $0.status.isArchived == archived }
+        guard cursor == nil else { return [] }   // previews hold one page
+        return items
+            .filter { $0.status.isArchived == archived }
+            .filter { search.isEmpty
+                      || $0.filleulName.localizedCaseInsensitiveContains(search)
+                      || $0.parrainName.localizedCaseInsensitiveContains(search) }
     }
 
     public func advanceStage(recommendationID: UUID, stageKey: String) async throws -> Recommendation {

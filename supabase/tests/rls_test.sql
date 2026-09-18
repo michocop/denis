@@ -740,6 +740,65 @@ begin
     'and shows nobody else''s');
 end $$;
 
+\echo ''
+\echo '=== 19. Pagination and search behave at scale ====================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_n      int;
+  v_first  recommendation_feed%rowtype;
+  v_second recommendation_feed%rowtype;
+begin
+  -- Inserted as Johann, not as the admin: the insert policy requires
+  -- parrain_id = auth.uid(), so an admin cannot file a recommendation in
+  -- someone else's name. (Worth confirming with the client that this matches
+  -- how they work -- a phoned-in referral would need a separate RPC.)
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, filleul_phone,
+                               parrain_id, created_at)
+  select 'Page', 'Test' || g, '0620000' || lpad(g::text, 3, '0'), v_johann,
+         now() - (g || ' hours')::interval
+  from generate_series(1, 25) g;
+
+  perform login(v_pierre);
+  select count(*) into v_n from recommendation_page(false, null, null, null, 20);
+  perform assert(v_n = 20, 'a page is bounded, however many rows exist');
+
+  select count(*) into v_n from recommendation_page(false, null, null, null, 5000);
+  perform assert(v_n <= 100, 'and a caller cannot ask for the whole table');
+
+  -- keyset: the next page starts strictly after the last row of the previous
+  select * into v_first from recommendation_page(false, null, null, null, 1);
+  select * into v_second
+    from recommendation_page(false, null, v_first.created_at, v_first.id, 1);
+  perform assert(v_second.id <> v_first.id,
+    'the next page never repeats the row the cursor pointed at');
+  perform assert(v_second.created_at <= v_first.created_at,
+    'and continues in the same order');
+
+  -- search reaches both sides of the relationship
+  select count(*) into v_n from recommendation_page(false, 'Test7', null, null, 20);
+  perform assert(v_n >= 1, 'search finds a filleul by name');
+
+  select count(*) into v_n from recommendation_page(false, 'Lefeuvre', null, null, 20);
+  perform assert(v_n >= 1, 'and finds recommendations by their apporteur''s name');
+
+  -- the denormalised name has to stay true, or an apporteur vanishes
+  perform login(v_johann);
+  update profiles set last_name = 'Lefeuvre-Martin' where id = v_johann;
+  perform login(v_pierre);
+  select count(*) into v_n from recommendation_page(false, 'Lefeuvre-Martin', null, null, 20);
+  perform assert(v_n >= 1, 'renaming an apporteur keeps their recommendations findable');
+  perform login(v_johann);
+  update profiles set last_name = 'Lefeuvre' where id = v_johann;
+
+  -- and search still respects who is asking
+  perform login('22222222-2222-2222-2222-222222222222');
+  select count(*) into v_n from recommendation_page(false, 'Test7', null, null, 20);
+  perform assert(v_n = 0, 'search never reaches another apporteur''s recommendations');
+end $$;
+
 reset role;
 insert into auth.users (id, email) values
   ('44444444-4444-4444-4444-444444444444', 'nouveau@example.test'),

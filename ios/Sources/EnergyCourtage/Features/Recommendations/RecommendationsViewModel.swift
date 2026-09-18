@@ -5,7 +5,10 @@ import Observation
 /// previews and tests, and by Supabase in the app.
 public protocol RecommendationsRepository: Sendable {
     func loadPipeline() async throws -> [Stage]
-    func loadRecommendations(archived: Bool) async throws -> [Recommendation]
+    /// One page, newest first. `cursor` is the last row already shown; passing
+    /// nil asks for the first page.
+    func loadPage(archived: Bool, search: String,
+                  cursor: RecommendationCursor?) async throws -> [Recommendation]
     func advanceStage(recommendationID: UUID, stageKey: String) async throws -> Recommendation
 
     // Creation, and the five admin powers behind the action sheet.
@@ -81,6 +84,19 @@ public extension RecommendationsRepository {
     func loadAdmins() async throws -> [Profile] { [] }
 }
 
+/// Where the last page stopped. A position in the ordering rather than a row
+/// count, so rows arriving while someone reads cannot make the next page skip
+/// or repeat entries -- which is exactly what OFFSET does.
+public struct RecommendationCursor: Hashable, Sendable {
+    public let createdAt: Date
+    public let id: UUID
+
+    public init(createdAt: Date, id: UUID) {
+        self.createdAt = createdAt
+        self.id = id
+    }
+}
+
 public enum RecommendationFilter: Hashable, Sendable {
     case active, archived
 
@@ -106,6 +122,10 @@ public final class RecommendationsViewModel {
     public var filter: RecommendationFilter = .active
     public var query: String = ""
     public var expandedID: UUID?
+    public private(set) var isLoadingMore = false
+    public private(set) var hasMorePages = true
+    private var searchTask: Task<Void, Never>?
+    private static let pageSize = 20
 
     public let role: UserRole
     private let repository: RecommendationsRepository
@@ -134,16 +154,10 @@ public final class RecommendationsViewModel {
         }
     }
 
-    /// Search covers the filleul and the parrain, which is what the source
-    /// app's single field implies.
-    public var visibleRecommendations: [Recommendation] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return recommendations }
-        return recommendations.filter {
-            $0.filleulName.localizedCaseInsensitiveContains(trimmed)
-            || $0.parrainName.localizedCaseInsensitiveContains(trimmed)
-        }
-    }
+    /// Search runs on the server, against an index. Filtering in Swift meant
+    /// downloading every recommendation first, which is fine for a demo and
+    /// hopeless for an admin with forty thousand of them.
+    public var visibleRecommendations: [Recommendation] { recommendations }
 
     public var isEmpty: Bool {
         state == .loaded && visibleRecommendations.isEmpty
@@ -154,13 +168,56 @@ public final class RecommendationsViewModel {
         state = .loading
         do {
             async let pipelineTask = repository.loadPipeline()
-            async let recosTask = repository.loadRecommendations(archived: filter.isArchived)
+            async let pageTask = repository.loadPage(
+                archived: filter.isArchived, search: trimmedQuery, cursor: nil
+            )
             pipeline = try await pipelineTask
-            recommendations = try await recosTask
+            recommendations = try await pageTask
+            hasMorePages = recommendations.count == Self.pageSize
             hasStaleData = false
             state = .loaded
         } catch {
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Called when the last visible card appears. Guarded against re-entry,
+    /// because a fast scroll fires it several times before the first returns.
+    @MainActor
+    public func loadNextPageIfNeeded(currentItem: Recommendation) async {
+        guard hasMorePages, !isLoadingMore,
+              currentItem.id == recommendations.last?.id,
+              let last = recommendations.last else { return }
+
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+
+        let cursor = RecommendationCursor(createdAt: last.createdAt, id: last.id)
+        do {
+            let page = try await repository.loadPage(
+                archived: filter.isArchived, search: trimmedQuery, cursor: cursor
+            )
+            // De-duplicate: a row edited between pages can appear twice.
+            let known = Set(recommendations.map(\.id))
+            recommendations.append(contentsOf: page.filter { !known.contains($0.id) })
+            hasMorePages = page.count == Self.pageSize
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Debounced so typing a name is one request, not one per keystroke.
+    @MainActor
+    public func searchChanged() {
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            await self?.load()
         }
     }
 

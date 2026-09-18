@@ -127,6 +127,7 @@ public struct RecommendationsView: View {
             model.startWatching()
         }
         .onChange(of: model.filter) { _, _ in Task { await model.load() } }
+        .onChange(of: model.query) { _, _ in model.searchChanged() }
     }
 
     private func openNotes(_ reco: Recommendation) async {
@@ -206,6 +207,13 @@ public struct RecommendationsView: View {
                             }
                         }
                     }
+                    .task { await model.loadNextPageIfNeeded(currentItem: reco) }
+                }
+
+                if model.isLoadingMore {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Theme.Spacing.l)
                 }
             }
         }
