@@ -60,14 +60,32 @@ public struct SupabaseCommissionsRepository: CommissionsRepository {
         return try await client.get("commission_statement", query: query)
     }
 
+}
+
+/// Reads `notification_feed`, which renders the title and body in SQL so the
+/// row here and a lock-screen banner cannot say different things.
+public struct SupabaseNotificationsRepository: NotificationsRepository {
+    private let client: SupabaseClient
+    public init(client: SupabaseClient) { self.client = client }
+
     public func notifications() async throws -> [AppNotification] {
-        try await client.get("notifications", query: [
+        try await client.get("notification_feed", query: [
             URLQueryItem(name: "order", value: "created_at.desc"),
             URLQueryItem(name: "limit", value: "50")
         ])
     }
 
-    public func markNotificationsRead() async throws {
+    public func unreadCount() async throws -> Int {
+        try await client.rpc("unread_notification_count")
+    }
+
+    public func markAllRead() async throws {
         try await client.rpcVoid("mark_notifications_read")
+    }
+
+    public func register(deviceToken: String) async throws {
+        try await client.rpcVoid("register_device_token", body: [
+            "p_token": AnyEncodable(deviceToken)
+        ])
     }
 }

@@ -80,45 +80,5 @@ public struct CommissionLine: Identifiable, Hashable, Codable, Sendable {
 
 public protocol CommissionsRepository: Sendable {
     func statement(year: Int?) async throws -> [CommissionLine]
-    func notifications() async throws -> [AppNotification]
-    func markNotificationsRead() async throws
 }
 
-public struct AppNotification: Identifiable, Hashable, Codable, Sendable {
-    public let id: UUID
-    public var kind: String
-    public var payload: [String: String]
-    public var readAt: Date?
-    public var createdAt: Date
-
-    public var title: String {
-        switch kind {
-        case "stage_advanced": return "Votre recommandation a avancé"
-        case "reward_earned":  return "Récompense acquise"
-        case "payout_sent":    return "Paiement en route"
-        default:               return "Mise à jour"
-        }
-    }
-
-    public var detail: String {
-        switch kind {
-        case "stage_advanced", "reward_earned":
-            let filleul = payload["filleul"] ?? ""
-            let stage = payload["stage_label"] ?? ""
-            return "\(filleul) — \(stage)"
-        case "payout_sent":
-            let number = payload["invoice_number"] ?? ""
-            return "Facture \(number)"
-        default:
-            return ""
-        }
-    }
-
-    public var icon: String {
-        switch kind {
-        case "reward_earned": return "gift.fill"
-        case "payout_sent":   return "eurosign.circle.fill"
-        default:              return "arrow.forward.circle.fill"
-        }
-    }
-}

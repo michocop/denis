@@ -7,6 +7,9 @@ public struct RootView: View {
 
     @State private var tab: Tab = .home
     @State private var showsCreate = false
+    @State private var showsNotifications = false
+    @State private var notifications: NotificationsViewModel
+    @State private var connectivity = Connectivity()
 
     private let dependencies: Dependencies
     private let role: UserRole
@@ -22,10 +25,26 @@ public struct RootView: View {
         self.signerName = signerName
         self.isDemo = isDemo
         self.onSignOut = onSignOut
+        _notifications = State(wrappedValue:
+            NotificationsViewModel(repository: dependencies.notifications))
     }
 
     public var body: some View {
         VStack(spacing: 0) {
+            // Said plainly, because a request that fails with no signal used
+            // to come back as "Une erreur est survenue" — which reads as "the
+            // app is broken" to someone standing in a client's basement.
+            if !connectivity.isOnline {
+                Label("Hors ligne — les modifications attendront le réseau",
+                      systemImage: "wifi.slash")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(Theme.Palette.textSecondary)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // Said out loud, because the sample data contains plausible names
             // and four-figure commissions, and nobody should have to guess
             // whether what they are looking at is real.
@@ -39,15 +58,59 @@ public struct RootView: View {
             }
             tabs
         }
+        .animation(.snappy, value: connectivity.isOnline)
+        .sheet(isPresented: $showsNotifications) {
+            NotificationsView(model: notifications)
+                .onDisappear { Task { await notifications.refreshBadge() } }
+        }
+        .task {
+            // Asked for here rather than at launch: a permission prompt on the
+            // first screen, before the app has done anything, is the one
+            // people decline.
+            await LocalNotifications.requestPermission()
+            PushRegistration.registerIfAvailable()
+        }
+        .task(id: connectivity.reconnections) {
+            // Re-read on every reconnection as well as at launch, so coming
+            // out of a tunnel does not leave a stale badge until the next poll.
+            await notifications.refreshBadge()
+            await LocalNotifications.setBadge(notifications.unread)
+        }
+        .task {
+            for await _ in dependencies.changeMonitor.changes() {
+                await notifications.refreshBadge()
+                await LocalNotifications.setBadge(notifications.unread)
+            }
+        }
+    }
+
+    /// The bell, with its unread count. Placed in the navigation bar of each
+    /// tab rather than as a fifth tab: the four tabs are what the original
+    /// has, and notifications are a thing you check, not a place you go.
+    @ToolbarContentBuilder
+    private var notificationsButton: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { showsNotifications = true } label: {
+                Image(systemName: notifications.unread > 0 ? "bell.badge" : "bell")
+                    .foregroundStyle(Theme.Palette.brand)
+            }
+            .accessibilityLabel(notifications.unread > 0
+                                ? "Notifications, \(notifications.unread) non lues"
+                                : "Notifications")
+        }
     }
 
     private var tabs: some View {
         TabView(selection: $tab) {
-            HomeView(model: HomeViewModel(profiles: dependencies.profiles)) {
-                showsCreate = true
+            NavigationStack {
+                HomeView(model: HomeViewModel(profiles: dependencies.profiles)) {
+                    showsCreate = true
+                }
+                .toolbar { notificationsButton }
             }
             .tabItem { Label("Accueil", systemImage: "house") }
             .tag(Tab.home)
+            .badge(notifications.unread)
 
             RecommendationsView(
                 model: RecommendationsViewModel(repository: dependencies.recommendations,

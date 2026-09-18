@@ -35,6 +35,31 @@ public final class ThreadDetailViewModel {
         }
     }
 
+    /// Polls while the conversation is on screen. A five-second beat is
+    /// wrong for a chat app and right for this one: the parties are an
+    /// apporteur and their account manager exchanging a few messages a day,
+    /// and a WebSocket held open through backgrounding, token refresh and a
+    /// flaky mobile network is a great deal of reconnection logic to get
+    /// wrong for a latency nobody in this conversation will notice.
+    ///
+    /// Only appends what is new, so a reply arriving mid-typing does not
+    /// replace the array under the composer.
+    @MainActor
+    public func watch() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            guard let fresh = try? await repository.loadMessages(threadID: thread.id),
+                  fresh.count > messages.count else { continue }
+
+            let known = Set(messages.map(\.id))
+            let arrived = fresh.filter { !known.contains($0.id) }
+            guard !arrived.isEmpty else { continue }
+            messages.append(contentsOf: arrived)
+            try? await repository.markRead(threadID: thread.id)
+        }
+    }
+
     /// Optimistic send: the bubble appears immediately and is reconciled when
     /// the server answers. On failure it is rolled back and the text handed
     /// back to the composer, rather than vanishing with the message.
@@ -102,6 +127,7 @@ public struct ThreadDetailView: View {
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
+        .task { await model.watch() }
     }
 
     private var composer: some View {

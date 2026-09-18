@@ -99,6 +99,7 @@ public struct RemindersView: View {
             Button {
                 Task {
                     try? await repository.complete(reminderID: reminder.id)
+                    LocalNotifications.cancel(reminderID: reminder.id)
                     await load()
                 }
             } label: {
@@ -135,7 +136,12 @@ public struct RemindersView: View {
         let text = label.trimmingCharacters(in: .whitespaces).isEmpty
             ? "Relancer \(filleulName)" : label
         do {
-            _ = try await repository.schedule(recommendationID: recommendationID,
+            let reminder = try await repository.schedule(recommendationID: recommendationID,
+                                                         label: text, dueAt: dueAt)
+            // Mirrored onto the device, so the relance fires with the app
+            // closed. A reminder that only exists server-side is one the
+            // apporteur finds out about the next time they happen to look.
+            await LocalNotifications.schedule(reminderID: reminder.id,
                                               label: text, dueAt: dueAt)
             label = ""
             errorMessage = nil

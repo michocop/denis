@@ -133,6 +133,12 @@ SDK = {
     "XCTUnwrap", "ZStack", "NSString", "NSAttributedString", "NSDecimalNumber",
     "FileManager", "NavigationStack", "NavigationLink", "Menu", "Section",
     "Form", "Group", "GeometryReader", "Font", "Angle", "Animation",
+    "DispatchQueue", "NWPathMonitor", "UNUserNotificationCenter",
+    "UNMutableNotificationContent", "UNCalendarNotificationTrigger",
+    "UNNotificationRequest", "UNTimeIntervalNotificationTrigger", "Notification",
+    "NotificationCenter", "Bundle", "Data", "Timer",
+    "RelativeDateTimeFormatter", "UNAuthorizationOptions", "UNNotificationSound", "ToolbarContentBuilder", "ToolbarContent", "UIApplication",
+    "PropertyListSerialization", "MainActor",
 }
 
 # Strings hold French prose, and "TVA (" or "Email :" is not a type.

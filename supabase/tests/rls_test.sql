@@ -1134,6 +1134,69 @@ begin
     'and the invoice points at it, so nothing re-renders a second document');
 end $$;
 
+
+\echo ''
+\echo '=== 24. Notifications reach the right person ======================'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_thread uuid;
+  v_row    notification_feed%rowtype;
+  n int;
+begin
+  perform login(v_johann);
+  select start_support_thread() into v_thread;
+
+  perform login(v_pierre);
+  insert into messages (thread_id, sender_id, body)
+  values (v_thread, v_pierre, 'Pouvez-vous rappeler Thomas Dubois ?');
+
+  perform login(v_johann);
+  select * into v_row from notification_feed
+   where kind = 'message_received' order by created_at desc limit 1;
+  perform assert(v_row.title = 'Pierre-Louis Tettamanti',
+    'a message notifies the person it was sent to, titled with who sent it');
+  perform assert(v_row.body = 'Pouvez-vous rappeler Thomas Dubois ?',
+    'and carries enough of it to be worth reading on a lock screen');
+
+  -- writing to yourself must not notify you
+  insert into messages (thread_id, sender_id, body)
+  values (v_thread, v_johann, 'Je le rappelle cet après-midi.');
+  select count(*) into n from notification_feed
+   where kind = 'message_received' and title = 'Johann Lefeuvre';
+  perform assert(n = 0, 'and nobody is notified of their own message');
+
+  perform login(v_marie);
+  select count(*) into n from notification_feed where kind = 'message_received';
+  perform assert(n = 0,
+    'someone outside the conversation is not notified of it either');
+
+  -- the apporteur is told there is an invoice waiting on their signature
+  perform login(v_johann);
+  select count(*) into n from notification_feed
+   where kind = 'invoice_ready' and body like 'Facture FA-2026-0003%';
+  perform assert(n = 1, 'an issued invoice tells the apporteur to sign it');
+
+  select count(*) into n from notification_feed where read_at is null;
+  perform assert(n > 0, 'and they are unread until opened');
+  perform assert(unread_notification_count() = n,
+    'which is what the badge counts');
+  perform mark_notifications_read();
+  perform assert(unread_notification_count() = 0, 'opening the list clears it');
+
+  -- device tokens are per person, and re-registering is the normal case
+  perform register_device_token('token-johann');
+  perform register_device_token('token-johann');
+  select count(*) into n from device_tokens;
+  perform assert(n = 1, 'registering the same device twice keeps one row');
+
+  perform login(v_marie);
+  select count(*) into n from device_tokens;
+  perform assert(n = 0, 'and nobody can read anyone else''s device token');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

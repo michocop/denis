@@ -500,16 +500,46 @@ public struct PreviewCommissionsRepository: CommissionsRepository {
         ]
     }
 
+}
+
+/// Demo notifications that clear when you open them, so the badge behaves.
+actor DemoNotificationStore {
+    static let shared = DemoNotificationStore()
+    private var readAll = false
+
+    func markAllRead() { readAll = true }
+    func isRead() -> Bool { readAll }
+}
+
+public struct PreviewNotificationsRepository: NotificationsRepository {
+    public init() {}
+
     public func notifications() async throws -> [AppNotification] {
-        [
+        let read: Date? = await DemoNotificationStore.shared.isRead() ? .now : nil
+        return [
             AppNotification(id: UUID(), kind: "reward_earned",
-                            payload: ["filleul": "Thomas Dubois", "stage_label": "Devis signé"],
-                            readAt: nil, createdAt: .now),
-            AppNotification(id: UUID(), kind: "payout_sent",
-                            payload: ["invoice_number": "FA-2026-0001"],
-                            readAt: nil, createdAt: .now.addingTimeInterval(-86_400))
+                            title: "Commission acquise",
+                            body: "Thomas Dubois a signé — 300.00 €",
+                            readAt: read, createdAt: .now.addingTimeInterval(-1800)),
+            AppNotification(id: UUID(), kind: "message_received",
+                            title: "Pierre-Louis Tettamanti",
+                            body: "Je vous réponds tout de suite.",
+                            readAt: read, createdAt: .now.addingTimeInterval(-600)),
+            AppNotification(id: UUID(), kind: "invoice_ready",
+                            title: "Facture à signer",
+                            body: "Facture FA-2026-0001 — 300.00 EUR",
+                            readAt: .now.addingTimeInterval(-86_000),
+                            createdAt: .now.addingTimeInterval(-86_400))
         ]
     }
 
-    public func markNotificationsRead() async throws {}
+    public func unreadCount() async throws -> Int {
+        await DemoNotificationStore.shared.isRead() ? 0 : 2
+    }
+
+    public func markAllRead() async throws {
+        await DemoNotificationStore.shared.markAllRead()
+    }
+
+    public func register(deviceToken: String) async throws {}
 }
