@@ -6,6 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Three pushes in five minutes meant three runs queueing for two macOS
+# runners, and the answer to the question being asked arrived last. A newer
+# push supersedes an older one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   database:
     name: Database (RLS + business rules)
@@ -20,7 +27,7 @@ jobs:
           --health-timeout 5s --health-retries 10
         ports: ["5432:5432"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install psql
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Apply migrations and run the suite
@@ -32,14 +39,14 @@ jobs:
     name: Swift static check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: python3 scripts/swift_check.py
 
   ios-build:
     name: iOS build and tests
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Show toolchain
         run: swift --version && xcodebuild -version
       # The package targets iOS, so it is built for the simulator SDK rather
@@ -77,7 +84,7 @@ jobs:
     name: iOS client against a real PostgREST
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Postgres and PostgREST both have Homebrew formulae, so this needs no
       # Docker -- which matters, because macOS runners cannot run it.
@@ -131,16 +138,19 @@ jobs:
           curl -sf "http://localhost:3000/stages?select=key&order=position.asc" \
             || { echo '--- postgrest log ---'; cat "$RUNNER_TEMP/postgrest.log"; exit 1; }
 
-      # Built as its own step before testing, which is what the other job
-      # does. Going straight to `xcodebuild test` put the products under
-      # Debug/ rather than Debug-iphonesimulator/, and the runner then could
-      # not find the bundle it had just compiled.
-      - name: Build for the simulator
+      # These two steps are deliberately identical to the ios-build job's,
+      # flag for flag, because that pair is the only configuration in this
+      # repository known to work. This job diverged from it twice and failed
+      # differently each time: without -sdk it compiled for macOS, and going
+      # straight to `xcodebuild test` left the products under Debug/ where
+      # the runner could not find the bundle it had just built. The only
+      # additions below are -only-testing and the environment.
+      - name: Build
         working-directory: ios
         shell: bash
         run: |
           set -o pipefail
-          xcodebuild build-for-testing \
+          xcodebuild build \
             -scheme EnergyCourtage \
             -sdk iphonesimulator \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
@@ -148,11 +158,6 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty
 
-      # -sdk iphonesimulator here too, and for the same reason as the build
-      # job: without it xcodebuild resolves the destination against the host
-      # and compiles the package for macOS, where UIKit does not exist. It
-      # was missing from this job alone, so the build job went green while
-      # this one failed on APIs that are perfectly valid on iOS.
       - name: Run the integration tests
         working-directory: ios
         shell: bash
@@ -168,7 +173,7 @@ jobs:
           TEST_RUNNER_REQUIRE_INTEGRATION: "1"
         run: |
           set -o pipefail
-          xcodebuild test-without-building \
+          xcodebuild test \
             -scheme EnergyCourtage \
             -sdk iphonesimulator \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
