@@ -50,6 +50,7 @@ public struct RootView: View {
                 .tag(Tab.chat)
 
             ProfileView(model: ProfileViewModel(repository: dependencies.profiles),
+                        dependencies: dependencies,
                         onSignOut: onSignOut)
                 .tabItem { Label("Profil", systemImage: "person.circle") }
                 .tag(Tab.profile)

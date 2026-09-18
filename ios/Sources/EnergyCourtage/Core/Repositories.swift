@@ -39,6 +39,8 @@ public struct Dependencies: Sendable {
     public let profiles: ProfileRepository
     public let invoices: InvoiceRepository
     public let reminders: RemindersRepository
+    public let admin: AdminRepository
+    public let commissions: CommissionsRepository
     public let changeMonitor: ChangeMonitor
 
     public init(recommendations: RecommendationsRepository,
@@ -47,6 +49,8 @@ public struct Dependencies: Sendable {
                 profiles: ProfileRepository,
                 invoices: InvoiceRepository,
                 reminders: RemindersRepository,
+                admin: AdminRepository,
+                commissions: CommissionsRepository,
                 changeMonitor: ChangeMonitor = InertChangeMonitor()) {
         self.recommendations = recommendations
         self.catalogue = catalogue
@@ -54,6 +58,8 @@ public struct Dependencies: Sendable {
         self.profiles = profiles
         self.invoices = invoices
         self.reminders = reminders
+        self.admin = admin
+        self.commissions = commissions
         self.changeMonitor = changeMonitor
     }
 }

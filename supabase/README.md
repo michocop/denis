@@ -51,6 +51,11 @@ every read recursed until Postgres refused the query. Membership and admin
 checks go through SECURITY DEFINER helpers (`is_admin`, `is_thread_participant`,
 `support_admin_id`) which sit outside RLS.
 
+**A new table needs its own GRANT.** The blanket
+`grant ... on all tables in schema public to authenticated` only covers tables
+that existed when it ran. Without a grant the role is refused before RLS is
+ever consulted, which reads as a permissions error rather than a policy one.
+
 **Anything insertable needs a SELECT policy that can see its own new row.**
 PostgREST asks for the inserted representation by default, so an INSERT whose
 row is invisible to its own author fails outright. `threads` needed

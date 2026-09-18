@@ -299,3 +299,96 @@ public struct PreviewRemindersRepository: RemindersRepository {
 
     public func complete(reminderID: UUID) async throws {}
 }
+
+public struct PreviewAdminRepository: AdminRepository {
+    public init() {}
+
+    public func members() async throws -> [MemberOverview] {
+        try? await Task.sleep(for: .milliseconds(100))
+        return [
+            MemberOverview(id: UUID(), fullName: "Johann Lefeuvre",
+                           email: "johann@example.test", phone: "+33 6 11 11 11 11",
+                           role: .apporteur, status: "active", vatLiable: false,
+                           hasMandate: true, totalRecommendations: 18,
+                           activeRecommendations: 4, paidTotal: 2300, owedTotal: 1000,
+                           lastRecommendationAt: .now),
+            MemberOverview(id: UUID(), fullName: "Marie Durand",
+                           email: "marie@example.test", phone: nil,
+                           role: .apporteur, status: "pending", vatLiable: false,
+                           hasMandate: false, totalRecommendations: 0,
+                           activeRecommendations: 0, paidTotal: 0, owedTotal: 0,
+                           lastRecommendationAt: nil),
+            MemberOverview(id: UUID(), fullName: "Paul Riviere",
+                           email: "paul@example.test", phone: nil,
+                           role: .apporteur, status: "active", vatLiable: true,
+                           hasMandate: true, totalRecommendations: 0,
+                           activeRecommendations: 0, paidTotal: 0, owedTotal: 0,
+                           lastRecommendationAt: nil)
+        ]
+    }
+
+    public func setStatus(profileID: UUID, status: String) async throws {}
+    public func approve(profileID: UUID) async throws {}
+
+    public func createInvite(email: String?, role: UserRole,
+                             autoActivate: Bool) async throws -> Invite {
+        Invite(code: "K7M2QXPZ", email: email, role: role,
+               autoActivate: autoActivate, expiresAt: .now.addingTimeInterval(30 * 86_400))
+    }
+
+    public func payableInvoices() async throws -> [PayableInvoice] {
+        try? await Task.sleep(for: .milliseconds(100))
+        return [
+            PayableInvoice(invoiceId: UUID(), number: "FA-2026-0004", issuedOn: .now,
+                           amountTtc: 300, apporteurId: UUID(),
+                           apporteurName: "Johann Lefeuvre", hasBankDetails: true,
+                           recommendationId: UUID(), filleul: "Thomas Dubois"),
+            PayableInvoice(invoiceId: UUID(), number: "FA-2026-0005", issuedOn: .now,
+                           amountTtc: 750, apporteurId: UUID(),
+                           apporteurName: "Johann Lefeuvre", hasBankDetails: true,
+                           recommendationId: UUID(), filleul: "Claire Petit"),
+            // Deliberately unpayable, so the blocked state is visible.
+            PayableInvoice(invoiceId: UUID(), number: "FA-2026-0006", issuedOn: .now,
+                           amountTtc: 500, apporteurId: UUID(),
+                           apporteurName: "Paul Riviere", hasBankDetails: false,
+                           recommendationId: UUID(), filleul: "Luc Martin")
+        ]
+    }
+
+    public func payBatch(invoiceIDs: [UUID], reference: String?) async throws {}
+}
+
+public struct PreviewCommissionsRepository: CommissionsRepository {
+    public init() {}
+
+    public func statement(year: Int?) async throws -> [CommissionLine] {
+        let thisYear = Calendar.current.component(.year, from: .now)
+        return [
+            CommissionLine(recommendationId: UUID(), year: thisYear, filleul: "Thomas Dubois",
+                           rewardAmount: 1000, rewardStatus: .paid,
+                           invoiceNumber: "FA-2026-0001", issuedOn: .now,
+                           amountTtc: 1000, invoiceStatus: "paid"),
+            CommissionLine(recommendationId: UUID(), year: thisYear, filleul: "Claire Petit",
+                           rewardAmount: 300, rewardStatus: .invoiced,
+                           invoiceNumber: "FA-2026-0002", issuedOn: .now,
+                           amountTtc: 300, invoiceStatus: "signed"),
+            CommissionLine(recommendationId: UUID(), year: thisYear, filleul: "Luc Martin",
+                           rewardAmount: 750, rewardStatus: .earned,
+                           invoiceNumber: nil, issuedOn: nil,
+                           amountTtc: nil, invoiceStatus: nil)
+        ]
+    }
+
+    public func notifications() async throws -> [AppNotification] {
+        [
+            AppNotification(id: UUID(), kind: "reward_earned",
+                            payload: ["filleul": "Thomas Dubois", "stage_label": "Devis signé"],
+                            readAt: nil, createdAt: .now),
+            AppNotification(id: UUID(), kind: "payout_sent",
+                            payload: ["invoice_number": "FA-2026-0001"],
+                            readAt: nil, createdAt: .now.addingTimeInterval(-86_400))
+        ]
+    }
+
+    public func markNotificationsRead() async throws {}
+}

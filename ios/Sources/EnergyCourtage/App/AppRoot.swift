@@ -138,6 +138,8 @@ public final class AppModel {
                         profiles: profiles,
                         invoices: SupabaseInvoiceRepository(client: client),
                         reminders: SupabaseRemindersRepository(client: client),
+                        admin: SupabaseAdminRepository(client: client),
+                        commissions: SupabaseCommissionsRepository(client: client),
                         changeMonitor: PollingChangeMonitor(client: client)
                     ),
                     account.role ?? .apporteur,

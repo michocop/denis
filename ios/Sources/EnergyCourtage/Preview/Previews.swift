@@ -8,7 +8,9 @@ private func previewDependencies() -> Dependencies {
         chat: PreviewChatRepository(),
         profiles: PreviewProfileRepository(),
         invoices: PreviewInvoiceRepository(),
-        reminders: PreviewRemindersRepository()
+        reminders: PreviewRemindersRepository(),
+        admin: PreviewAdminRepository(),
+        commissions: PreviewCommissionsRepository()
     )
 }
 
@@ -43,6 +45,26 @@ private func previewDependencies() -> Dependencies {
 
 #Preview("Accueil") {
     HomeView(model: HomeViewModel(profiles: PreviewProfileRepository())) {}
+}
+
+#Preview("Apporteurs — admin") {
+    MembersView(model: MembersViewModel(repository: PreviewAdminRepository()))
+}
+
+#Preview("À régler — admin") {
+    PayablesView(model: PayablesViewModel(repository: PreviewAdminRepository()))
+}
+
+#Preview("Mes gains — apporteur") {
+    NavigationStack {
+        CommissionsView(model: CommissionsViewModel(repository: PreviewCommissionsRepository()),
+                        apporteurName: "Johann Lefeuvre")
+    }
+}
+
+#Preview("Profil — admin") {
+    ProfileView(model: ProfileViewModel(repository: PreviewProfileRepository(hasMandate: true)),
+                dependencies: previewDependencies(), onSignOut: {})
 }
 
 #Preview("Rappels") {

@@ -40,14 +40,21 @@ public final class ProfileViewModel {
 public struct ProfileView: View {
     @State private var model: ProfileViewModel
     @State private var confirmsDeletion = false
+    private let dependencies: Dependencies
     private let onSignOut: () -> Void
 
-    public init(model: ProfileViewModel, onSignOut: @escaping () -> Void) {
+    public init(model: ProfileViewModel, dependencies: Dependencies,
+                onSignOut: @escaping () -> Void) {
         _model = State(wrappedValue: model)
+        self.dependencies = dependencies
         self.onSignOut = onSignOut
     }
 
     public var body: some View {
+        // Wrapped in a NavigationStack so the console and the statement push
+        // from here: adding tabs would have broken the five-tab layout the
+        // source app has.
+        NavigationStack {
         ZStack {
             Theme.Palette.canvas.ignoresSafeArea()
 
@@ -60,7 +67,32 @@ public struct ProfileView: View {
 
                     if let profile = model.profile {
                         identity(profile)
-                        billing(profile)
+
+                        if profile.role.isAdmin {
+                            NavigationLink {
+                                MembersView(model: MembersViewModel(
+                                    repository: dependencies.admin))
+                            } label: {
+                                consoleRow("Apporteurs", icon: "person.2")
+                            }
+                            NavigationLink {
+                                PayablesView(model: PayablesViewModel(
+                                    repository: dependencies.admin))
+                            } label: {
+                                consoleRow("À régler", icon: "eurosign.circle")
+                            }
+                        } else {
+                            NavigationLink {
+                                CommissionsView(
+                                    model: CommissionsViewModel(
+                                        repository: dependencies.commissions),
+                                    apporteurName: profile.fullName
+                                )
+                            } label: {
+                                consoleRow("Mes gains", icon: "eurosign.circle")
+                            }
+                            billing(profile)
+                        }
                     }
 
                     SecondaryActionButton("Conditions générales", systemImage: "doc.text") {}
@@ -98,6 +130,26 @@ public struct ProfileView: View {
         } message: {
             Text("Vos recommandations et vos factures sont conservées pour des raisons légales, mais votre compte et vos données personnelles seront supprimés.")
         }
+        }
+    }
+
+    private func consoleRow(_ title: String, icon: String) -> some View {
+        HStack(spacing: Theme.Spacing.m) {
+            Image(systemName: icon)
+                .font(.system(size: 19))
+                .foregroundStyle(Theme.Palette.brand)
+                .frame(width: 24)
+            Text(title)
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.textPrimary)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.Palette.textSecondary)
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.vertical, 16)
+        .cardSurface()
     }
 
     private func identity(_ profile: Profile) -> some View {

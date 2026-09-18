@@ -799,6 +799,94 @@ begin
   perform assert(v_n = 0, 'search never reaches another apporteur''s recommendations');
 end $$;
 
+\echo ''
+\echo '=== 20. Paying, and managing members =============================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_signed uuid;
+  v_draft  uuid;
+  v_batch  payout_batches%rowtype;
+  v_n      int;
+begin
+  perform login(v_pierre);
+  -- FA-2026-0003 carries the apporteur's signature from section 12; the
+  -- company's completes it and seals it.
+  select id into v_signed from invoices where number = 'FA-2026-0003';
+  perform sign_invoice(v_signed,
+                       (select document_sha256 from invoices where id = v_signed));
+  perform assert((select status from invoices where id = v_signed) = 'signed',
+    'the second signature seals the invoice, making it payable');
+
+  select id into v_draft from invoices where status not in ('signed','paid') limit 1;
+  perform assert(
+    (select count(*) from payable_invoices where invoice_id = v_signed) = 1,
+    'a signed invoice appears on the payables list');
+
+  -- an unsigned invoice must never be paid: the apporteur has not agreed to it
+  perform assert_denied(v_pierre,
+    format('select * from create_payout_batch(array[%L]::uuid[])', v_draft),
+    'a batch containing an unsigned invoice is refused entirely');
+
+  perform assert_denied(v_johann,
+    format('select * from create_payout_batch(array[%L]::uuid[])', v_signed),
+    'an apporteur cannot pay themselves');
+
+  select * into v_batch from create_payout_batch(array[v_signed], 'VIR-2026-09');
+  perform assert(v_batch.total > 0, 'an admin pays a batch');
+  perform assert(
+    (select status from invoices where id = v_signed) = 'paid',
+    'the invoice is marked paid');
+  perform assert(
+    (select reward_status from recommendations r
+      join invoices i on i.recommendation_id = r.id where i.id = v_signed) = 'paid',
+    'and so is the reward behind it');
+  perform assert(
+    (select count(*) from payable_invoices where invoice_id = v_signed) = 0,
+    'and it drops off the payables list');
+
+  perform login(v_johann);
+  perform assert(
+    exists (select 1 from notifications
+             where profile_id = v_johann and kind = 'payout_sent'),
+    'the apporteur is told the money is on its way');
+  perform assert((select count(*) from commissions) >= 1,
+    'and the commission line is theirs to see');
+
+  perform login(v_marie);
+  perform assert((select count(*) from commissions) = 0,
+    'while another apporteur sees none of it');
+
+  -- member management
+  perform assert_denied(v_johann,
+    format('select * from set_member_status(%L, ''suspended'')', v_marie),
+    'an apporteur cannot suspend anyone');
+
+  perform login(v_pierre);
+  perform assert_denied(v_pierre,
+    format('select * from set_member_status(%L, ''suspended'')', v_pierre),
+    'and an admin cannot suspend themselves out of the building');
+
+  perform set_member_status(v_marie, 'suspended');
+  perform assert((select status from profiles where id = v_marie) = 'suspended',
+    'an admin can suspend a member');
+
+  select count(*) into v_n from member_overview;
+  perform assert(v_n >= 3, 'the member list shows everyone to an admin');
+  perform assert(
+    (select total_recommendations from member_overview where id = v_johann) > 0,
+    'with the activity that decides who to chase');
+
+  perform login(v_johann);
+  select count(*) into v_n from member_overview;
+  perform assert(v_n = 1, 'an apporteur sees only themselves in it');
+
+  perform login(v_pierre);
+  perform set_member_status(v_marie, 'active');
+end $$;
+
 reset role;
 insert into auth.users (id, email) values
   ('44444444-4444-4444-4444-444444444444', 'nouveau@example.test'),
