@@ -38,8 +38,36 @@ public final class AppModel {
 
     // MARK: - Launch
 
+    /// Launching with -demo (optionally -admin) wires every screen to the
+    /// sample repositories and skips sign-in entirely. It exists so the app can
+    /// be looked at on a simulator before a Supabase project exists, and so the
+    /// screenshot job has something deterministic to photograph.
+    @MainActor
+    public func startDemo(asAdmin: Bool) {
+        phase = .ready(
+            Dependencies(
+                recommendations: PreviewRecommendationsRepository(),
+                catalogue: PreviewCatalogueRepository(),
+                chat: PreviewChatRepository(),
+                profiles: PreviewProfileRepository(),
+                invoices: PreviewInvoiceRepository(),
+                reminders: PreviewRemindersRepository(),
+                admin: PreviewAdminRepository(),
+                commissions: PreviewCommissionsRepository()
+            ),
+            asAdmin ? .admin : .apporteur,
+            asAdmin ? "Pierre-Louis Tettamanti" : "Johann Lefeuvre"
+        )
+    }
+
     @MainActor
     public func start() async {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-demo") {
+            startDemo(asAdmin: arguments.contains("-admin"))
+            return
+        }
+
         do {
             let config = try AppConfig.supabase()
             let client = SupabaseClient(baseURL: config.url, anonKey: config.key)

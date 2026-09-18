@@ -5,6 +5,8 @@
 #
 #   brew install xcodegen && cd ios && xcodegen generate && open EnergyCourtage.xcodeproj
 #
+# Then pick a simulator and press Run, or use scripts/run_simulator.sh.
+#
 # Or skip XcodeGen entirely: File > New > Project > iOS App, then
 # File > Add Package Dependencies > Add Local... and point it at ios/.
 name: EnergyCourtage
@@ -22,7 +24,9 @@ packages:
   EnergyCourtage:
     path: .
 targets:
-  EnergyCourtage:
+  # Named apart from the package product: two schemes called EnergyCourtage
+  # makes -scheme ambiguous from the command line.
+  EnergyCourtageApp:
     type: application
     platform: iOS
     sources:

@@ -19,19 +19,38 @@ Expect to fix a few small things on first `swift build` / Xcode open.
 
 ## Run it
 
-```bash
-# runnable app (Simulator)
-brew install xcodegen && cd ios && xcodegen generate
-open EnergyCourtage.xcodeproj     # set SUPABASE_URL / SUPABASE_ANON_KEY
+**Fastest — no app target, no backend.** Previews render every screen:
 
-# previews and tests only, no app target needed
-open ios/Package.swift
-swift test
+```bash
+open ios/Package.swift       # Xcode 15+, then ⌥⌘↩ for the canvas
 ```
 
-A Swift package previews in Xcode but cannot run in the Simulator on its own;
-`project.yml` generates the app target that hosts it. Without XcodeGen: create
-an iOS App project by hand and add `ios/` as a local package dependency.
+**In the Simulator, on demo data** — this is the one to use first, since it
+needs no Supabase project:
+
+```bash
+brew install xcodegen
+scripts/run_simulator.sh            # as an apporteur
+scripts/run_simulator.sh --admin    # as Pierre-Louis, with Valider l'étape
+```
+
+The script generates the Xcode project, builds, boots the simulator, installs
+and launches with `-demo`, which wires every screen to the sample repositories
+and skips sign-in. `DEVICE="iPhone 16 Pro" scripts/run_simulator.sh` picks a
+different simulator.
+
+**Against a real backend:**
+
+```bash
+export SUPABASE_URL=https://<project>.supabase.co
+export SUPABASE_ANON_KEY=<anon key>
+scripts/run_simulator.sh --live
+```
+
+Or open `ios/EnergyCourtage.xcodeproj` after `xcodegen generate` and press Run.
+
+A Swift package previews but cannot run in the Simulator on its own, which is
+why `project.yml` exists to generate the hosting app target.
 
 Four previews reproduce the reference screenshots: the completed Thomas Dubois
 card, the same card mid-pipeline (completed / current / pending together), the
