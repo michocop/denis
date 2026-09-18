@@ -14,10 +14,15 @@ options:
   bundleIdPrefix: com.trinityenergie
   deploymentTarget:
     iOS: "17.0"
+# Copy Config.example.xcconfig to Config.xcconfig and put your project's URL
+# and anon key there. It is git-ignored, so nobody's project ends up in the
+# repository, and an absent file simply leaves both empty -- which makes the
+# app fall back to demo data rather than fail.
+configFiles:
+  Debug: Config.xcconfig
+  Release: Config.xcconfig
 settings:
   base:
-    # Point these at your own project; both are safe to commit in a local
-    # xcconfig, not here.
     SUPABASE_URL: ""
     SUPABASE_ANON_KEY: ""
 packages:

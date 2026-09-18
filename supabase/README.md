@@ -13,7 +13,7 @@ scripts/db_test.sh -h /tmp -p 5433 -U postgres
 The script creates a throwaway database, applies `local/00_auth_shim.sql`
 (which fakes `auth.users` and `auth.uid()` — **never apply it to a real
 Supabase project**, which already has them), then every migration in order,
-then `tests/rls_test.sql`. A clean run means all 71 assertions held.
+then `tests/rls_test.sql`. A clean run means all 168 assertions held.
 
 ## Deploying
 
@@ -37,6 +37,9 @@ psql "$DATABASE_URL" -f supabase/seed/demo.sql   # optional, non-production
 | `…_feed.sql` | `recommendation_feed`, `dashboard_stats` |
 | `…_workflow_rpcs.sql` | reassign, archive, soft delete, signing, chat |
 | `…_document_digest.sql` | what exactly gets signed; account deletion |
+| `…_chat.sql` | `thread_overview`, `message_feed`, and why names are exposed to chat only |
+| `…_invoice_pdf.sql` | the private bucket, and writing the retained document once |
+| `…_notifications.sql` | what gets notified, the text, and device tokens |
 
 ## Three things worth knowing before changing anything
 
@@ -55,6 +58,14 @@ checks go through SECURITY DEFINER helpers (`is_admin`, `is_thread_participant`,
 `grant ... on all tables in schema public to authenticated` only covers tables
 that existed when it ran. Without a grant the role is refused before RLS is
 ever consulted, which reads as a permissions error rather than a policy one.
+
+**Widening a policy widens every view over that table.** Letting conversation
+participants read each other in `profiles` also let an apporteur who had once
+messaged an admin see that admin in `member_overview`, which is a
+`security_invoker` view over the same table. Chat gets names through two
+SECURITY DEFINER functions that return a display name and nothing else,
+rather than through a wider policy. The test suite caught this; a screenshot
+would not have.
 
 **Anything insertable needs a SELECT policy that can see its own new row.**
 PostgREST asks for the inserted representation by default, so an INSERT whose

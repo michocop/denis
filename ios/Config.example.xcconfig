@@ -1,0 +1,24 @@
+// Copy to Config.xcconfig (git-ignored) and fill in your own project's values.
+//
+//   Project Settings > API in the Supabase dashboard:
+//     Project URL      -> SUPABASE_URL
+//     anon public key  -> SUPABASE_ANON_KEY
+//
+// The anon key is meant to ship inside the app: it grants nothing on its own,
+// because every table is behind Row Level Security. The service_role key is
+// the opposite -- it bypasses RLS entirely -- and must never appear here, in
+// the repository, in CI logs, or in a message to anyone.
+//
+// Left empty, the app falls back to demo data rather than showing a sign-in
+// form with nothing behind it. That is the intended state until a project
+// exists.
+//
+// A URL here needs the // escaped: Xcode treats // as a comment even inside a
+// value, so https://x.supabase.co would become "https:". Hence the indirection
+// below -- uncomment both lines and fill in the ref.
+// SUPABASE_SLASHES = $()/$()/
+// SUPABASE_URL = https:$(SUPABASE_SLASHES)your-project-ref.supabase.co
+// SUPABASE_ANON_KEY = your-anon-public-key
+
+SUPABASE_URL =
+SUPABASE_ANON_KEY =

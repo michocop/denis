@@ -9,17 +9,19 @@ blocks what. "You" is whoever is building; "the client" is Trinity Énergie.
 
 | | Owner | Est. |
 |---|---|---|
-| ~~First compile~~ — **done.** CI builds the package on a macOS runner and runs its 24 tests on every push | — | — |
-| **Run against a real Supabase project** — every network path is still theoretical | You + me | 2 d |
-| Supabase project created, `supabase db push` applied, seed loaded | You | 1 h |
+| ~~First compile~~ — **done.** CI builds the package on a macOS runner and runs its tests on every push | — | — |
+| ~~Every network path is theoretical~~ — **done.** CI also runs the client against a real PostgREST on every push: the reads, the writes, messaging and notifications all go over HTTP | — | — |
+| Supabase project created, `supabase db push` applied, seed loaded — **[docs/DEPLOY.md](DEPLOY.md)** | You | 1 h |
 | App runs on a real device against the real project | You | 0.5 d |
 | Every screen walked by hand on device: create a reco, advance it, issue an invoice, sign both sides, open a conversation, schedule a reminder | You | 1 d |
 | The four remaining screens reworked to match the real app | You, once screenshots arrive | 6 d |
 
-The backend is verified (134 assertions) and the app compiles with its tests
-passing. What has never happened is the two talking to each other: no request
-this client makes has ever reached a real PostgREST. That is now the largest
-single unknown, and it is the next thing worth doing.
+The backend is verified (168 assertions) and the app compiles with its tests
+passing, including a suite that drives the real client against a real
+PostgREST. What has never happened is either of them meeting *hosted*
+Supabase: GoTrue, Storage and the free plan's limits are still untested,
+because none of that can be stood up locally. Creating the project is
+therefore the next thing worth doing, and it is an hour's work.
 
 ## 2. It matches
 
@@ -60,6 +62,15 @@ two weeks to the date.
 ## 5. It can be distributed
 
 - Apple Developer enrolment (see §3) — 24–48 h personal, **1–2 weeks as an organisation**
+- **Push notifications**: the client side is finished — the device token is
+  registered into `device_tokens` — but nothing sends. That needs an APNs key
+  from the Developer account and something holding it (a Supabase Edge
+  Function on insert into `notifications` is the natural place). Until then
+  notifications are in-app and on-device: reminders fire with the app closed,
+  "a message arrived overnight" does not
+- **A real email sender** (Resend, Postmark, SES). Supabase's built-in SMTP is
+  rate-limited to a handful an hour and is not for production — needed before
+  the first real invitation goes out
 - App icon and launch screen — neither exists
 - `PrivacyInfo.xcprivacy` privacy manifest
 - App Store Connect privacy answers (data collected: contact info, identifiers, usage)
@@ -100,6 +111,13 @@ invoice carries 20 % automatically; earlier ones are untouched, correctly.
 `check_duplicate_filleul` warns at creation but never blocks a contested lead —
 that is a commercial decision. The audit log records who submitted first.
 
+### An apporteur asks for their invoice
+Every fully signed invoice has a PDF kept in the private `invoices` bucket,
+and the app offers it from the invoice screen. The file is written once: a
+second attempt returns the one already kept, because what is retained for ten
+years is the document that was issued, not a fresh rendering that looks like
+it.
+
 ### Restoring confidence in the security model
 `scripts/db_test.sh` runs the whole RLS suite against a throwaway database.
 Run it after any schema change. A failing assertion means data is exposed.
@@ -111,7 +129,7 @@ Run it after any schema change. A failing assertion means data is exposed.
 1. **Today:** start the Apple organisation enrolment (D-U-N-S), create the
    Supabase project in an EU region under the client's account, and brief a
    lawyer. All three have lead times you cannot compress.
-2. **This week:** first compile, app running on a device against real data.
+2. **This week:** create the Supabase project (an hour, [docs/DEPLOY.md](DEPLOY.md)) and get the app running on a device against real data.
 3. **Next two weeks:** the four unseen screens, device testing, icon, manifest.
 4. **Week four:** legal texts in, TestFlight to real apporteurs, fix what they hit.
 

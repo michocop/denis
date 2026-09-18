@@ -387,6 +387,10 @@ public enum AppConfig {
     public static func supabase(bundle: Bundle = .main) throws -> (url: URL, key: String) {
         guard
             let urlString = bundle.object(forInfoDictionaryKey: "SUPABASE_URL") as? String,
+            // Explicitly, rather than relying on URL(string:) to reject it:
+            // an unset xcconfig variable arrives as an empty string, and that
+            // is the normal state before a project exists, not an error.
+            !urlString.isEmpty,
             let url = URL(string: urlString),
             let key = bundle.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String,
             !key.isEmpty

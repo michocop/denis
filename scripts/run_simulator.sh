@@ -57,6 +57,15 @@ ensure_xcodegen() {
 }
 
 ensure_xcodegen
+
+# project.yml names Config.xcconfig, and XcodeGen refuses to generate if it is
+# missing. The example is empty, which is the right default: no project
+# configured means the app runs on demo data.
+if [ ! -f ios/Config.xcconfig ]; then
+  cp ios/Config.example.xcconfig ios/Config.xcconfig
+  echo "==> Created ios/Config.xcconfig from the example (demo data until filled in)"
+fi
+
 echo "==> Generating the Xcode project"
 (cd ios && "$XCODEGEN" generate)
 

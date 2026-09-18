@@ -4,3 +4,6 @@ ios/EnergyCourtage.xcodeproj/
 # Build output and the locally fetched XcodeGen
 ios/.build/
 .DS_Store
+
+# Your own Supabase project's URL and anon key (see Config.example.xcconfig)
+ios/Config.xcconfig
