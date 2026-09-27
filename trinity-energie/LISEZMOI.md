@@ -11,6 +11,7 @@ Fichiers à mettre en ligne dans `public_html` sur Hostinger (tous au même nive
 | `plaquette-apporteurs-affaires.pdf` | la plaquette téléchargeable (section Partenaires) |
 | `og-image.jpg` | l'image qui s'affiche quand on partage le lien (WhatsApp, SMS, LinkedIn) |
 | `apple-touch-icon.png` | l'icône quand on ajoute le site à l'écran d'accueil de l'iPhone |
+| `three.min.js` | la bibliothèque qui anime l'éolienne en 3D (sans elle, une éolienne dessinée s'affiche) |
 
 ## Mise en ligne sur Hostinger (pas besoin de toucher aux DNS)
 

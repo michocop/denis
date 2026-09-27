@@ -196,7 +196,8 @@ p{margin:0}
 .success .btn{margin-top:1.3rem}
 .timeline{position:relative;height:20px;margin:1.5rem .4rem 1rem}
 .timeline .track{position:absolute;left:0;right:0;top:8px;height:4px;border-radius:4px;background:rgba(255,255,255,.1)}
-.timeline .window{position:absolute;top:8px;height:4px;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--blue-hi));box-shadow:0 0 16px rgba(60,139,255,.6);transition:left .7s var(--ease),width .7s var(--ease)}
+.timeline .window{position:absolute;top:5px;height:10px;border-radius:6px;background:rgba(60,139,255,.16);box-shadow:inset 0 0 0 1px rgba(60,139,255,.42);transition:left .7s var(--ease),width .7s var(--ease)}
+.timeline .fill{position:absolute;top:8px;height:4px;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--blue-hi));box-shadow:0 0 14px rgba(60,139,255,.6);transition:left .7s var(--ease),width .7s var(--ease)}
 .timeline .dot{position:absolute;top:10px;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;transition:left .7s var(--ease)}
 .timeline .dot.today{background:var(--bg)}
 .timeline .today{box-shadow:inset 0 0 0 2.5px #fff,0 0 0 4px rgba(255,255,255,.08)}
@@ -205,10 +206,10 @@ p{margin:0}
 .tl-legend div{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.62rem 0}
 .tl-legend div + div{border-top:1px solid var(--hair)}
 .tl-legend dt{display:flex;align-items:center;gap:.6rem;font-size:.86rem;color:var(--muted);white-space:nowrap}
-.tl-legend dd{margin:0;font-size:.92rem;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.tl-legend dd{margin:0;font-size:.92rem;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
 .tl-legend i{flex:none;width:8px;height:8px;border-radius:50%}
 .tl-legend .k-today{background:transparent;box-shadow:inset 0 0 0 2px #fff}
-.tl-legend .k-window{width:14px;height:4px;border-radius:2px;background:var(--blue-hi)}
+.tl-legend .k-window{width:16px;height:8px;border-radius:4px;background:rgba(60,139,255,.2);box-shadow:inset 0 0 0 1px rgba(60,139,255,.5)}
 .tl-legend .k-end{background:var(--danger)}
 .status-line{font-weight:500;color:var(--ink);margin-bottom:1.3rem;min-height:1.6em}
 .asterisk{color:var(--blue-hi);text-decoration:none}
@@ -358,7 +359,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 .pl-text{margin-top:1.4rem;font-size:clamp(1.02rem,1rem + .25vw,1.15rem);line-height:1.65;color:var(--text);max-width:46ch}
 .pl-proof{display:grid;gap:.45rem;margin-top:1.4rem;font-size:.98rem;font-weight:500;color:var(--ink)}
 .pl-proof small{display:block;margin-top:.2rem;font-size:.8rem;font-weight:400;color:var(--faint)}
-.pl-proof .st svg{width:13px;height:13px}
+.pl-proof .st svg{width:17px;height:17px}
 .pl-actions{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:2rem}
 .pl-actions .btn{min-height:2.9rem;padding:0 1.2rem;font-size:.95rem}
 .pl-facts{list-style:none;margin:2rem 0 0;padding:1.4rem 0 0;border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;font-size:.84rem;color:var(--faint)}
@@ -402,6 +403,27 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 .reviews-cta .reviews-more{margin:0}
 .reviews-cta .btn svg{width:16px;height:16px;color:#FFCF5C}
 
+/* ===== Éolienne dessinée (visible tant que la 3D n'est pas affichée) ===== */
+.fb{position:absolute;inset:0;z-index:-3;pointer-events:none;transition:opacity .9s var(--ease);background:radial-gradient(70% 55% at 78% 105%,rgba(31,95,255,.34),transparent 70%),linear-gradient(180deg,#040B20 0%,#0A1D48 100%)}
+.fb::after{content:"";position:absolute;left:0;right:0;bottom:0;height:22%;background:radial-gradient(120% 100% at 70% 100%,rgba(60,139,255,.18),transparent 70%),repeating-linear-gradient(90deg,rgba(143,176,240,.16) 0 1px,transparent 1px 9px);-webkit-mask-image:linear-gradient(to top,#000,transparent);mask-image:linear-gradient(to top,#000,transparent)}
+.hero.gl-on .fb{opacity:0}
+.fb svg{position:absolute;overflow:visible}
+.fb-main{right:9%;bottom:-2%;height:94%;aspect-ratio:3/7;filter:drop-shadow(0 0 24px rgba(60,139,255,.25))}
+.fb-far{bottom:8%;aspect-ratio:3/7;opacity:.45}
+.fb-far-1{right:44%;height:36%}
+.fb-far-2{right:36%;height:26%;opacity:.3}
+.fb .fb-rotor{transform-box:view-box;transform-origin:150px 170px;animation:fbspin 7s linear infinite}
+.fb-far-1 .fb-rotor{animation-duration:9s}
+.fb-far-2 .fb-rotor{animation-duration:11s}
+.fb .fb-beacon{animation:blink 1.5s steps(1) infinite}
+@keyframes fbspin{to{transform:rotate(360deg)}}
+@media (max-width:760px){
+  .fb-main{right:auto;left:50%;top:1%;bottom:auto;height:62%;transform:translateX(-28%)}
+  .fb-far-1{right:auto;left:6%;bottom:auto;top:30%;height:22%}
+  .fb-far-2{right:6%;bottom:auto;top:34%;height:16%}
+}
+@media (prefers-reduced-motion:reduce){.fb .fb-rotor{animation-duration:40s!important;animation-iteration-count:infinite!important}}
+
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   .review,.nav-in,.mbar,.switch,.pl{background:#0B1838}
 }
@@ -416,6 +438,20 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
+    <symbol id="turbine" viewBox="0 0 300 700">
+      <defs>
+        <linearGradient id="fbTower" x1="0" x2="1"><stop offset="0" stop-color="#8FA6D6"/><stop offset=".45" stop-color="#EEF3FB"/><stop offset="1" stop-color="#7890C4"/></linearGradient>
+        <linearGradient id="fbBlade" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#DCE5F7"/><stop offset="1" stop-color="#F7F9FD"/></linearGradient>
+      </defs>
+      <path d="M145.5 178h9l5 522h-19z" fill="url(#fbTower)"/>
+      <g class="fb-rotor">
+        <path d="M146 166c-6-36-2-92 3-146h2c6 54 9 110 3 146z" fill="url(#fbBlade)"/>
+        <path d="M146 166c-6-36-2-92 3-146h2c6 54 9 110 3 146z" fill="url(#fbBlade)" transform="rotate(120 150 170)"/>
+        <path d="M146 166c-6-36-2-92 3-146h2c6 54 9 110 3 146z" fill="url(#fbBlade)" transform="rotate(240 150 170)"/>
+      </g>
+      <circle cx="150" cy="170" r="7.5" fill="#EEF3FB"/>
+      <circle class="fb-beacon" cx="150" cy="158" r="2.6" fill="#FF4A3A"/>
+    </symbol>
     <symbol id="i-logo" viewBox="0 0 24 22"><path d="M12 1.25 22.5 20.75H1.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 8.75 16.5 17h-9Z" fill="#3C8BFF"/></symbol>
     <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 5 5L14 13l5 2v3a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 6.5 12 13l8.5-6.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
@@ -452,6 +488,11 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 
 <!-- ============ EN-TÊTE ============ -->
 <section class="hero on-navy" id="top" aria-labelledby="slogan">
+  <div class="fb" aria-hidden="true">
+    <svg class="fb-far fb-far-1"><use href="#turbine"/></svg>
+    <svg class="fb-far fb-far-2"><use href="#turbine"/></svg>
+    <svg class="fb-main"><use href="#turbine"/></svg>
+  </div>
   <canvas id="scene" aria-hidden="true"></canvas>
   <div class="wrap hero-in">
     <div>
@@ -530,12 +571,13 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
       <div class="timeline" aria-hidden="true">
         <div class="track"></div>
         <div class="window" id="tlWindow" style="left:0;width:0"></div>
+        <div class="fill" id="tlFill" style="left:0;width:0"></div>
         <span class="dot today" id="tlToday" style="left:0"></span>
         <span class="dot end" id="tlEnd" style="left:100%" hidden></span>
       </div>
       <dl class="tl-legend" id="tlLegend" hidden>
         <div><dt><i class="k-today"></i>Aujourd’hui</dt><dd id="lgToday"></dd></div>
-        <div><dt><i class="k-window"></i>Négocier dès le</dt><dd id="lgStart"></dd></div>
+        <div><dt><i class="k-window"></i>Fenêtre idéale</dt><dd id="lgStart"></dd></div>
         <div><dt><i class="k-end"></i>Fin du contrat</dt><dd id="lgEnd"></dd></div>
       </dl>
       <p class="status-line" id="tlStatus" aria-live="polite">Choisissez une date pour voir votre calendrier.</p>
@@ -622,7 +664,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
         <h2 id="pl-titre">Pierre-Louis <span>Tettamanti</span></h2>
         <p class="pl-role">Courtier en électricité et gaz · Trinity&nbsp;Énergie</p>
         <p class="pl-text">Un seul interlocuteur, du premier audit au renouvellement de votre contrat. Pierre-Louis analyse vos factures, met plus de 25&nbsp;fournisseurs en concurrence et suit vos échéances. Vous échangez directement avec lui.</p>
-        <p class="pl-proof"><span class="st" aria-hidden="true"><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg></span><span>« Merci à Pierre-Louis pour l’accompagnement. »<small>Jean-Philippe Bazart, avis Google</small></span></p>
+        <p class="pl-proof" role="img" aria-label="Note Google : 5 sur 5"><span class="st" aria-hidden="true"><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg></span></p>
         <div class="pl-actions">
           <a class="btn btn-primary" href="tel:+33757425237"><svg aria-hidden="true"><use href="#i-phone"/></svg>07 57 42 52 37</a>
           <a class="btn btn-line" href="https://wa.me/33757425237" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-wa"/></svg>WhatsApp</a>
@@ -743,7 +785,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
   <a class="btn btn-line icon" href="https://wa.me/33757425237" target="_blank" rel="noopener" aria-label="Écrire sur WhatsApp"><svg aria-hidden="true"><use href="#i-wa"/></svg></a>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="three.min.js"></script>
 <script>
 /* =========================================================
    1 · SCÈNE 3D — parc éolien de nuit / de jour (Three.js r128)
@@ -938,7 +980,9 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
     if(portrait){ camera.position.set(1+px*1.2*mv, 3+scrollP*3*mv - py*.6*mv, 44-scrollP*8*mv); camera.lookAt(4.2, -2+scrollP*1.5*mv, -6); }
     else { camera.position.set(-3.4+px*1.6*mv, 3.4+scrollP*4*mv - py*.8*mv, 36-scrollP*9*mv); camera.lookAt(-2.6+scrollP*2*mv, 8.2+scrollP*1.2*mv, -8); }
     renderer.render(scene,camera);
+    if(!glShown){ glShown=true; hero.classList.add('gl-on'); }
   }
+  let glShown=false;
   frame();
 })();
 </script>
@@ -1041,8 +1085,9 @@ async function submitFlow(form, busyText, type, fd, okBox, onDone){
     $('#tlToday').style.left=pos(today)+'%';
     $('#tlEnd').hidden=false;
     $('#tlWindow').style.left=pos(start)+'%'; $('#tlWindow').style.width=(pos(close)-pos(start))+'%';
+    $('#tlFill').style.left=pos(start)+'%'; $('#tlFill').style.width=Math.max(0,pos(Math.min(today,close))-pos(start))+'%';
     $('#lgToday').textContent=DATE_S.format(today);
-    $('#lgStart').textContent=DATE_Y.format(start);
+    $('#lgStart').textContent=(start.getFullYear()===close.getFullYear()? DATE_S.format(start) : DATE_Y.format(start))+' → '+DATE_Y.format(close);
     $('#lgEnd').textContent=DATE_Y.format(end);
     $('#tlLegend').hidden=false;
     const days=Math.round((start-today)/864e5); let s;
