@@ -66,9 +66,9 @@ button,input{font:inherit;color:inherit}
 .skip:focus{left:1rem;top:1rem}
 .wrap{width:min(100% - 2*var(--gutter),var(--max));margin-inline:auto}
 h1,h2,h3{font-family:var(--display);color:var(--ink);margin:0;text-wrap:balance;font-weight:600}
-h1{font-size:clamp(2.6rem,1.3rem + 5.2vw,5.6rem);line-height:1.02;letter-spacing:-.045em}
-h1 .t1{display:block}
-h1 .t2{display:block;background:linear-gradient(100deg,#6FA8FF 0%,#3C8BFF 35%,#DCE5F7 100%);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.06em}
+h1{font-size:clamp(2.9rem,1rem + 6.4vw,6.8rem);line-height:1;letter-spacing:-.032em;font-weight:700}
+h1 .t1{display:block;text-shadow:0 2px 40px rgba(3,8,26,.6)}
+h1 .t2{display:block;font-weight:600;background:linear-gradient(95deg,#4F95FF 0%,#7DB0FF 50%,#C3D7FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.08em;filter:drop-shadow(0 2px 28px rgba(3,8,26,.55))}
 h2{font-size:clamp(2rem,1.2rem + 2.8vw,3.4rem);line-height:1.06;letter-spacing:-.035em}
 h3{font-size:1.12rem;line-height:1.3;letter-spacing:-.01em}
 p{margin:0}
@@ -107,13 +107,13 @@ p{margin:0}
 /* ===== En-tête ===== */
 .hero{position:relative;overflow:hidden;isolation:isolate;min-height:min(100svh,940px);margin-top:-68px;display:grid;align-items:center;text-align:center}
 #scene{position:absolute;inset:0;z-index:-2;width:100%;height:100%}
-.hero::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(70% 60% at 50% 42%,rgba(3,8,26,.72),rgba(3,8,26,.25) 70%,transparent)}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(78% 66% at 50% 46%,rgba(3,8,26,.82),rgba(3,8,26,.4) 68%,rgba(3,8,26,.12))}
 .hero::after{content:"";position:absolute;inset:auto 0 0;height:30vh;z-index:-1;pointer-events:none;background:linear-gradient(to top,var(--bg),transparent)}
 .hero-in{padding-block:calc(68px + clamp(4rem,10vw,7rem)) clamp(7rem,12vw,9rem)}
-.hero-in > div{max-width:900px;margin-inline:auto;display:grid;justify-items:center}
+.hero-in > div{max-width:1120px;margin-inline:auto;display:grid;justify-items:center}
 .hero .eyebrow{margin-bottom:1.4rem;padding:.45rem .95rem;border-radius:999px;font-size:.8rem;color:var(--ice);background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),inset 0 1px 0 rgba(255,255,255,.1);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
 .hero h1{margin-bottom:1.5rem}
-.hero .lede{margin-inline:auto}
+.hero .lede{margin-inline:auto;max-width:44ch;font-size:clamp(1.1rem,1rem + .45vw,1.35rem);color:rgba(235,241,252,.74)}
 .angles{display:none}
 .hero-cta{display:flex;flex-wrap:wrap;justify-content:center;gap:.75rem;margin-top:2.4rem}
 .hero-meter{position:absolute;right:var(--gutter);bottom:2.2rem;display:flex;align-items:center;gap:.8rem;padding:.7rem 1rem;border-radius:18px;text-align:left;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.1);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
@@ -168,13 +168,20 @@ p{margin:0}
 .success p{color:var(--muted)}
 .success .demo{margin-top:.9rem;font-size:.8rem;color:var(--faint)}
 .success .btn{margin-top:1.3rem}
-.timeline{position:relative;height:66px;margin:1.6rem .2rem .4rem}
-.timeline .track{position:absolute;left:0;right:0;top:30px;height:4px;border-radius:4px;background:rgba(255,255,255,.1)}
-.timeline .window{position:absolute;top:30px;height:4px;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--blue-hi));box-shadow:0 0 16px rgba(60,139,255,.6);transition:left .7s var(--ease),width .7s var(--ease)}
-.timeline .mark{position:absolute;top:0;transform:translateX(-50%);font-size:.72rem;color:var(--faint);white-space:nowrap;transition:left .7s var(--ease)}
-.timeline .mark::after{content:"";display:block;width:6px;height:6px;border-radius:50%;background:currentColor;margin:10px auto 0}
-.timeline .mark.today{color:var(--ink);font-weight:600}
-.timeline .mark.end{color:var(--danger);font-weight:600}
+.timeline{position:relative;height:20px;margin:1.5rem .4rem 1rem}
+.timeline .track{position:absolute;left:0;right:0;top:8px;height:4px;border-radius:4px;background:rgba(255,255,255,.1)}
+.timeline .window{position:absolute;top:8px;height:4px;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--blue-hi));box-shadow:0 0 16px rgba(60,139,255,.6);transition:left .7s var(--ease),width .7s var(--ease)}
+.timeline .dot{position:absolute;top:10px;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;transition:left .7s var(--ease)}
+.timeline .today{background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.14)}
+.timeline .end{background:var(--danger);box-shadow:0 0 0 4px rgba(255,138,128,.16)}
+.tl-legend{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin:0 0 1.1rem;padding:.9rem 1rem;border-radius:16px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+.tl-legend div{display:grid;gap:.2rem;min-width:0}
+.tl-legend dt{display:flex;align-items:center;gap:.45rem;font-size:.72rem;color:var(--faint);white-space:nowrap}
+.tl-legend dd{margin:0;font-size:.95rem;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.tl-legend i{flex:none;width:8px;height:8px;border-radius:50%}
+.tl-legend .k-today{background:#fff}
+.tl-legend .k-window{width:14px;height:4px;border-radius:2px;background:var(--blue-hi)}
+.tl-legend .k-end{background:var(--danger)}
 .status-line{font-weight:500;color:var(--ink);margin-bottom:1.3rem;min-height:1.6em}
 .asterisk{color:var(--blue-hi);text-decoration:none}
 .footnote{margin-top:1.6rem;font-size:.8rem;line-height:1.55;color:var(--faint)}
@@ -204,21 +211,28 @@ p{margin:0}
   .inp span{font-size:.72rem}
   .inp input{min-height:2.9rem;padding:.6rem .8rem;border-radius:12px}
   .consent{font-size:.74rem;margin:.8rem 0 .9rem}
-  .timeline{height:56px;margin-top:1rem}
-  .timeline .track,.timeline .window{top:26px}
-  .timeline .mark::after{margin-top:8px}
+  .timeline{margin:1.1rem .4rem .8rem}
+  .tl-legend{gap:.5rem;padding:.7rem .75rem;margin-bottom:.9rem}
+  .tl-legend dt{font-size:.62rem;gap:.35rem}
+  .tl-legend dd{font-size:.8rem}
   .status-line{font-size:.9rem;margin-bottom:.9rem}
   #echeance > .inp{margin-top:.9rem!important}
   .footnote{margin-top:1rem;font-size:.72rem}
 }
 
 /* ===== Méthode ===== */
-.steps{list-style:none;margin:0 auto;padding:0;max-width:880px}
-.step{display:grid;grid-template-columns:3.2rem minmax(0,1fr);column-gap:1.4rem;align-items:start;padding-block:1.9rem;border-top:1px solid var(--hair)}
-.step:last-child{border-bottom:1px solid var(--hair)}
-.step-num{grid-row:1/3;font-family:var(--display);font-weight:500;font-size:.95rem;color:var(--blue-hi);font-variant-numeric:tabular-nums;padding-top:.2rem}
+.process{position:relative;max-width:880px;margin:0 auto}
+/* Rail : se remplit au défilement, une lueur marque la progression */
+.rail{position:absolute;left:1.4rem;top:0;height:0;width:2px;margin-left:-1px;border-radius:2px;background:rgba(255,255,255,.08)}
+.rail i{position:absolute;inset:0;border-radius:2px;background:linear-gradient(to bottom,#1F5FFF,#3C8BFF 55%,#9DC0FF);transform-origin:top;transform:scaleY(var(--p,0));box-shadow:0 0 14px rgba(60,139,255,.55)}
+.rail b{position:absolute;left:50%;top:calc(var(--p,0) * 100%);width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px rgba(60,139,255,.3),0 0 22px 6px rgba(60,139,255,.75);opacity:var(--o,0);transition:opacity .3s}
+.steps{list-style:none;margin:0;padding:0}
+.step{display:grid;grid-template-columns:2.8rem minmax(0,1fr);column-gap:clamp(1.2rem,3vw,2rem);align-items:start;padding-block:clamp(1.4rem,3vw,2.1rem)}
+.step-num{position:relative;z-index:1;grid-row:1/3;width:2.8rem;height:2.8rem;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:600;font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums;background:#0A1430;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.1);transition:background .5s var(--ease),color .5s,box-shadow .5s,transform .5s var(--ease)}
+.step.on .step-num{background:linear-gradient(145deg,#3C8BFF,#1F5FFF);color:#fff;transform:scale(1.06);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 0 0 6px rgba(31,95,255,.14),0 12px 30px -8px rgba(31,95,255,.85)}
 .step-icon{display:none}
-.step h3{font-size:clamp(1.25rem,1.05rem + .7vw,1.6rem);letter-spacing:-.025em;margin-bottom:.5rem}
+.step h3{grid-column:2;font-size:clamp(1.25rem,1.05rem + .7vw,1.6rem);letter-spacing:-.025em;margin:.45rem 0 .5rem;color:rgba(245,247,252,.6);transition:color .5s}
+.step.on h3{color:var(--ink)}
 .step > div{grid-column:2}
 .step p{color:var(--muted);max-width:58ch}
 .deliver{margin-top:.8rem;font-size:.9rem;color:var(--faint)}
@@ -390,10 +404,14 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
       <div class="timeline" aria-hidden="true">
         <div class="track"></div>
         <div class="window" id="tlWindow" style="left:0;width:0"></div>
-        <div class="mark today" id="tlToday" style="left:0">Aujourd’hui</div>
-        <div class="mark" id="tlStart" style="left:0;opacity:0">Négocier</div>
-        <div class="mark end" id="tlEnd" style="left:100%;opacity:0">Fin</div>
+        <span class="dot today" id="tlToday" style="left:0"></span>
+        <span class="dot end" id="tlEnd" style="left:100%" hidden></span>
       </div>
+      <dl class="tl-legend" id="tlLegend" hidden>
+        <div><dt><i class="k-today"></i>Aujourd’hui</dt><dd id="lgToday"></dd></div>
+        <div><dt><i class="k-window"></i>Négocier dès le</dt><dd id="lgStart"></dd></div>
+        <div><dt><i class="k-end"></i>Fin du contrat</dt><dd id="lgEnd"></dd></div>
+      </dl>
       <p class="status-line" id="tlStatus" aria-live="polite">Choisissez une date pour voir votre calendrier.</p>
       <form id="alertForm" novalidate>
         <label class="inp"><span>E-mail pour le rappel</span><input id="a-email" name="email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" enterkeyhint="send" required><em class="err"></em></label>
@@ -421,6 +439,8 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
       <h2>De votre facture à votre nouveau contrat.</h2>
       <p class="lede">Cinq étapes, un seul interlocuteur. Vous validez, nous faisons le reste.</p>
     </header>
+    <div class="process" id="process">
+    <div class="rail" aria-hidden="true"><i></i><b></b></div>
     <ol class="steps">
       <li class="step">
         <span class="step-num">01</span>
@@ -453,6 +473,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
         <div><p>Nous contrôlons vos factures, suivons vos échéances et relançons la négociation avant chaque fin de contrat.</p><p class="deliver">Vous ne ratez&nbsp;<b>plus aucune échéance</b></p></div>
       </li>
     </ol>
+    </div>
   </div>
 </section>
 
@@ -748,6 +769,7 @@ const $ = (s,r=document)=>r.querySelector(s), $$ = (s,r=document)=>[...r.querySe
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DATE_L = new Intl.DateTimeFormat('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 const DATE_S = new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'short'});
+const DATE_Y = new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'short',year:'numeric'});
 const CHARGE = Date.now();
 $('#year').textContent = new Date().getFullYear();
 
@@ -839,9 +861,12 @@ async function submitFlow(form, busyText, type, fd, okBox, onDone){
     const lo=Math.min(today,start), span=Math.max(1,end-lo);
     const pos=d=>Math.max(0,Math.min(100,(d-lo)/span*100));
     $('#tlToday').style.left=pos(today)+'%';
-    $('#tlStart').style.left=pos(start)+'%'; $('#tlStart').style.opacity=1; $('#tlStart').textContent='Négocier dès le '+DATE_S.format(start);
-    const endM=$('#tlEnd'); endM.style.opacity=1; endM.textContent='Fin '+DATE_S.format(end); endM.style.transform='translateX(-100%)';
+    $('#tlEnd').hidden=false;
     $('#tlWindow').style.left=pos(start)+'%'; $('#tlWindow').style.width=(pos(close)-pos(start))+'%';
+    $('#lgToday').textContent=DATE_S.format(today);
+    $('#lgStart').textContent=DATE_Y.format(start);
+    $('#lgEnd').textContent=DATE_Y.format(end);
+    $('#tlLegend').hidden=false;
     const days=Math.round((start-today)/864e5); let s;
     if(end<today) s='Cette date est passée : votre contrat a peut-être été reconduit tacitement. Parlons-en rapidement.';
     else if(today<start) s=`Votre fenêtre de négociation s’ouvre le ${DATE_L.format(start)}, dans ${days} jours.`;
@@ -861,6 +886,31 @@ async function submitFlow(form, busyText, type, fd, okBox, onDone){
       $('#gcal').href=`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Trinity Énergie : renégocier mon contrat d’énergie')}&dates=${f(d)}/${f(new Date(d.getTime()+18e5))}&details=${encodeURIComponent('Contactez Trinity Énergie au 07 57 42 52 37 ou pierrelouis@trinity-energie.fr')}`;
     });
   });
+})();
+
+/* Méthode : progression au défilement */
+(function(){
+  const proc=$('#process'); if(!proc) return;
+  const rail=$('.rail',proc), steps=$$('.step',proc), nums=steps.map(s=>$('.step-num',s));
+  let queued=false;
+  function layout(){
+    const pr=proc.getBoundingClientRect(), a=nums[0].getBoundingClientRect(), b=nums[nums.length-1].getBoundingClientRect();
+    rail.style.top=(a.top-pr.top+a.height/2)+'px'; rail.style.height=Math.max(0,b.top-a.top)+'px';
+  }
+  function update(){
+    queued=false;
+    const r=rail.getBoundingClientRect(), mid=innerHeight*.55;
+    const p=Math.max(0,Math.min(1,(mid-r.top)/(r.height||1)));
+    proc.style.setProperty('--p',p.toFixed(4));
+    proc.style.setProperty('--o',(p>0&&p<1)?'1':'0');
+    nums.forEach((n,i)=>{ const q=n.getBoundingClientRect(); steps[i].classList.toggle('on',q.top+q.height/2<=mid+1); });
+  }
+  const queue=()=>{ if(!queued){ queued=true; requestAnimationFrame(update); } };
+  const relayout=()=>{ layout(); update(); };
+  addEventListener('scroll',queue,{passive:true});
+  addEventListener('resize',relayout);
+  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(relayout);
+  relayout();
 })();
 
 /* Onglets facture / échéance (mobile) */
