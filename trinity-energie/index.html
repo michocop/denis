@@ -13,6 +13,14 @@
 <meta property="og:title" content="Trinity Énergie · Une énergie maîtrisée sous tous les angles">
 <meta property="og:description" content="Courtier en électricité et gaz pour les professionnels. Envoyez une facture, on s’occupe du reste.">
 <meta property="og:url" content="https://trinity-energie.fr/">
+<meta property="og:image" content="https://trinity-energie.fr/og-image.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Trinity Énergie : une énergie maîtrisée sous tous les angles.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="apple-mobile-web-app-title" content="Trinity Énergie">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230A1F4A'/%3E%3Cpath d='M16 6.5 25.5 24h-19Z' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M16 13.3 20 20.7h-8Z' fill='%233C8BFF'/%3E%3C/svg%3E">
 <script type="application/ld+json">
 {
@@ -24,6 +32,8 @@
   "email": "pierrelouis@trinity-energie.fr",
   "telephone": "+33757425237",
   "url": "https://trinity-energie.fr/",
+  "image": "https://trinity-energie.fr/og-image.jpg",
+  "taxID": "102470705",
   "address": {"@type": "PostalAddress","streetAddress": "945 rue du Général de Gaulle","postalCode": "59310","addressLocality": "Aix-en-Pévèle","addressCountry": "FR"},
   "areaServed": "FR"
 }
@@ -102,29 +112,45 @@ p{margin:0}
 .nav-links a{text-decoration:none;font-weight:500;font-size:.88rem;color:var(--muted);transition:color .2s}
 .nav-links a:hover{color:#fff}
 .nav .btn{min-height:2.5rem;padding:0 1.1rem;font-size:.86rem}
-@media (max-width:860px){.nav-links{display:none}}
+@media (max-width:1020px){.nav-links{display:none}}
 
 /* ===== En-tête ===== */
-.hero{position:relative;overflow:hidden;isolation:isolate;min-height:min(100svh,940px);margin-top:-68px;display:grid;align-items:center;text-align:center}
+.hero{position:relative;overflow:hidden;isolation:isolate;min-height:min(100svh,940px);margin-top:-68px;display:grid;align-items:center}
 #scene{position:absolute;inset:0;z-index:-2;width:100%;height:100%}
-.hero::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(78% 66% at 50% 46%,rgba(3,8,26,.82),rgba(3,8,26,.4) 68%,rgba(3,8,26,.12))}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(90deg,rgba(3,8,26,.9) 0%,rgba(3,8,26,.66) 34%,rgba(3,8,26,.16) 56%,rgba(3,8,26,0) 68%)}
 .hero::after{content:"";position:absolute;inset:auto 0 0;height:30vh;z-index:-1;pointer-events:none;background:linear-gradient(to top,var(--bg),transparent)}
 .hero-in{padding-block:calc(68px + clamp(4rem,10vw,7rem)) clamp(7rem,12vw,9rem)}
-.hero-in > div{max-width:1120px;margin-inline:auto;display:grid;justify-items:center}
+.hero-in > div{max-width:760px;display:grid;justify-items:start}
 .hero .eyebrow{margin-bottom:1.4rem;padding:.45rem .95rem;border-radius:999px;font-size:.8rem;color:var(--ice);background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),inset 0 1px 0 rgba(255,255,255,.1);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
-.hero h1{margin-bottom:1.5rem}
-.hero .lede{margin-inline:auto;max-width:44ch;font-size:clamp(1.1rem,1rem + .45vw,1.35rem);color:rgba(235,241,252,.74)}
+.hero h1{margin-bottom:1.5rem;font-size:clamp(2.9rem,1rem + 5vw,5.8rem)}
+.hero .lede{max-width:42ch;font-size:clamp(1.1rem,1rem + .45vw,1.35rem);color:rgba(235,241,252,.74)}
 .angles{display:none}
-.hero-cta{display:flex;flex-wrap:wrap;justify-content:center;gap:.75rem;margin-top:2.4rem}
+.hero-cta{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:2.4rem}
 .hero-meter{position:absolute;right:var(--gutter);bottom:2.2rem;display:flex;align-items:center;gap:.8rem;padding:.7rem 1rem;border-radius:18px;text-align:left;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.1);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
 .hero-meter .beacon{width:7px;height:7px;border-radius:50%;background:#FF4A3A;box-shadow:0 0 10px #FF4A3A;animation:blink 1.5s steps(1) infinite}
 @keyframes blink{50%{opacity:.15;box-shadow:none}}
 .hero-meter strong{display:block;font-family:var(--display);font-weight:600;font-size:1.1rem;line-height:1.1;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .hero-meter span{display:block;max-width:22ch;font-size:.7rem;line-height:1.35;color:var(--muted)}
-.scroll-cue{position:absolute;left:50%;bottom:2.2rem;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:.6rem;font-size:.72rem;color:var(--faint)}
+.scroll-cue{position:absolute;left:max(var(--gutter),calc((100% - var(--max))/2));bottom:2.2rem;display:flex;align-items:center;gap:.7rem;font-size:.72rem;color:var(--faint)}
 .scroll-cue i{display:block;width:1px;height:34px;background:linear-gradient(rgba(255,255,255,.7),transparent);transform-origin:top;animation:cue 2.4s ease-in-out infinite}
 @keyframes cue{0%{transform:scaleY(0)}50%{transform:scaleY(1)}100%{transform:scaleY(1);opacity:0}}
-@media (max-width:760px){.scroll-cue{display:none}.hero-meter{display:none}}
+@media (max-width:760px){
+  .scroll-cue{display:none}.hero-meter{display:none}
+  /* iPhone : l'éolienne en haut, le texte en bas */
+  .hero{align-items:end;text-align:center;min-height:min(100svh,880px)}
+  .hero::before{background:linear-gradient(to top,var(--bg) 24%,rgba(3,8,26,.8) 46%,rgba(3,8,26,.25) 62%,rgba(3,8,26,0) 74%)}
+  .hero::after{display:none}
+  .hero-in{padding-block:calc(68px + 16svh) 1.8rem}
+  .hero .eyebrow{margin-bottom:1rem}
+  .hero h1{margin-bottom:1rem}
+  .rating{margin:0 0 1rem}
+  .hero .lede{font-size:1.02rem}
+  .hero-cta{margin-top:1.5rem}
+  .hero-cta .btn-line{display:none}
+  .hero-in > div{justify-items:center;margin-inline:auto}
+  .hero .lede{margin-inline:auto}
+  .hero-cta{justify-content:center}
+}
 
 /* ===== Facture + échéance : panneaux de verre ===== */
 .duo{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:1.25rem;align-items:start}
@@ -244,7 +270,7 @@ p{margin:0}
 @media (max-width:760px){.reviews{grid-template-columns:1fr}}
 .review{margin:0;display:grid;gap:1.8rem;align-content:space-between;border-radius:32px;padding:clamp(1.7rem,4vw,2.6rem);background:var(--glass);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(28px) saturate(1.7);backdrop-filter:blur(28px) saturate(1.7)}
 .review-top{display:flex;align-items:center;justify-content:space-between;gap:1rem;font-size:.78rem;color:var(--faint)}
-.stars{display:flex;gap:2px;color:#fff}
+.stars{display:flex;gap:2px;color:#FFCF5C}
 .stars svg{width:14px;height:14px}
 .review blockquote{margin:0;font-family:var(--display);font-size:clamp(1.2rem,1rem + .75vw,1.55rem);line-height:1.38;font-weight:500;letter-spacing:-.025em;color:var(--ink)}
 .review figcaption{display:flex;align-items:center;gap:.85rem}
@@ -286,8 +312,97 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 .mbar .icon{flex:0 0 2.85rem;padding:0}
 @media (max-width:760px){.mbar{display:flex}.site-foot{padding-bottom:calc(6.5rem + env(safe-area-inset-bottom,0px))}}
 
+/* ===== Note Google sous le titre ===== */
+.rating{display:inline-flex;align-items:center;gap:.55rem;margin:-.4rem 0 1.5rem;padding:.3rem .1rem;font-size:.95rem;color:var(--muted);text-decoration:none;transition:color .2s}
+.rating:hover{color:var(--ink)}
+.rating .st,.pl-proof .st{display:flex;gap:2px;color:#FFCF5C}
+.rating .st svg{width:15px;height:15px}
+.rating b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.rating .go{width:14px;height:14px;opacity:.7;transition:transform .3s var(--ease)}
+.rating:hover .go{transform:translateX(3px)}
+
+/* ===== Facture par WhatsApp ===== */
+.wa-btn{display:flex;align-items:center;gap:.9rem;margin-top:1.5rem;padding:.8rem 1rem;border-radius:20px;text-decoration:none;color:var(--ink);background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),inset 0 1px 0 rgba(255,255,255,.1);transition:background-color .25s,box-shadow .25s,transform .3s var(--ease);touch-action:manipulation}
+.wa-btn:hover{background:rgba(37,211,102,.08);box-shadow:inset 0 0 0 1px rgba(37,211,102,.45)}
+.wa-btn:active{transform:scale(.99)}
+.wa-ico{flex:none;width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(145deg,#2FE07A,#1DAA55);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 10px 24px -10px rgba(37,211,102,.7)}
+.wa-ico svg{width:22px;height:22px}
+.wa-btn b{display:block;font-weight:600;font-size:.98rem;line-height:1.3}
+.wa-btn small{display:block;font-size:.8rem;color:var(--faint);line-height:1.3}
+.wa-btn .wa-go{flex:none;width:18px;height:18px;margin-left:auto;color:var(--muted)}
+.or{display:flex;align-items:center;gap:.9rem;margin:1.3rem 0 0;font-size:.8rem;color:var(--faint)}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--hair)}
+.or + form .drop{margin-top:1rem}
+
+/* ===== Votre interlocuteur ===== */
+.pl{position:relative;display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);border-radius:40px;overflow:hidden;background:var(--glass);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(28px) saturate(1.7);backdrop-filter:blur(28px) saturate(1.7)}
+.pl-stage{position:relative;isolation:isolate;overflow:hidden;min-height:clamp(430px,48vw,600px);display:flex;align-items:flex-end;justify-content:center;background:radial-gradient(120% 85% at 50% 100%,#0E2A66 0%,#081636 55%,#040B20 100%)}
+.pl-stage picture{display:contents}
+.pl-glow{position:absolute;z-index:-2;left:50%;top:46%;width:118%;aspect-ratio:1;border-radius:50%;background:radial-gradient(closest-side,rgba(60,139,255,.62),rgba(31,95,255,.22) 48%,transparent 74%);transform:translate(-50%,-50%) translate(calc(var(--mx,0) * -18px),calc(var(--my,0) * -12px + var(--sy,0) * -34px))}
+.pl-tri{position:absolute;z-index:-1;left:50%;top:43%;width:94%;color:rgba(220,229,247,.22);transform:translate(-50%,-50%) translate(calc(var(--mx,0) * 10px),calc(var(--my,0) * 8px + var(--sy,0) * -18px))}
+.pl-tri .inner{color:rgba(60,139,255,.14)}
+.pl-photo{position:relative;display:block;width:min(86%,440px);height:auto;transform:translate(calc(var(--mx,0) * 5px),calc(var(--my,0) * 3px));-webkit-mask-image:linear-gradient(to bottom,#000 78%,transparent 99%);mask-image:linear-gradient(to bottom,#000 78%,transparent 99%);filter:drop-shadow(0 30px 50px rgba(0,0,0,.55)) drop-shadow(0 0 1px rgba(157,192,255,.45))}
+.pl-chip{position:absolute;z-index:2;display:inline-flex;align-items:center;gap:.5rem;padding:.55rem .95rem;border-radius:999px;font-size:.82rem;font-weight:600;color:#fff;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),inset 0 1px 0 rgba(255,255,255,.2),0 18px 34px -18px rgba(0,0,0,.8);-webkit-backdrop-filter:blur(18px) saturate(1.7);backdrop-filter:blur(18px) saturate(1.7);transform:translate(calc(var(--mx,0) * -6px),calc(var(--my,0) * -4px))}
+.pl-chip svg{width:14px;height:14px;color:#FFCF5C}
+.pl-chip-a{top:clamp(1rem,3vw,1.8rem);right:clamp(1rem,3vw,1.8rem)}
+.pl-chip-b{bottom:clamp(1rem,3vw,1.8rem);left:clamp(1rem,3vw,1.8rem)}
+.pl-chip-b i{width:7px;height:7px;border-radius:50%;background:var(--blue-hi);box-shadow:0 0 10px var(--blue-hi)}
+.pl-body{display:grid;align-content:center;padding:clamp(1.8rem,5vw,4.2rem)}
+.pl-body .eyebrow{margin-bottom:1rem}
+.pl-body h2{font-size:clamp(2.2rem,1.3rem + 3vw,3.8rem);line-height:1;letter-spacing:-.04em}
+.pl-body h2 span{display:block;font-weight:500;color:var(--muted)}
+.pl-role{margin-top:1rem;font-size:.92rem;font-weight:600;color:var(--blue-hi)}
+.pl-text{margin-top:1.4rem;font-size:clamp(1.02rem,1rem + .25vw,1.15rem);line-height:1.65;color:var(--text);max-width:46ch}
+.pl-proof{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin-top:1.2rem;font-size:.88rem;color:var(--muted)}
+.pl-proof .st svg{width:13px;height:13px}
+.pl-actions{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:2rem}
+.pl-actions .btn{min-height:2.9rem;padding:0 1.2rem;font-size:.95rem}
+.pl-facts{list-style:none;margin:2rem 0 0;padding:1.4rem 0 0;border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;font-size:.84rem;color:var(--faint)}
+.pl-facts li{display:flex;align-items:center;gap:.5rem}
+.pl-facts li::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--blue-hi)}
+@media (max-width:860px){
+  .pl{grid-template-columns:1fr;border-radius:32px}
+  .pl-stage{min-height:390px}
+  .pl-photo{width:min(76%,350px)}
+  .pl-body{padding:1.6rem 1.3rem 1.8rem}
+  .pl-actions .btn{flex:1 1 auto}
+  .pl-actions .btn-primary{flex-basis:100%}
+}
+
+/* ===== Apporteurs d'affaires ===== */
+.ap{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:clamp(2rem,5vw,4.5rem);align-items:center;border-radius:40px;padding:clamp(1.8rem,5vw,4rem);background:var(--glass);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(28px) saturate(1.7);backdrop-filter:blur(28px) saturate(1.7)}
+.ap::before{content:"";position:absolute;left:-12%;top:-35%;width:62%;aspect-ratio:1;border-radius:50%;background:radial-gradient(closest-side,rgba(31,95,255,.3),transparent 70%);pointer-events:none}
+.ap > *{position:relative}
+.ap-big{margin:0;font-family:var(--display);font-weight:700;font-size:clamp(6.5rem,4rem + 9vw,12.5rem);line-height:.82;letter-spacing:-.06em;background:linear-gradient(165deg,#C3D7FF 0%,#3C8BFF 45%,#1F5FFF 100%);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.04em}
+.ap-big span{font-size:.46em;letter-spacing:-.02em;margin-left:.06em}
+.ap-cap{margin-top:1.2rem;max-width:28ch;color:var(--muted);font-size:.98rem}
+.ap-body h2{margin-bottom:1rem}
+.ap-body .lede{max-width:48ch}
+.ap-flow{position:relative;margin-top:2rem;padding-bottom:2.7rem}
+.ap-flow ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.6rem}
+.ap-flow li{position:relative;display:grid;align-content:start;gap:.2rem;padding:.8rem .9rem;border-radius:16px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.08)}
+.ap-flow li:nth-child(2){background:linear-gradient(145deg,rgba(60,139,255,.34),rgba(31,95,255,.18));box-shadow:inset 0 0 0 1px rgba(60,139,255,.5),inset 0 1px 0 rgba(255,255,255,.2)}
+.ap-flow li + li::before{content:"";position:absolute;left:-1.3rem;top:50%;width:1rem;height:10px;margin-top:-5px;background:var(--muted);clip-path:polygon(0 42%,70% 42%,70% 0,100% 50%,70% 100%,70% 58%,0 58%)}
+.ap-flow b{font-size:.9rem;font-weight:700;color:var(--ink);line-height:1.25}
+.ap-flow li span{font-size:.76rem;line-height:1.35;color:var(--muted)}
+.ap-back{position:absolute;margin:0;bottom:1rem;left:calc((100% - 3.2rem) / 6);width:calc((100% - 3.2rem) / 3 + 1.6rem);height:1.3rem;border:1.5px dashed rgba(60,139,255,.6);border-top:0;border-radius:0 0 14px 14px}
+.ap-back::before{content:"";position:absolute;left:-6px;top:-7px;width:10px;height:8px;background:rgba(60,139,255,.8);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.ap-back span{position:absolute;left:50%;bottom:-.75rem;transform:translateX(-50%);white-space:nowrap;padding:.2rem .65rem;border-radius:999px;background:#0B1838;box-shadow:inset 0 0 0 1px rgba(60,139,255,.5);font-size:.7rem;font-weight:700;color:var(--blue-hi)}
+.ap-list{list-style:none;margin:1.9rem 0 0;padding:0;display:grid;gap:.75rem}
+.ap-list li{display:flex;gap:.75rem;align-items:flex-start;font-size:.98rem;color:var(--text)}
+.ap-list li::before{content:"";flex:none;width:20px;height:20px;margin-top:.12rem;border-radius:50%;background:rgba(60,139,255,.16) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6 9.6 3.6' fill='none' stroke='%239DC0FF' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat;box-shadow:inset 0 0 0 1px rgba(60,139,255,.4)}
+.ap-actions{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2.2rem}
+.ap-note{margin-top:.8rem;font-size:.78rem;color:var(--faint)}
+@media (max-width:860px){.ap{grid-template-columns:1fr;border-radius:32px}.ap-actions .btn{flex:1 1 auto}}
+@media (max-width:480px){.ap-flow ol{gap:1.1rem}.ap-flow li{padding:.65rem .6rem}.ap-flow li + li::before{left:-1rem;width:.8rem}.ap-back{left:calc((100% - 2.2rem) / 6);width:calc((100% - 2.2rem) / 3 + 1.1rem)}}
+
+/* ===== Avis : actions ===== */
+.reviews-cta{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1rem 1.6rem;margin-top:2.4rem}
+.reviews-cta .reviews-more{margin:0}
+.reviews-cta .btn svg{width:16px;height:16px;color:#FFCF5C}
+
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  .panel,.review,.nav-in,.mbar,.switch{background:#0B1838}
+  .panel,.review,.nav-in,.mbar,.switch,.pl,.ap{background:#0B1838}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
@@ -307,6 +422,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
     <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
     <symbol id="i-check" viewBox="0 0 56 56"><circle cx="28" cy="28" r="26" fill="none" stroke="currentColor" stroke-width="2"/><path d="m17 29 7 7 15-16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-star" viewBox="0 0 20 20"><path d="m10 1.5 2.6 5.5 6 .7-4.4 4.1 1.2 5.9L10 14.8l-5.4 2.9 1.2-5.9L1.4 7.7l6-.7z" fill="currentColor"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-wa" viewBox="0 0 24 24"><path d="M4 20l1.3-4A8 8 0 1 1 12 20a8 8 0 0 1-4-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 .8a4 4 0 0 1-2-2l.8-1-1-2z" fill="currentColor"/></symbol>
   </defs>
@@ -321,9 +437,10 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
     <nav aria-label="Navigation principale">
       <ul class="nav-links">
         <li><a href="#facture">Votre facture</a></li>
-        <li><a href="#echeance">Échéance</a></li>
         <li><a href="#methode">Méthode</a></li>
+        <li><a href="#interlocuteur">Votre contact</a></li>
         <li><a href="#avis">Avis</a></li>
+        <li><a href="#partenaires">Partenaires</a></li>
       </ul>
     </nav>
     <a class="btn btn-primary" href="#facture">Audit gratuit</a>
@@ -339,6 +456,8 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
     <div>
       <p class="eyebrow">Courtier en électricité et gaz</p>
       <h1 id="slogan"><span class="t1">Une énergie maîtrisée</span> <span class="t2">sous tous les angles.</span></h1>
+      <!-- Note Google : à mettre à jour si la moyenne change. Lien : remplacer par le lien exact de la fiche (Google Maps > Partager). -->
+      <a class="rating" href="https://www.google.com/maps/search/?api=1&amp;query=Trinity%20%C3%89nergie%20Aix-en-P%C3%A9v%C3%A8le" target="_blank" rel="noopener" aria-label="Note Google : 5,0 sur 5. Voir la fiche Google de Trinity Énergie"><span class="st" aria-hidden="true"><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg></span><b>5,0</b><span>sur Google</span><svg class="go" aria-hidden="true"><use href="#i-arrow"/></svg></a>
       <p class="lede">Nous comparons plus de 25&nbsp;fournisseurs pour les professionnels, ajustons vos puissances et vérifions vos taxes.</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#facture">Envoyer ma facture</a>
@@ -365,6 +484,12 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
       <p class="eyebrow">Analyse gratuite</p>
       <h2 class="panel-title">Envoyez une facture. On s’occupe du reste.</h2>
       <p>Déposez votre dernière facture d’électricité ou de gaz<span class="m-hide">. Nous l’analysons et vous rappelons</span><span class="m-show"> : rappel</span> sous 48&nbsp;heures ouvrées avec un premier diagnostic.</p>
+      <a class="wa-btn" href="https://wa.me/33757425237?text=Bonjour%20Pierre-Louis%2C%20voici%20ma%20facture%20d%E2%80%99%C3%A9nergie%20pour%20une%20analyse%20gratuite." target="_blank" rel="noopener">
+        <span class="wa-ico" aria-hidden="true"><svg><use href="#i-wa"/></svg></span>
+        <span><b>Envoyer une photo sur WhatsApp</b><small>Le plus simple depuis votre téléphone</small></span>
+        <svg class="wa-go" aria-hidden="true"><use href="#i-arrow"/></svg>
+      </a>
+      <p class="or"><span>ou déposez-la ici</span></p>
       <form id="uploadForm" novalidate>
         <div class="drop" id="drop">
           <input type="file" id="fileInput" name="facture" accept="application/pdf,image/png,image/jpeg" aria-label="Choisir une facture (PDF, JPG ou PNG)">
@@ -477,6 +602,37 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
   </div>
 </section>
 
+<!-- ============ VOTRE INTERLOCUTEUR ============ -->
+<section class="section" id="interlocuteur" aria-labelledby="pl-titre">
+  <div class="wrap">
+    <div class="pl" id="pl">
+      <div class="pl-stage">
+        <div class="pl-glow" aria-hidden="true"></div>
+        <svg class="pl-tri" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 1.25 22.5 20.75H1.5Z" fill="none" stroke="currentColor" stroke-width=".1" stroke-linejoin="round"/><path class="inner" d="M12 8.75 16.5 17h-9Z" fill="currentColor"/></svg>
+        <picture>
+          <source srcset="pierre-louis.webp" type="image/webp">
+          <img class="pl-photo" src="pierre-louis.png" alt="Portrait de Pierre-Louis Tettamanti" width="770" height="864" loading="lazy" decoding="async">
+        </picture>
+        <span class="pl-chip pl-chip-a" aria-hidden="true"><svg><use href="#i-star"/></svg>5,0 sur Google</span>
+        <span class="pl-chip pl-chip-b" aria-hidden="true"><i></i>Rappel sous 48&nbsp;h ouvrées</span>
+      </div>
+      <div class="pl-body">
+        <p class="eyebrow">Votre interlocuteur</p>
+        <h2 id="pl-titre">Pierre-Louis <span>Tettamanti</span></h2>
+        <p class="pl-role">Courtier en électricité et gaz · Trinity Énergie</p>
+        <p class="pl-text">Un seul interlocuteur, du premier audit au renouvellement de votre contrat. Pierre-Louis analyse vos factures, met plus de 25&nbsp;fournisseurs en concurrence et suit vos échéances. Vous échangez directement avec lui.</p>
+        <p class="pl-proof"><span class="st" aria-hidden="true"><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg></span>Nos clients le citent par son prénom dans leurs avis Google.</p>
+        <div class="pl-actions">
+          <a class="btn btn-primary" href="tel:+33757425237"><svg aria-hidden="true"><use href="#i-phone"/></svg>07 57 42 52 37</a>
+          <a class="btn btn-line" href="https://wa.me/33757425237" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-wa"/></svg>WhatsApp</a>
+          <a class="btn btn-line" href="mailto:pierrelouis@trinity-energie.fr"><svg aria-hidden="true"><use href="#i-mail"/></svg>E-mail</a>
+        </div>
+        <ul class="pl-facts"><li>Basé à Aix-en-Pévèle</li><li>Électricité et gaz</li><li>Professionnels partout en France</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ AVIS CLIENTS ============ -->
 <section class="section blueprint" id="avis">
   <div class="wrap">
@@ -511,8 +667,46 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
         <figcaption><span class="avatar" aria-hidden="true">SC</span><span><b>Sébastien Cerouter</b><small>Boucherie Moulian</small></span></figcaption>
       </figure>
     </div>
-    <!-- Lien vers la fiche Google : remplaçable par le lien exact (Google Maps > Partager > Copier le lien) -->
-    <a class="reviews-more" href="https://www.google.com/maps/search/?api=1&amp;query=Trinity%20%C3%89nergie%20Aix-en-P%C3%A9v%C3%A8le" target="_blank" rel="noopener">Voir nos avis sur Google <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+    <!-- Liens Google : remplacer par le lien exact de la fiche et par le lien « Demander des avis » de la fiche d'établissement -->
+    <div class="reviews-cta">
+      <a class="btn btn-line" href="https://www.google.com/maps/search/?api=1&amp;query=Trinity%20%C3%89nergie%20Aix-en-P%C3%A9v%C3%A8le" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-star"/></svg>Laisser un avis</a>
+      <a class="reviews-more" href="https://www.google.com/maps/search/?api=1&amp;query=Trinity%20%C3%89nergie%20Aix-en-P%C3%A9v%C3%A8le" target="_blank" rel="noopener">Voir nos avis sur Google <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ APPORTEURS D'AFFAIRES ============ -->
+<section class="section" id="partenaires" aria-labelledby="ap-titre">
+  <div class="wrap">
+    <div class="ap">
+      <div class="ap-figure">
+        <p class="eyebrow">Programme partenaires</p>
+        <p class="ap-big" aria-label="30 %">30<span>%</span></p>
+        <p class="ap-cap">de la commission perçue par Trinity Énergie vous est reversée, sur toute la durée du contrat signé.</p>
+      </div>
+      <div class="ap-body">
+        <h2 id="ap-titre">Devenez apporteur d’affaires.</h2>
+        <p class="lede">Vous connaissez un professionnel qui pourrait renégocier son contrat d’énergie&nbsp;? Mettez-le en relation avec nous. Si un contrat est signé, vous percevez 30&nbsp;% de la commission, sans aucune démarche de votre part.</p>
+        <div class="ap-flow">
+          <ol aria-label="Le principe">
+            <li><b>Vous</b><span>transmettez un contact</span></li>
+            <li><b>Trinity Énergie</b><span>analyse et négocie</span></li>
+            <li><b>Le client</b><span>signe son contrat</span></li>
+          </ol>
+          <p class="ap-back"><span>30&nbsp;% reversés</span></p>
+        </div>
+        <ul class="ap-list">
+          <li>Aucun engagement, aucune exclusivité</li>
+          <li>Aucune démarche ni responsabilité de votre part sur le dossier</li>
+          <li>Un interlocuteur unique pour suivre vos mises en relation</li>
+        </ul>
+        <div class="ap-actions">
+          <a class="btn btn-primary" href="plaquette-apporteurs-affaires.pdf" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-down"/></svg>Télécharger la plaquette</a>
+          <a class="btn btn-line" href="https://wa.me/33757425237?text=Bonjour%20Pierre-Louis%2C%20je%20souhaite%20devenir%20apporteur%20d%E2%80%99affaires%20pour%20Trinity%20%C3%89nergie." target="_blank" rel="noopener">Devenir partenaire</a>
+        </div>
+        <p class="ap-note">Plaquette PDF, 4&nbsp;pages</p>
+      </div>
+    </div>
   </div>
 </section>
 </main>
@@ -538,7 +732,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
       <li><svg aria-hidden="true"><use href="#i-mail"/></svg><span class="k">E-mail</span><a class="v" href="mailto:pierrelouis@trinity-energie.fr">pierrelouis@trinity-energie.fr</a></li>
     </ul>
     <div class="legal">
-      <span>© <span id="year">2026</span> Trinity Énergie. Ce site n’utilise aucun cookie de suivi.</span>
+      <span>© <span id="year">2026</span> Trinity Énergie · SIREN 102&nbsp;470&nbsp;705 · Aucun cookie de suivi</span>
       <span class="links"><button type="button" data-dialog="dlgLegal">Mentions légales</button><button type="button" data-dialog="dlgPrivacy">Confidentialité</button></span>
     </div>
   </div>
@@ -547,7 +741,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 <dialog id="dlgLegal"><div class="dlg-in">
   <form method="dialog" class="dlg-close"><button aria-label="Fermer">✕</button></form>
   <h2>Mentions légales</h2>
-  <p><strong>Éditeur du site</strong><br>Trinity Énergie<br>945 rue du Général de Gaulle, 59310 Aix-en-Pévèle<br>E-mail : pierrelouis@trinity-energie.fr<br>Téléphone : 07 57 42 52 37<br>Directeur de la publication : Pierre-Louis Tettamanti</p>
+  <p><strong>Éditeur du site</strong><br>Trinity Énergie<br>SIREN : 102 470 705<br>945 rue du Général de Gaulle, 59310 Aix-en-Pévèle<br>E-mail : pierrelouis@trinity-energie.fr<br>Téléphone : 07 57 42 52 37<br>Directeur de la publication : Pierre-Louis Tettamanti</p>
   <p><strong>Hébergeur</strong><br>Hostinger International Ltd.<br>61 Lordou Vironos Street, 6023 Larnaca, Chypre</p>
 </div></dialog>
 
@@ -757,8 +951,8 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
     pGeo.attributes.position.needsUpdate=true;
     px += (tx-px)*dt*2; py += (ty-py)*dt*2;
     const mv = reduce?0:1;
-    if(portrait){ camera.position.set(1+px*1.2*mv, 3+scrollP*3*mv - py*.6*mv, 44-scrollP*8*mv); camera.lookAt(4.2, 3.5+scrollP*1.5*mv, -6); }
-    else { camera.position.set(-2+px*1.6*mv, 3.4+scrollP*4*mv - py*.8*mv, 36-scrollP*9*mv); camera.lookAt(-1.2+scrollP*2*mv, 8.2+scrollP*1.2*mv, -8); }
+    if(portrait){ camera.position.set(1+px*1.2*mv, 3+scrollP*3*mv - py*.6*mv, 44-scrollP*8*mv); camera.lookAt(4.2, -2+scrollP*1.5*mv, -6); }
+    else { camera.position.set(-3.4+px*1.6*mv, 3.4+scrollP*4*mv - py*.8*mv, 36-scrollP*9*mv); camera.lookAt(-2.6+scrollP*2*mv, 8.2+scrollP*1.2*mv, -8); }
     renderer.render(scene,camera);
   }
   frame();
@@ -911,6 +1105,19 @@ async function submitFlow(form, busyText, type, fd, okBox, onDone){
   addEventListener('resize',relayout);
   if(document.fonts&&document.fonts.ready) document.fonts.ready.then(relayout);
   relayout();
+})();
+
+/* Votre interlocuteur : profondeur au survol et au défilement */
+(function(){
+  const pl=$('#pl'); if(!pl || REDUCE) return;
+  const stage=$('.pl-stage',pl); let raf=0, mx=0, my=0, tx=0, ty=0;
+  function step(){ mx+=(tx-mx)*.12; my+=(ty-my)*.12; pl.style.setProperty('--mx',mx.toFixed(3)); pl.style.setProperty('--my',my.toFixed(3));
+    raf=(Math.abs(tx-mx)>.002||Math.abs(ty-my)>.002)? requestAnimationFrame(step) : 0; }
+  const kick=()=>{ if(!raf) raf=requestAnimationFrame(step); };
+  stage.addEventListener('pointermove',e=>{ if(e.pointerType!=='mouse') return; const r=stage.getBoundingClientRect(); tx=((e.clientX-r.left)/r.width-.5)*2; ty=((e.clientY-r.top)/r.height-.5)*2; kick(); });
+  stage.addEventListener('pointerleave',()=>{ tx=0; ty=0; kick(); });
+  const onScroll=()=>{ const r=pl.getBoundingClientRect(); const p=(innerHeight/2-(r.top+r.height/2))/innerHeight; pl.style.setProperty('--sy',Math.max(-1,Math.min(1,p)).toFixed(3)); };
+  addEventListener('scroll',onScroll,{passive:true}); onScroll();
 })();
 
 /* Onglets facture / échéance (mobile) */
