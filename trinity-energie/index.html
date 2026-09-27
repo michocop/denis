@@ -66,7 +66,8 @@ button,input{font:inherit;color:inherit}
 .wrap{width:min(100% - 2*var(--gutter),var(--max));margin-inline:auto}
 h1,h2,h3{font-family:var(--display);color:var(--ink);margin:0;text-transform:uppercase;text-wrap:balance}
 h1{font-weight:800;font-size:clamp(2.4rem,1.1rem + 4.8vw,5.1rem);line-height:.98;letter-spacing:-.022em}
-h1 .soft{color:var(--blue-hi)}
+h1 .t1{display:block}
+h1 .t2{display:block;margin-top:.14em;font-weight:600;text-transform:none;letter-spacing:-.03em;font-size:.86em;line-height:1.04;background:linear-gradient(92deg,#3C8BFF 0%,#8FB0F0 55%,#DCE5F7 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 h2{font-weight:800;font-size:clamp(1.8rem,1.1rem + 2.5vw,3.05rem);line-height:1.03;letter-spacing:-.018em}
 h3{font-weight:700;font-size:1.05rem;line-height:1.3;letter-spacing:.04em}
 p{margin:0}
@@ -74,7 +75,7 @@ p{margin:0}
 
 /* Étiquette de section : filet + triangle, comme un repère de plan */
 .eyebrow{display:flex;align-items:center;gap:.8rem;font-weight:700;font-size:.72rem;line-height:1;letter-spacing:.28em;text-transform:uppercase;color:var(--blue-hi);margin:0 0 1.4rem}
-.eyebrow::before{content:"";flex:none;width:.6rem;height:.54rem;background:var(--blue-hi);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.eyebrow::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--blue-hi)}
 .eyebrow::after{content:"";flex:1;max-width:5rem;height:1px;background:linear-gradient(90deg,var(--hair-3),transparent)}
 
 /* Papier millimétré de plan, très discret */
@@ -130,9 +131,10 @@ p{margin:0}
 .hero h1{margin-bottom:1.8rem}
 .hero .lede{color:var(--ice)}
 .angles{list-style:none;display:flex;flex-wrap:wrap;margin:2rem 0 0;padding:0;border-top:1px solid var(--hair-2);border-bottom:1px solid var(--hair-2);max-width:520px}
-.angles li{flex:1 1 0;display:flex;align-items:center;gap:.6rem;padding:.95rem 0;font-weight:700;font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;color:#fff}
+.angles li{flex:1 1 0;display:flex;align-items:center;gap:.55rem;padding:.95rem 0;font-weight:500;font-size:.86rem;color:var(--ice-muted)}
+.angles b{font-weight:700;color:#fff}
 .angles li + li{padding-left:1.2rem;border-left:1px solid var(--hair-2)}
-.angles li::before{content:"";width:.64rem;height:.56rem;background:var(--blue-hi);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.angles li::before{content:"";flex:none;width:6px;height:6px;border-radius:50%;background:var(--blue-hi);box-shadow:0 0 0 3px rgba(60,139,255,.18)}
 .hero-cta{display:flex;flex-wrap:wrap;gap:.8rem;margin-top:2.4rem}
 .hero-meter{position:absolute;right:var(--gutter);bottom:2.4rem;display:flex;align-items:center;gap:1rem;padding:.9rem 1.2rem .9rem 1rem;border:1px solid var(--hair-2);border-radius:3px;background:rgba(5,14,36,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .hero-meter .beacon{width:8px;height:8px;border-radius:50%;background:#FF4A3A;box-shadow:0 0 12px #FF4A3A;animation:blink 1.5s steps(1) infinite}
@@ -152,7 +154,12 @@ p{margin:0}
   .hero-meter strong{font-size:1.1rem}
   .hero-meter span{font-size:.64rem;max-width:17ch}
   .scroll-cue{display:none}
-  .angles li{font-size:.64rem;letter-spacing:.18em}
+  .angles li{font-size:.84rem;padding:.8rem 0;justify-content:center}
+  .angles li:first-child{justify-content:flex-start}
+  .angles li + li{padding-left:.6rem}
+  .angles li span{display:none}
+  .hero .eyebrow{letter-spacing:.2em;font-size:.64rem}
+  .hero-meter{display:none}
 }
 
 /* ===== Panneaux avec repères de coupe d'imprimeur ===== */
@@ -223,7 +230,7 @@ p{margin:0}
 .step h3{margin-top:.75rem}
 .step p{color:var(--text)}
 .deliver{display:flex;gap:.6rem;align-items:baseline;margin-top:.9rem;font-size:.88rem;color:var(--muted)}
-.deliver::before{content:"";flex:none;width:.55rem;height:.5rem;background:var(--blue-hi);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.deliver::before{content:"";flex:none;width:5px;height:5px;border-radius:50%;background:var(--blue-hi);transform:translateY(-.15rem)}
 .deliver b{color:#fff;font-weight:700}
 @media (max-width:860px){
   .step{grid-template-columns:3.2rem minmax(0,1fr);row-gap:.6rem}
@@ -290,6 +297,49 @@ dialog::backdrop{background:rgba(3,8,22,.75);-webkit-backdrop-filter:blur(4px);b
 .mbar .icon{flex:0 0 2.9rem;padding:0}
 @media (max-width:760px){.mbar{display:flex}.site-foot{padding-bottom:calc(6rem + env(safe-area-inset-bottom,0px))}}
 
+
+/* ===== Mobile & iPhone ===== */
+html{-webkit-tap-highlight-color:transparent}
+.btn,.switch button,.drop{touch-action:manipulation}
+.inp input{font-size:16px;-webkit-appearance:none;appearance:none}  /* 16px : pas de zoom automatique sur iPhone */
+.inp input[type=date]{min-height:3rem;display:flex;align-items:center;text-align:left}
+.inp input[type=date]::-webkit-date-and-time-value{text-align:left}
+.m-show{display:none}
+.switch{display:none}
+@media (max-width:960px){
+  .switch{position:sticky;top:calc(76px + env(safe-area-inset-top,0px));z-index:5;display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin-bottom:1rem;background:rgba(5,14,36,.88);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--hair-2)}
+  .switch button{min-height:2.8rem;border:0;background:transparent;color:var(--ice-muted);font-weight:700;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
+  .switch button[aria-selected="true"]{background:var(--blue);color:#fff}
+  .duo[data-show="facture"] #echeance,.duo[data-show="echeance"] #p-facture{display:none}
+  .panel .eyebrow{display:none}
+}
+@media (max-width:600px){
+  #facture.section{padding-block:1.4rem 3rem}
+  .m-hide{display:none}.m-show{display:inline}
+  .panel{padding:1.25rem 1.1rem 1.35rem}
+  .panel::before,.panel::after{width:12px;height:12px}
+  .panel-title{font-size:1.28rem;margin-bottom:.55rem}
+  .panel > p{font-size:.94rem;line-height:1.5}
+  .drop{display:grid;grid-template-columns:auto 1fr;column-gap:.9rem;align-items:center;text-align:left;margin:1rem 0;padding:.85rem 1rem}
+  .drop svg{grid-row:1/3;width:28px;height:28px;margin:0}
+  .drop small{line-height:1.3}
+  .drop strong{font-size:.95rem}
+  .file-chip{margin:-.4rem 0 .8rem}
+  .grid-2{grid-template-columns:1fr 1fr;gap:.55rem .7rem}
+  .inp{gap:.2rem}
+  .inp span{font-size:.62rem;letter-spacing:.14em}
+  .inp input{min-height:2.75rem;padding:.55rem .1rem}
+  .err:empty{min-height:0}
+  .consent{font-size:.76rem;margin:.8rem 0 .9rem;gap:.6rem;line-height:1.45}
+  #uploadForm .btn,#alertForm .btn{width:100%;min-height:3.1rem}
+  .timeline{height:62px;margin:1rem 0 .3rem}
+  .timeline .track{top:27px}.timeline .window{top:25px}
+  .timeline .mark::after{height:14px;margin-top:4px}
+  .status-line{font-size:.92rem;min-height:0;margin-bottom:.8rem}
+  #echeance > .inp{margin-top:.9rem!important}
+  .footnote{margin-top:1rem;padding-top:.8rem;font-size:.76rem}
+}
+
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{transition-duration:.001ms!important;animation-duration:.001ms!important}
@@ -339,10 +389,10 @@ dialog::backdrop{background:rgba(3,8,22,.75);-webkit-backdrop-filter:blur(4px);b
   <div class="wrap hero-in">
     <div>
       <p class="eyebrow">Électricité · Gaz · Professionnels</p>
-      <h1 id="slogan">Une énergie maîtrisée <span class="soft">sous tous</span> les angles.</h1>
+      <h1 id="slogan"><span class="t1">Une énergie maîtrisée</span> <span class="t2">sous tous les angles.</span></h1>
       <p class="lede">Courtier en électricité et gaz pour les professionnels. Nous comparons plus de 25&nbsp;fournisseurs, ajustons vos puissances et vérifions vos taxes.</p>
       <ul class="angles" aria-label="Nos trois leviers">
-        <li>Prix</li><li>Puissance</li><li>Taxes</li>
+        <li><b>Prix</b><span> négociés</span></li><li><b>Puissance</b><span> ajustée</span></li><li><b>Taxes</b><span> vérifiées</span></li>
       </ul>
       <div class="hero-cta">
         <a class="btn btn-primary" href="#facture">Envoyer ma facture</a>
@@ -359,17 +409,22 @@ dialog::backdrop{background:rgba(3,8,22,.75);-webkit-backdrop-filter:blur(4px);b
 
 <!-- ============ FACTURE + ÉCHÉANCE ============ -->
 <section class="section blueprint" id="facture">
-  <div class="wrap duo">
-    <article class="panel">
+  <div class="wrap">
+  <div class="switch" role="tablist" aria-label="Choisir un service">
+    <button type="button" role="tab" id="tab-facture" aria-controls="p-facture" aria-selected="true">Analyse gratuite</button>
+    <button type="button" role="tab" id="tab-echeance" aria-controls="echeance" aria-selected="false">Rappel d’échéance</button>
+  </div>
+  <div class="duo" id="duo" data-show="facture">
+    <article class="panel" id="p-facture">
       <p class="eyebrow">Analyse gratuite</p>
       <h2 class="panel-title">Envoyez une facture. On s’occupe du reste.</h2>
-      <p>Déposez votre dernière facture d’électricité ou de gaz. Nous l’analysons et vous rappelons sous 48&nbsp;heures ouvrées avec un premier diagnostic.</p>
+      <p>Déposez votre dernière facture d’électricité ou de gaz<span class="m-hide">. Nous l’analysons et vous rappelons</span><span class="m-show"> : rappel</span> sous 48&nbsp;heures ouvrées avec un premier diagnostic.</p>
       <form id="uploadForm" novalidate>
         <div class="drop" id="drop">
           <input type="file" id="fileInput" name="facture" accept="application/pdf,image/png,image/jpeg" aria-label="Choisir une facture (PDF, JPG ou PNG)">
           <svg viewBox="0 0 44 44" aria-hidden="true"><path d="M22 30V8m-9 9 9-9 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 28v8h32v-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <strong>Glissez votre facture ici</strong>
-          <small>ou cliquez pour la choisir. PDF, JPG ou PNG, 10&nbsp;Mo maximum</small>
+          <strong><span class="m-hide">Glissez votre facture ici</span><span class="m-show">Ajouter ma facture</span></strong>
+          <small>PDF, JPG ou PNG · 10&nbsp;Mo max.</small>
         </div>
         <div class="file-chip" id="fileChip" hidden>
           <svg aria-hidden="true"><use href="#i-doc"/></svg>
@@ -378,10 +433,10 @@ dialog::backdrop{background:rgba(3,8,22,.75);-webkit-backdrop-filter:blur(4px);b
         </div>
         <div class="err" id="fileErr" role="alert"></div>
         <div class="grid-2">
-          <label class="inp"><span>Nom complet</span><input id="f-nom" name="nom" autocomplete="name" required><em class="err"></em></label>
-          <label class="inp"><span>Entreprise</span><input id="f-entreprise" name="entreprise" autocomplete="organization" required><em class="err"></em></label>
-          <label class="inp"><span>Téléphone</span><input id="f-tel" name="tel" type="tel" autocomplete="tel" inputmode="tel" required><em class="err"></em></label>
-          <label class="inp"><span>E-mail professionnel</span><input id="f-email" name="email" type="email" autocomplete="email" required><em class="err"></em></label>
+          <label class="inp"><span>Nom complet</span><input id="f-nom" name="nom" autocomplete="name" autocapitalize="words" enterkeyhint="next" required><em class="err"></em></label>
+          <label class="inp"><span>Entreprise</span><input id="f-entreprise" name="entreprise" autocomplete="organization" enterkeyhint="next" required><em class="err"></em></label>
+          <label class="inp"><span>Téléphone</span><input id="f-tel" name="tel" type="tel" autocomplete="tel" inputmode="tel" enterkeyhint="next" required><em class="err"></em></label>
+          <label class="inp"><span>E-mail professionnel</span><input id="f-email" name="email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" enterkeyhint="done" required><em class="err"></em></label>
         </div>
         <label class="hp" aria-hidden="true">Site web<input name="site_web" tabindex="-1" autocomplete="off"></label>
         <label class="consent"><input id="f-rgpd" type="checkbox" name="rgpd" value="oui" required><span>J’accepte que Trinity Énergie utilise ces informations pour analyser ma facture et me recontacter. Mes données ne sont jamais revendues.</span></label>
@@ -398,7 +453,7 @@ dialog::backdrop{background:rgba(3,8,22,.75);-webkit-backdrop-filter:blur(4px);b
     <article class="panel" id="echeance">
       <p class="eyebrow">Rappel d’échéance</p>
       <h2 class="panel-title">Ne ratez plus jamais votre échéance.</h2>
-      <p>La meilleure négociation commence plusieurs mois avant la fin du contrat. Indiquez la date, nous calculons votre fenêtre idéale<a class="asterisk" href="#note-echeance" aria-label="Voir la note sur la fenêtre de négociation">*</a>.</p>
+      <p><span class="m-hide">La meilleure négociation commence plusieurs mois avant la fin du contrat. </span>Indiquez la date, nous calculons votre fenêtre idéale<a class="asterisk" href="#note-echeance" aria-label="Voir la note sur la fenêtre de négociation">*</a>.</p>
       <label class="inp" style="margin-top:1.4rem"><span>Date de fin de votre contrat</span><input type="date" id="endDate"></label>
       <div class="timeline" aria-hidden="true">
         <div class="track"></div>
@@ -409,7 +464,7 @@ dialog::backdrop{background:rgba(3,8,22,.75);-webkit-backdrop-filter:blur(4px);b
       </div>
       <p class="status-line" id="tlStatus" aria-live="polite">Choisissez une date pour voir votre calendrier.</p>
       <form id="alertForm" novalidate>
-        <label class="inp"><span>E-mail pour le rappel</span><input id="a-email" name="email" type="email" autocomplete="email" required><em class="err"></em></label>
+        <label class="inp"><span>E-mail pour le rappel</span><input id="a-email" name="email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" enterkeyhint="send" required><em class="err"></em></label>
         <label class="hp" aria-hidden="true">Site web<input name="site_web" tabindex="-1" autocomplete="off"></label>
         <button class="btn btn-primary" type="submit" style="margin-top:1rem">Programmer mon rappel</button>
         <div class="form-error" role="alert" hidden></div>
@@ -422,6 +477,7 @@ dialog::backdrop{background:rgba(3,8,22,.75);-webkit-backdrop-filter:blur(4px);b
       </div>
       <p class="footnote" id="note-echeance"><b>*</b> Cette fenêtre est indicative. Selon les tendances du marché à l’instant&nbsp;T, il peut être plus avantageux de renégocier bien plus tôt&nbsp;: nous vous indiquons le meilleur moment pour agir.</p>
     </article>
+  </div>
   </div>
 </section>
 
@@ -873,6 +929,16 @@ async function submitFlow(form, busyText, type, fd, okBox, onDone){
       $('#gcal').href=`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent('Trinity Énergie : renégocier mon contrat d’énergie')}&dates=${f(d)}/${f(new Date(d.getTime()+18e5))}&details=${encodeURIComponent('Contactez Trinity Énergie au 07 57 42 52 37 ou pierrelouis@trinity-energie.fr')}`;
     });
   });
+})();
+
+/* Onglets facture / échéance (mobile) */
+(function(){
+  const duo=$('#duo'), tabs=$$('.switch [role=tab]');
+  const show=k=>{ duo.dataset.show=k; tabs.forEach(t=>t.setAttribute('aria-selected',String(t.id==='tab-'+k))); };
+  tabs.forEach(t=>t.addEventListener('click',()=>show(t.id.slice(4))));
+  $$('a[href="#echeance"]').forEach(a=>a.addEventListener('click',()=>show('echeance')));
+  $$('a[href="#facture"]').forEach(a=>a.addEventListener('click',()=>show('facture')));
+  if(location.hash==='#echeance') show('echeance');
 })();
 
 /* Fenêtres légales */
