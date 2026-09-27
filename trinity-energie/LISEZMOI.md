@@ -24,7 +24,7 @@ Si un `index.php` (WordPress) est présent, il passe avant `index.html` : le ren
 
 ## À compléter dans `index.html`
 
-- **Liens Google** : chercher `google.com/maps/search` (3 endroits) et remplacer par le lien exact de la fiche
+- **Liens Google** : chercher `google.com/maps/search` (2 endroits : la note sous le titre et le bouton « Laisser un avis ») et remplacer par le lien exact de la fiche
   (Google Maps → la fiche → Partager → Copier le lien). Pour le bouton « Laisser un avis », utiliser le lien
   « Demander des avis » de la fiche d'établissement Google.
 - **Note Google** : « 5,0 » est la moyenne actuelle ; la mettre à jour si elle change (chercher `5,0`).
