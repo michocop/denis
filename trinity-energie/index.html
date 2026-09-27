@@ -78,7 +78,7 @@ button,input{font:inherit;color:inherit}
 h1,h2,h3{font-family:var(--display);color:var(--ink);margin:0;text-wrap:balance;font-weight:600}
 h1{font-size:clamp(2.9rem,1rem + 6.4vw,6.8rem);line-height:1;letter-spacing:-.032em;font-weight:700}
 h1 .t1{display:block;text-shadow:0 2px 40px rgba(3,8,26,.6)}
-h1 .t2{display:block;font-weight:600;background:linear-gradient(95deg,#4F95FF 0%,#7DB0FF 50%,#C3D7FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.08em;filter:drop-shadow(0 2px 28px rgba(3,8,26,.55))}
+h1 .t2{display:block;margin-top:.16em;font-weight:600;background:linear-gradient(95deg,#4F95FF 0%,#7DB0FF 50%,#C3D7FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.08em;filter:drop-shadow(0 2px 28px rgba(3,8,26,.55))}
 h2{font-size:clamp(2rem,1.2rem + 2.8vw,3.4rem);line-height:1.06;letter-spacing:-.035em}
 h3{font-size:1.12rem;line-height:1.3;letter-spacing:-.01em}
 p{margin:0}
@@ -155,7 +155,7 @@ p{margin:0}
 /* ===== Facture + échéance : panneaux de verre ===== */
 .duo{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:1.25rem;align-items:start}
 @media (max-width:960px){.duo{grid-template-columns:1fr}}
-.panel{border-radius:32px;padding:clamp(1.6rem,3.6vw,2.8rem);background:var(--glass);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(28px) saturate(1.7);backdrop-filter:blur(28px) saturate(1.7)}
+.panel{border-radius:32px;padding:clamp(1.6rem,3.6vw,2.8rem);background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.09);box-shadow:0 40px 80px -40px rgba(0,0,0,.75)}
 .panel-title{font-size:clamp(1.55rem,1.15rem + 1.2vw,2.15rem);line-height:1.1;letter-spacing:-.03em;margin-bottom:.8rem}
 .panel > p{color:var(--muted);max-width:52ch}
 .drop{position:relative;margin:1.8rem 0 1.4rem;border-radius:22px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);padding:2rem 1.2rem;text-align:center;cursor:pointer;transition:background-color .25s,box-shadow .25s}
@@ -198,14 +198,16 @@ p{margin:0}
 .timeline .track{position:absolute;left:0;right:0;top:8px;height:4px;border-radius:4px;background:rgba(255,255,255,.1)}
 .timeline .window{position:absolute;top:8px;height:4px;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--blue-hi));box-shadow:0 0 16px rgba(60,139,255,.6);transition:left .7s var(--ease),width .7s var(--ease)}
 .timeline .dot{position:absolute;top:10px;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;transition:left .7s var(--ease)}
-.timeline .today{background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.14)}
+.timeline .dot.today{background:var(--bg)}
+.timeline .today{box-shadow:inset 0 0 0 2.5px #fff,0 0 0 4px rgba(255,255,255,.08)}
 .timeline .end{background:var(--danger);box-shadow:0 0 0 4px rgba(255,138,128,.16)}
-.tl-legend{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin:0 0 1.1rem;padding:.9rem 1rem;border-radius:16px;background:rgba(255,255,255,.035);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
-.tl-legend div{display:grid;gap:.2rem;min-width:0}
-.tl-legend dt{display:flex;align-items:center;gap:.45rem;font-size:.72rem;color:var(--faint);white-space:nowrap}
-.tl-legend dd{margin:0;font-size:.95rem;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.tl-legend{display:grid;margin:0 0 1.1rem;padding:.1rem 1rem;border-radius:16px;background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+.tl-legend div{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.62rem 0}
+.tl-legend div + div{border-top:1px solid var(--hair)}
+.tl-legend dt{display:flex;align-items:center;gap:.6rem;font-size:.86rem;color:var(--muted);white-space:nowrap}
+.tl-legend dd{margin:0;font-size:.92rem;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .tl-legend i{flex:none;width:8px;height:8px;border-radius:50%}
-.tl-legend .k-today{background:#fff}
+.tl-legend .k-today{background:transparent;box-shadow:inset 0 0 0 2px #fff}
 .tl-legend .k-window{width:14px;height:4px;border-radius:2px;background:var(--blue-hi)}
 .tl-legend .k-end{background:var(--danger)}
 .status-line{font-weight:500;color:var(--ink);margin-bottom:1.3rem;min-height:1.6em}
@@ -238,9 +240,10 @@ p{margin:0}
   .inp input{min-height:2.9rem;padding:.6rem .8rem;border-radius:12px}
   .consent{font-size:.74rem;margin:.8rem 0 .9rem}
   .timeline{margin:1.1rem .4rem .8rem}
-  .tl-legend{gap:.5rem;padding:.7rem .75rem;margin-bottom:.9rem}
-  .tl-legend dt{font-size:.62rem;gap:.35rem}
-  .tl-legend dd{font-size:.8rem}
+  .tl-legend{padding:0 .85rem;margin-bottom:.9rem}
+  .tl-legend div{padding:.52rem 0}
+  .tl-legend dt{font-size:.8rem}
+  .tl-legend dd{font-size:.86rem}
   .status-line{font-size:.9rem;margin-bottom:.9rem}
   #echeance > .inp{margin-top:.9rem!important}
   .footnote{margin-top:1rem;font-size:.72rem}
@@ -353,7 +356,8 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 .pl-body h2 span{display:block;font-weight:500;color:var(--muted)}
 .pl-role{margin-top:1rem;font-size:.92rem;font-weight:600;color:var(--blue-hi)}
 .pl-text{margin-top:1.4rem;font-size:clamp(1.02rem,1rem + .25vw,1.15rem);line-height:1.65;color:var(--text);max-width:46ch}
-.pl-proof{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin-top:1.2rem;font-size:.88rem;color:var(--muted)}
+.pl-proof{display:grid;gap:.45rem;margin-top:1.4rem;font-size:.98rem;font-weight:500;color:var(--ink)}
+.pl-proof small{display:block;margin-top:.2rem;font-size:.8rem;font-weight:400;color:var(--faint)}
 .pl-proof .st svg{width:13px;height:13px}
 .pl-actions{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:2rem}
 .pl-actions .btn{min-height:2.9rem;padding:0 1.2rem;font-size:.95rem}
@@ -369,32 +373,29 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
   .pl-actions .btn-primary{flex-basis:100%}
 }
 
-/* ===== Apporteurs d'affaires ===== */
-.ap{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:clamp(2rem,5vw,4.5rem);align-items:center;border-radius:40px;padding:clamp(1.8rem,5vw,4rem);background:var(--glass);border:1px solid var(--glass-edge);box-shadow:var(--glass-shadow);-webkit-backdrop-filter:blur(28px) saturate(1.7);backdrop-filter:blur(28px) saturate(1.7)}
-.ap::before{content:"";position:absolute;left:-12%;top:-35%;width:62%;aspect-ratio:1;border-radius:50%;background:radial-gradient(closest-side,rgba(31,95,255,.3),transparent 70%);pointer-events:none}
+/* ===== Apporteurs d'affaires : bandeau compact ===== */
+#partenaires.section{padding-block:clamp(1rem,3vw,2rem) clamp(4.5rem,9vw,7rem)}
+.ap{position:relative;overflow:hidden;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:1rem clamp(1.2rem,3vw,2.6rem);padding:clamp(1.3rem,3vw,2rem) clamp(1.3rem,3.4vw,2.4rem);border-radius:28px;background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.09);box-shadow:0 30px 60px -36px rgba(0,0,0,.7)}
+.ap::before{content:"";position:absolute;left:-70px;top:50%;width:280px;height:280px;margin-top:-140px;border-radius:50%;background:radial-gradient(closest-side,rgba(31,95,255,.28),transparent 70%);pointer-events:none}
 .ap > *{position:relative}
-.ap-big{margin:0;font-family:var(--display);font-weight:700;font-size:clamp(6.5rem,4rem + 9vw,12.5rem);line-height:.82;letter-spacing:-.06em;background:linear-gradient(165deg,#C3D7FF 0%,#3C8BFF 45%,#1F5FFF 100%);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.04em}
-.ap-big span{font-size:.46em;letter-spacing:-.02em;margin-left:.06em}
-.ap-cap{margin-top:1.2rem;max-width:28ch;color:var(--muted);font-size:.98rem}
-.ap-body h2{margin-bottom:1rem}
-.ap-body .lede{max-width:48ch}
-.ap-flow{position:relative;margin-top:2rem;padding-bottom:2.7rem}
-.ap-flow ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.6rem}
-.ap-flow li{position:relative;display:grid;align-content:start;gap:.2rem;padding:.8rem .9rem;border-radius:16px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.08)}
-.ap-flow li:nth-child(2){background:linear-gradient(145deg,rgba(60,139,255,.34),rgba(31,95,255,.18));box-shadow:inset 0 0 0 1px rgba(60,139,255,.5),inset 0 1px 0 rgba(255,255,255,.2)}
-.ap-flow li + li::before{content:"";position:absolute;left:-1.3rem;top:50%;width:1rem;height:10px;margin-top:-5px;background:var(--muted);clip-path:polygon(0 42%,70% 42%,70% 0,100% 50%,70% 100%,70% 58%,0 58%)}
-.ap-flow b{font-size:.9rem;font-weight:700;color:var(--ink);line-height:1.25}
-.ap-flow li span{font-size:.76rem;line-height:1.35;color:var(--muted)}
-.ap-back{position:absolute;margin:0;bottom:1rem;left:calc((100% - 3.2rem) / 6);width:calc((100% - 3.2rem) / 3 + 1.6rem);height:1.3rem;border:1.5px dashed rgba(60,139,255,.6);border-top:0;border-radius:0 0 14px 14px}
-.ap-back::before{content:"";position:absolute;left:-6px;top:-7px;width:10px;height:8px;background:rgba(60,139,255,.8);clip-path:polygon(50% 0,100% 100%,0 100%)}
-.ap-back span{position:absolute;left:50%;bottom:-.75rem;transform:translateX(-50%);white-space:nowrap;padding:.2rem .65rem;border-radius:999px;background:#0B1838;box-shadow:inset 0 0 0 1px rgba(60,139,255,.5);font-size:.7rem;font-weight:700;color:var(--blue-hi)}
-.ap-list{list-style:none;margin:1.9rem 0 0;padding:0;display:grid;gap:.75rem}
-.ap-list li{display:flex;gap:.75rem;align-items:flex-start;font-size:.98rem;color:var(--text)}
-.ap-list li::before{content:"";flex:none;width:20px;height:20px;margin-top:.12rem;border-radius:50%;background:rgba(60,139,255,.16) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6 9.6 3.6' fill='none' stroke='%239DC0FF' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat;box-shadow:inset 0 0 0 1px rgba(60,139,255,.4)}
-.ap-actions{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:2.2rem}
-.ap-note{margin-top:.8rem;font-size:.78rem;color:var(--faint)}
-@media (max-width:860px){.ap{grid-template-columns:1fr;border-radius:32px}.ap-actions .btn{flex:1 1 auto}}
-@media (max-width:480px){.ap-flow ol{gap:1.1rem}.ap-flow li{padding:.65rem .6rem}.ap-flow li + li::before{left:-1rem;width:.8rem}.ap-back{left:calc((100% - 2.2rem) / 6);width:calc((100% - 2.2rem) / 3 + 1.1rem)}}
+.ap-num{margin:0;font-family:var(--display);font-weight:700;font-size:clamp(3.4rem,2.4rem + 3vw,5rem);line-height:.9;letter-spacing:-.05em;background:linear-gradient(165deg,#C3D7FF,#3C8BFF 50%,#1F5FFF);-webkit-background-clip:text;background-clip:text;color:transparent;padding-bottom:.05em}
+.ap-num span{font-size:.5em;margin-left:.04em;letter-spacing:0}
+.ap-txt .eyebrow{margin:0 0 .35rem;font-size:.76rem}
+.ap-txt h2{font-size:clamp(1.35rem,1.1rem + .9vw,1.8rem);line-height:1.15;letter-spacing:-.025em}
+.ap-txt p:last-child{margin-top:.45rem;max-width:56ch;font-size:.92rem;line-height:1.5;color:var(--muted)}
+.ap-cta{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.6rem}
+.ap-cta .btn{min-height:2.8rem;padding:0 1.15rem;font-size:.92rem}
+@media (max-width:980px){.ap{grid-template-columns:auto minmax(0,1fr)}.ap-cta{grid-column:1/-1;justify-content:flex-start}}
+@media (max-width:560px){
+  .ap{grid-template-columns:auto minmax(0,1fr);gap:.15rem 1rem;align-items:end;border-radius:24px}
+  .ap-txt{display:contents}
+  .ap-num{grid-row:1/3;align-self:center;font-size:3.1rem}
+  .ap-txt .eyebrow{grid-column:2;margin:0}
+  .ap-txt h2{grid-column:2;font-size:1.3rem}
+  .ap-txt p:last-child{grid-column:1/-1;margin-top:.9rem}
+  .ap-cta{grid-column:1/-1;margin-top:1rem}
+  .ap-cta .btn{flex:1 1 0;padding:0 .8rem}
+}
 
 /* ===== Avis : actions ===== */
 .reviews-cta{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1rem 1.6rem;margin-top:2.4rem}
@@ -402,7 +403,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 .reviews-cta .btn svg{width:16px;height:16px;color:#FFCF5C}
 
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  .panel,.review,.nav-in,.mbar,.switch,.pl,.ap{background:#0B1838}
+  .review,.nav-in,.mbar,.switch,.pl{background:#0B1838}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
@@ -619,9 +620,9 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
       <div class="pl-body">
         <p class="eyebrow">Votre interlocuteur</p>
         <h2 id="pl-titre">Pierre-Louis <span>Tettamanti</span></h2>
-        <p class="pl-role">Courtier en électricité et gaz · Trinity Énergie</p>
+        <p class="pl-role">Courtier en électricité et gaz · Trinity&nbsp;Énergie</p>
         <p class="pl-text">Un seul interlocuteur, du premier audit au renouvellement de votre contrat. Pierre-Louis analyse vos factures, met plus de 25&nbsp;fournisseurs en concurrence et suit vos échéances. Vous échangez directement avec lui.</p>
-        <p class="pl-proof"><span class="st" aria-hidden="true"><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg></span>Nos clients le citent par son prénom dans leurs avis Google.</p>
+        <p class="pl-proof"><span class="st" aria-hidden="true"><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg></span><span>« Merci à Pierre-Louis pour l’accompagnement. »<small>Jean-Philippe Bazart, avis Google</small></span></p>
         <div class="pl-actions">
           <a class="btn btn-primary" href="tel:+33757425237"><svg aria-hidden="true"><use href="#i-phone"/></svg>07 57 42 52 37</a>
           <a class="btn btn-line" href="https://wa.me/33757425237" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-wa"/></svg>WhatsApp</a>
@@ -679,32 +680,15 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 <section class="section" id="partenaires" aria-labelledby="ap-titre">
   <div class="wrap">
     <div class="ap">
-      <div class="ap-figure">
+      <p class="ap-num" aria-hidden="true">30<span>%</span></p>
+      <div class="ap-txt">
         <p class="eyebrow">Programme partenaires</p>
-        <p class="ap-big" aria-label="30 %">30<span>%</span></p>
-        <p class="ap-cap">de la commission perçue par Trinity Énergie vous est reversée, sur toute la durée du contrat signé.</p>
-      </div>
-      <div class="ap-body">
         <h2 id="ap-titre">Devenez apporteur d’affaires.</h2>
-        <p class="lede">Vous connaissez un professionnel qui pourrait renégocier son contrat d’énergie&nbsp;? Mettez-le en relation avec nous. Si un contrat est signé, vous percevez 30&nbsp;% de la commission, sans aucune démarche de votre part.</p>
-        <div class="ap-flow">
-          <ol aria-label="Le principe">
-            <li><b>Vous</b><span>transmettez un contact</span></li>
-            <li><b>Trinity Énergie</b><span>analyse et négocie</span></li>
-            <li><b>Le client</b><span>signe son contrat</span></li>
-          </ol>
-          <p class="ap-back"><span>30&nbsp;% reversés</span></p>
-        </div>
-        <ul class="ap-list">
-          <li>Aucun engagement, aucune exclusivité</li>
-          <li>Aucune démarche ni responsabilité de votre part sur le dossier</li>
-          <li>Un interlocuteur unique pour suivre vos mises en relation</li>
-        </ul>
-        <div class="ap-actions">
-          <a class="btn btn-primary" href="plaquette-apporteurs-affaires.pdf" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-down"/></svg>Télécharger la plaquette</a>
-          <a class="btn btn-line" href="https://wa.me/33757425237?text=Bonjour%20Pierre-Louis%2C%20je%20souhaite%20devenir%20apporteur%20d%E2%80%99affaires%20pour%20Trinity%20%C3%89nergie." target="_blank" rel="noopener">Devenir partenaire</a>
-        </div>
-        <p class="ap-note">Plaquette PDF, 4&nbsp;pages</p>
+        <p>Recommandez un professionnel de votre réseau&nbsp;: 30&nbsp;% de notre commission vous est reversée, sur toute la durée du contrat. Sans engagement, sans exclusivité.</p>
+      </div>
+      <div class="ap-cta">
+        <a class="btn btn-primary" href="plaquette-apporteurs-affaires.pdf" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-down"/></svg><span class="m-hide">Télécharger la plaquette</span><span class="m-show">Plaquette PDF</span></a>
+        <a class="btn btn-line" href="https://wa.me/33757425237?text=Bonjour%20Pierre-Louis%2C%20je%20souhaite%20devenir%20apporteur%20d%E2%80%99affaires%20pour%20Trinity%20%C3%89nergie." target="_blank" rel="noopener">Devenir partenaire</a>
       </div>
     </div>
   </div>
