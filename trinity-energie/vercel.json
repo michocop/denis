@@ -1,0 +1,6 @@
+{
+  "routes": [
+    { "src": "/envoi\\.php", "dest": "/api/envoi" },
+    { "src": "/(LISEZMOI\\.md|package\\.json|package-lock\\.json)", "status": 404 }
+  ]
+}
