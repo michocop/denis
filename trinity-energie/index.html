@@ -154,8 +154,19 @@ p{margin:0}
 }
 
 /* ===== Facture + échéance : panneaux de verre ===== */
-.duo{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:1.25rem;align-items:start}
-@media (max-width:960px){.duo{grid-template-columns:1fr}}
+#facture.section{padding-top:clamp(3rem,6vw,5rem)}
+.duo{display:grid;grid-template-columns:minmax(0,1fr);max-width:760px;margin-inline:auto}
+.duo[data-show="facture"] #echeance,.duo[data-show="echeance"] #p-facture{display:none}
+.panel .eyebrow{display:none}
+.panel.enter{animation:panelIn .5s var(--ease)}
+@keyframes panelIn{from{opacity:0;transform:translateY(10px)}}
+/* Sélecteur à curseur glissant */
+.switch{position:sticky;top:calc(78px + env(safe-area-inset-top,0px));z-index:5;isolation:isolate;display:grid;grid-template-columns:1fr 1fr;padding:4px;margin:0 auto 1.25rem;max-width:440px;border-radius:999px;background:rgba(10,20,48,.55);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.1),0 16px 30px -18px rgba(0,0,0,.8);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.switch-thumb{position:absolute;z-index:-1;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:999px;background:linear-gradient(145deg,#3C8BFF,#1F5FFF);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 8px 22px -8px rgba(31,95,255,.85);transition:transform .5s var(--ease)}
+.switch[data-active="echeance"] .switch-thumb{transform:translateX(100%)}
+.switch button{position:relative;min-height:2.75rem;border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:600;font-size:.92rem;cursor:pointer;touch-action:manipulation;transition:color .35s}
+.switch button:hover{color:var(--ink)}
+.switch button[aria-selected="true"]{color:#fff}
 .panel{border-radius:32px;padding:clamp(1.6rem,3.6vw,2.8rem);background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.09);box-shadow:0 40px 80px -40px rgba(0,0,0,.75)}
 .panel-title{font-size:clamp(1.55rem,1.15rem + 1.2vw,2.15rem);line-height:1.1;letter-spacing:-.03em;margin-bottom:.8rem}
 .panel > p{color:var(--muted);max-width:52ch}
@@ -217,16 +228,9 @@ p{margin:0}
 .footnote{margin-top:1.6rem;font-size:.8rem;line-height:1.55;color:var(--faint)}
 .footnote b{color:var(--blue-hi);font-weight:600}
 #uploadForm .btn,#alertForm .btn{width:100%;margin-top:.4rem}
-.switch{display:none}
 .m-show{display:none}
 .blueprint::before{display:none}
-@media (max-width:960px){
-  .switch{position:sticky;top:calc(78px + env(safe-area-inset-top,0px));z-index:5;display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:0 auto 1rem;max-width:420px;border-radius:999px;background:rgba(10,20,48,.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.1),0 16px 30px -18px rgba(0,0,0,.8);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8)}
-  .switch button{min-height:2.6rem;border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:600;font-size:.88rem;cursor:pointer;touch-action:manipulation;transition:background-color .3s,color .3s}
-  .switch button[aria-selected="true"]{background:rgba(255,255,255,.14);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
-  .duo[data-show="facture"] #echeance,.duo[data-show="echeance"] #p-facture{display:none}
-  .panel .eyebrow{display:none}
-}
+@media (max-width:600px){.switch{margin-bottom:1rem}.switch button{min-height:2.6rem;font-size:.88rem}}
 @media (max-width:600px){
   #facture.section{padding-block:1.5rem 4rem}
   .m-hide{display:none}.m-show{display:inline}
@@ -524,9 +528,10 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
 <!-- ============ FACTURE + ÉCHÉANCE ============ -->
 <section class="section blueprint" id="facture">
   <div class="wrap">
-  <div class="switch" role="tablist" aria-label="Choisir un service">
+  <div class="switch" role="tablist" aria-label="Choisir un service" data-active="facture">
+    <span class="switch-thumb" aria-hidden="true"></span>
     <button type="button" role="tab" id="tab-facture" aria-controls="p-facture" aria-selected="true">Analyse gratuite</button>
-    <button type="button" role="tab" id="tab-echeance" aria-controls="echeance" aria-selected="false">Rappel d’échéance</button>
+    <button type="button" role="tab" id="tab-echeance" aria-controls="echeance" aria-selected="false" tabindex="-1">Rappel d’échéance</button>
   </div>
   <div class="duo" id="duo" data-show="facture">
     <article class="panel" id="p-facture">
@@ -1155,11 +1160,22 @@ async function submitFlow(form, busyText, type, fd, okBox, onDone){
   addEventListener('scroll',onScroll,{passive:true}); onScroll();
 })();
 
-/* Onglets facture / échéance (mobile) */
+/* Sélecteur Analyse gratuite / Rappel d'échéance : curseur glissant */
 (function(){
-  const duo=$('#duo'), tabs=$$('.switch [role=tab]');
-  const show=k=>{ duo.dataset.show=k; tabs.forEach(t=>t.setAttribute('aria-selected',String(t.id==='tab-'+k))); };
+  const duo=$('#duo'), sw=$('.switch'), tabs=$$('.switch [role=tab]');
+  function show(k){
+    if(duo.dataset.show===k) return;
+    duo.dataset.show=k; sw.dataset.active=k;
+    tabs.forEach(t=>{ const on=t.id==='tab-'+k; t.setAttribute('aria-selected',String(on)); t.tabIndex=on?0:-1; });
+    const p=k==='facture'? $('#p-facture') : $('#echeance');
+    if(!REDUCE){ p.classList.remove('enter'); void p.offsetWidth; p.classList.add('enter'); }
+  }
   tabs.forEach(t=>t.addEventListener('click',()=>show(t.id.slice(4))));
+  sw.addEventListener('keydown',e=>{ if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft') return; e.preventDefault(); const k=e.key==='ArrowRight'?'echeance':'facture'; show(k); $('#tab-'+k).focus(); });
+  let x0=null;
+  sw.addEventListener('pointerdown',e=>{ x0=e.clientX; });
+  sw.addEventListener('pointerup',e=>{ if(x0===null) return; const dx=e.clientX-x0; x0=null; if(Math.abs(dx)>24) show(dx>0?'echeance':'facture'); });
+  sw.addEventListener('pointercancel',()=>{ x0=null; });
   $$('a[href="#echeance"]').forEach(a=>a.addEventListener('click',()=>show('echeance')));
   $$('a[href="#facture"]').forEach(a=>a.addEventListener('click',()=>show('facture')));
   if(location.hash==='#echeance') show('echeance');
