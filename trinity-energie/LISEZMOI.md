@@ -8,7 +8,6 @@ Fichiers à mettre en ligne dans `public_html` sur Hostinger (tous au même nive
 | `envoi.php` | envoie les formulaires (facture et rappel) par e-mail à pierrelouis@trinity-energie.fr |
 | `fonts/` (dossier) | les polices de la plaquette (Sora et Manrope) |
 | `pierre-louis.webp`, `pierre-louis.png` | le portrait de la section « Votre interlocuteur » |
-| `plaquette-apporteurs-affaires.pdf` | la plaquette téléchargeable (section Partenaires) |
 | `og-image.jpg` | l'image qui s'affiche quand on partage le lien (WhatsApp, SMS, LinkedIn) |
 | `apple-touch-icon.png` | l'icône quand on ajoute le site à l'écran d'accueil de l'iPhone |
 | `three.min.js` | la bibliothèque qui anime l'éolienne en 3D (sans elle, une éolienne dessinée s'affiche) |
