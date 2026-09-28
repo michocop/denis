@@ -542,7 +542,7 @@ dialog::backdrop{background:rgba(2,6,18,.5);-webkit-backdrop-filter:blur(6px);ba
           <input type="file" id="fileInput" name="facture" accept="application/pdf,image/png,image/jpeg" aria-label="Choisir une facture (PDF, JPG ou PNG)">
           <svg viewBox="0 0 44 44" aria-hidden="true"><path d="M22 30V8m-9 9 9-9 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 28v8h32v-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <strong><span class="m-hide">Glissez votre facture ici</span><span class="m-show">Ajouter ma facture</span></strong>
-          <small>PDF, JPG ou PNG · 10&nbsp;Mo max.</small>
+          <small>PDF, JPG ou PNG · 4&nbsp;Mo max.</small>
         </div>
         <div class="file-chip" id="fileChip" hidden>
           <svg aria-hidden="true"><use href="#i-doc"/></svg>
@@ -996,7 +996,9 @@ async function envoyerDemande(type, fd){
   fd.append('duree', String(Date.now()-CHARGE));
   let data = null;
   try {
-    const res = await fetch('envoi.php', {method:'POST', body:fd, headers:{'Accept':'application/json'}});
+    // api/envoi sur Vercel, envoi.php sur un hébergement PHP (Hostinger)
+    let res = await fetch('api/envoi', {method:'POST', body:fd, headers:{'Accept':'application/json'}});
+    if (res.status === 404) res = await fetch('envoi.php', {method:'POST', body:fd, headers:{'Accept':'application/json'}});
     data = await res.json();
   } catch(e) { data = null; }
   if (data && data.ok) return {demo:false};
@@ -1039,10 +1041,19 @@ async function submitFlow(form, busyText, type, fd, okBox, onDone){
 /* ===== Dépôt de facture ===== */
 (function(){
   const drop=$('#drop'), input=$('#fileInput'), chip=$('#fileChip'), err=$('#fileErr'); let file=null;
-  const setFile=f=>{ err.textContent='';
+  const MAX=4*1024*1024;
+  // Une photo de téléphone dépasse souvent 4 Mo : on la réduit (2400 px, JPEG) avant l'envoi
+  const reduire=f=>new Promise(ok=>{ const img=new Image(), url=URL.createObjectURL(f);
+    img.onload=()=>{ const k=Math.min(1,2400/Math.max(img.naturalWidth,img.naturalHeight)), c=document.createElement('canvas');
+      c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k);
+      const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url);
+      c.toBlob(b=>ok(b?new File([b],f.name.replace(/\.\w+$/,'')+'.jpg',{type:'image/jpeg'}):f),'image/jpeg',.85); };
+    img.onerror=()=>{ URL.revokeObjectURL(url); ok(f); }; img.src=url; });
+  const setFile=async f=>{ err.textContent='';
     if(!f){ file=null; chip.hidden=true; input.value=''; return; }
     if(!/^(application\/pdf|image\/(png|jpeg))$/.test(f.type)){ err.textContent='Format non pris en charge. Envoyez un PDF, un JPG ou un PNG.'; return; }
-    if(f.size>10*1024*1024){ err.textContent='Fichier trop lourd : 10 Mo maximum. Essayez une version compressée ou une photo.'; return; }
+    if(f.size>MAX && f.type!=='application/pdf') f=await reduire(f);
+    if(f.size>MAX){ err.textContent='Fichier trop lourd : 4 Mo maximum. Envoyez une photo de la facture, ou passez par WhatsApp.'; return; }
     file=f; $('#fileName').textContent=f.name; $('#fileSize').textContent=(f.size/1024/1024).toFixed(2).replace('.',',')+' Mo, prêt à l’envoi'; chip.hidden=false; };
   input.addEventListener('change',()=>setFile(input.files[0]));
   ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));

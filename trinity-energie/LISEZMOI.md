@@ -1,5 +1,23 @@
 # Site Trinity Énergie
 
+## Mise en ligne gratuite sur Vercel (recommandé)
+
+Le site marche sans PHP : les formulaires passent par `api/envoi.js`, qui envoie l'e-mail via Resend.
+
+1. Créer un compte gratuit sur resend.com → **API Keys** → créer une clé (`re_…`).
+2. Sur vercel.com → **Add New → Project** → importer le dépôt GitHub, **Root Directory** : `trinity-energie`.
+3. Dans le projet Vercel → **Settings → Environment Variables** : ajouter `RESEND_API_KEY` = la clé, puis redéployer.
+4. Tant que le domaine n'est pas vérifié sur Resend, les e-mails ne peuvent aller qu'à l'adresse du compte Resend :
+   soit créer le compte Resend avec pierrelouis@trinity-energie.fr, soit ajouter `MAIL_TO` = l'adresse du compte.
+   Pour envoyer depuis le domaine : Resend → **Domains** → ajouter trinity-energie.fr, copier les enregistrements
+   DNS indiqués chez Hostinger, puis ajouter `MAIL_FROM` = `Site Trinity Énergie <site@trinity-energie.fr>`.
+5. Brancher le domaine : Vercel → **Settings → Domains** → trinity-energie.fr, puis chez Hostinger (DNS) :
+   `A @ 76.76.21.21` et `CNAME www cname.vercel-dns.com`. Ne pas toucher aux enregistrements `MX` (e-mails).
+
+Taille maximale d'une facture : 4 Mo (les photos plus lourdes sont réduites automatiquement dans le navigateur).
+
+## Autre option : hébergement PHP (Hostinger)
+
 Fichiers à mettre en ligne dans `public_html` sur Hostinger (tous au même niveau) :
 
 | Fichier | Rôle |
