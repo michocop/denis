@@ -59,6 +59,13 @@ two weeks to the date.
 | Retention policy: how long a lost lead's personal data is kept | Not decided |
 | Lawyer review of the self-billing arrangement and the apporteur's status | Not done |
 
+## 4b. Signing with an SMS code
+
+Built and tested (database, sender, app) — see [DEPLOY.md §6b](DEPLOY.md).
+What is left is an account: a Twilio or Brevo account, its key set as a
+Supabase secret, and one row in `sms_config`. Until then signing works
+without a code, as before. Every signer needs a mobile number in their profile.
+
 ## 5. It can be distributed
 
 - Apple Developer enrolment (see §3) — 24–48 h personal, **1–2 weeks as an organisation**
