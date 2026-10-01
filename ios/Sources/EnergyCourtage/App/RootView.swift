@@ -128,7 +128,8 @@ public struct RootView: View {
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
                 .tag(Tab.chat)
 
-            ProfileView(model: ProfileViewModel(repository: dependencies.profiles),
+            ProfileView(model: ProfileViewModel(repository: dependencies.profiles,
+                                                 documents: dependencies.documents),
                         dependencies: dependencies,
                         onSignOut: onSignOut)
                 .tabItem { Label("Profil", systemImage: "person.circle") }

@@ -182,13 +182,6 @@ public struct InvoiceView: View {
                     } else {
                         ProgressView().padding(.vertical, 48)
                     }
-
-                    HStack {
-                        Spacer()
-                        Button("Fermer") { dismiss() }
-                            .font(Theme.Typography.body)
-                            .foregroundStyle(Theme.Palette.textSecondary)
-                    }
                 }
                 .padding(Theme.Spacing.gutter)
             }
@@ -197,17 +190,71 @@ public struct InvoiceView: View {
             await model.load()
             if model.document?.isFullySigned == true { await model.preparePDF() }
         }
-        // the SMS code, asked for by "Signer"
-        .sheet(item: $model.codePrompt) { prompt in
-            SignatureCodeSheet(
-                sentTo: prompt.sentTo,
-                error: model.codeError,
-                isWorking: model.isWorking,
-                onSubmit: { code in Task { await model.submitCode(code) } },
-                onResend: { Task { await model.resendCode() } }
-            )
-            .presentationDetents([.medium])
+        .safeAreaInset(edge: .bottom) { bottomBar }
+        // "Vous signez": the SMS code, asked for by "Signer le document"
+        .overlay {
+            if let prompt = model.codePrompt, let document = model.document {
+                SignatureCodeDialog(
+                    documentTitle: "Reconnaissance d'honoraires",
+                    amount: SignatureCodeDialog.euros(document.amount.ttc),
+                    signerName: signerName,
+                    sentTo: prompt.sentTo,
+                    error: model.codeError,
+                    isWorking: model.isWorking,
+                    onSubmit: { code in Task { await model.submitCode(code) } },
+                    onResend: { Task { await model.resendCode() } },
+                    onCancel: { model.codePrompt = nil }
+                )
+                .transition(.opacity)
+            }
         }
+        .animation(.snappy(duration: 0.2), value: model.codePrompt != nil)
+    }
+
+    /// Whether the person looking has already signed their side.
+    private var mySideSigned: Bool {
+        let role = isAdmin ? "entreprise" : "apporteur"
+        return model.document?.signatures.first { $0.role == role }?.signed ?? true
+    }
+
+    /// "Fermer" and "Signer le document", pinned like in the source app.
+    private var bottomBar: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+        // e.g. "Ajoutez un numéro de mobile…": said here, where the tap was
+        if model.document != nil, let message = model.errorMessage {
+            Text(message)
+                .font(Theme.Typography.label)
+                .foregroundStyle(Theme.Palette.destructive)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        HStack(spacing: Theme.Spacing.m) {
+            Spacer()
+            Button("Fermer") { dismiss() }
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .padding(.horizontal, Theme.Spacing.l)
+            if model.document != nil && !mySideSigned {
+                Button {
+                    Task { await model.sign() }
+                } label: {
+                    Text(model.isWorking ? "Envoi du code…" : "Signer le document")
+                        .font(Theme.Typography.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, Theme.Spacing.xl)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
+                                .fill(Theme.Palette.brand)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isWorking)
+            }
+        }
+        }
+        .padding(Theme.Spacing.gutter)
+        .background(Theme.Palette.surface)
+        .overlay(alignment: .top) { Divider() }
     }
 
     // MARK: - Correcting a sealed invoice
@@ -317,10 +364,16 @@ public struct InvoiceView: View {
                 .font(Theme.Typography.body.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
-            Text("• Numéro de facture \(doc.number)")
-                .font(Theme.Typography.body.weight(.semibold))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, Theme.Spacing.l)
+            // The number stays on the page: a self-billed invoice must carry it.
+            VStack(spacing: 2) {
+                Text("• Reconnaissance d'honoraires")
+                    .font(Theme.Typography.body.weight(.semibold))
+                Text("N° \(doc.number)")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, Theme.Spacing.l)
 
             VStack(alignment: .leading, spacing: 6) {
                 line("Je soussigné", doc.attestation.soussigne)
@@ -330,7 +383,7 @@ public struct InvoiceView: View {
                 line("Intervenue le", doc.attestation.intervenueLe)
             }
 
-            Divider()
+            DashedRule()
             HStack {
                 Text("Montant de la prestation :")
                 Spacer()
@@ -347,7 +400,7 @@ public struct InvoiceView: View {
                 .font(Theme.Typography.secondary)
                 .foregroundStyle(Theme.Palette.textSecondary)
             }
-            Divider()
+            DashedRule()
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(doc.legalMentions)
@@ -412,16 +465,32 @@ public struct InvoiceView: View {
                 .accessibilityElement(children: .combine)
             }
 
-            if !doc.isFullySigned {
-                PrimaryActionButton(model.isWorking ? "Signature…" : "Signer") {
-                    Task { await model.sign() }
-                }
-                .disabled(model.isWorking)
-            }
         }
         .padding(Theme.Spacing.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
     }
 
+}
+
+/// The two dashed lines either side of the amount on the source document.
+struct DashedRule: View {
+    var body: some View {
+        VStack(spacing: 2) {
+            line
+            line
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var line: some View {
+        GeometryReader { proxy in
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: 0.5))
+                path.addLine(to: CGPoint(x: proxy.size.width, y: 0.5))
+            }
+            .stroke(Theme.Palette.textPrimary, style: StrokeStyle(lineWidth: 1, dash: [4, 2]))
+        }
+        .frame(height: 1)
+    }
 }

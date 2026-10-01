@@ -116,7 +116,7 @@ def requirements(proto, seen=None):
 # CryptoKit, LocalAuthentication, CoreGraphics and UIKit. Add to it when a new
 # framework type is introduced.
 SDK = {
-    "Array", "AsyncStream", "Binding", "Button", "CGFloat", "CGPoint", "CGRect",
+    "Array", "StrokeStyle", "Path", "GeometryReader", "UTType", "PhotosPickerItem", "AsyncStream", "Binding", "Button", "CGFloat", "CGPoint", "CGRect",
     "CGSize", "Calendar", "Capsule", "Circle", "Color", "Data", "Date",
     "DateComponents", "DateFormatter", "DatePicker", "Dictionary", "Divider",
     "Double", "EdgeInsets", "Environment", "ForEach", "GridItem", "HMAC",

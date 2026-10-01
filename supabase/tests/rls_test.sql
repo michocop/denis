@@ -1956,6 +1956,95 @@ begin
     'once invoiced, the services can no longer be changed');
 end $$;
 
+\echo ''
+\echo '=== 34. Mes documents, and justificatifs that expire ==============='
+-- Johann was invited by Pierre-Louis; the fixtures predate invites, so say so.
+reset role;
+insert into invites (code, created_by, used_by, used_at)
+values ('JOHANN-01', '33333333-3333-3333-3333-333333333333',
+        '11111111-1111-1111-1111-111111111111', now());
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_row    justificatifs%rowtype;
+  v_first  uuid;
+  n int;
+begin
+  perform login(v_johann);
+  perform assert(my_contact_name() = 'Pierre-Louis Tettamanti',
+    '"Contact de" names the admin who invited the apporteur');
+  perform login(v_marie);
+  perform assert(my_contact_name() is null, 'and is empty for someone with no invitation on file');
+
+  perform login(v_johann);
+  select count(*) into n from my_documents();
+  perform assert(n > 0 and not exists (
+                   select 1 from my_documents() d join invoices i on i.id = d.invoice_id
+                    where i.apporteur_id <> v_johann),
+    'Fichiers lists the apporteur''s own reconnaissances d''honoraires, and only those');
+  perform assert(exists (select 1 from my_documents() where kind = 'avoir'),
+    'credit notes are listed too, labelled as such');
+  perform login(v_marie);
+  perform assert(not exists (select 1 from my_documents() d join invoices i on i.id = d.invoice_id
+                               where i.apporteur_id = v_johann),
+    'another apporteur sees none of them');
+
+  -- uploading: the file goes in first, under the person's own folder
+  perform login(v_johann);
+  insert into storage.objects (bucket_id, name, owner)
+  values ('justificatifs', v_johann || '/carte_identite-1.jpg', v_johann);
+  perform assert_denied(v_johann, format(
+    'insert into storage.objects (bucket_id, name, owner) values (''justificatifs'', %L, %L)',
+    v_marie || '/rib-1.pdf', v_johann),
+    'nobody can drop a file into someone else''s folder');
+
+  perform login(v_johann);
+  select * into v_row from record_justificatif('carte_identite', v_johann || '/carte_identite-1.jpg', 'cni.jpg', 120000);
+  v_first := v_row.id;
+  perform assert(v_row.expires_at between now() + interval '29 days' and now() + interval '31 days',
+    'a justificatif is kept thirty days');
+  perform assert_denied(v_johann, format('select record_justificatif(''rib'', %L, ''rib.pdf'')',
+    v_marie || '/rib-1.pdf'),
+    'and can only be recorded from one''s own folder');
+
+  insert into storage.objects (bucket_id, name, owner)
+  values ('justificatifs', v_johann || '/carte_identite-2.jpg', v_johann);
+  perform record_justificatif('carte_identite', v_johann || '/carte_identite-2.jpg', 'cni-recto.jpg');
+  perform assert((select count(*) from my_justificatifs where kind = 'carte_identite') = 1
+             and (select filename from my_justificatifs where kind = 'carte_identite') = 'cni-recto.jpg',
+    'sending a new one replaces the old in the list');
+  perform assert((select expires_at <= now() from justificatifs where id = v_first),
+    'and the replaced file is due for deletion at once, not in thirty days');
+
+  perform login(v_marie);
+  perform assert((select count(*) from justificatifs where profile_id = v_johann) = 0
+             and (select count(*) from storage.objects
+                   where bucket_id = 'justificatifs' and name like v_johann || '/%') = 0,
+    'another apporteur can neither list nor download them');
+  perform login(v_pierre);
+  perform assert((select count(*) from storage.objects
+                   where bucket_id = 'justificatifs' and name like v_johann || '/%') = 2,
+    'the company can, which is why they are sent');
+
+  perform assert_denied(v_johann, 'select * from expired_justificatifs()',
+    'the purge list is for the server only');
+end $$;
+
+reset role;
+do $$
+begin
+  perform assert((select count(*) from expired_justificatifs()) = 1,
+    'the purge sees exactly the replaced file');
+  perform forget_justificatif((select id from expired_justificatifs() limit 1));
+  perform assert((select count(*) from justificatifs) = 1,
+    'and once its file is gone, the row goes too; the live one stays');
+end $$;
+set role authenticated;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

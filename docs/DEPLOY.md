@@ -243,6 +243,32 @@ no longer be written by the app directly — only `sign_invoice` writes it.
 
 Provider-request tests: `node --experimental-strip-types supabase/functions/send-sms/providers.test.ts`.
 
+## 6c. Justificatifs: deleted after 30 days
+
+Identity cards and RIBs uploaded from Profil › Mes documents go to the
+private `justificatifs` bucket (one folder per person; the company can read
+them all). The app promises they are deleted after 30 days, and this is what
+keeps that promise:
+
+```bash
+supabase functions deploy purge-justificatifs --no-verify-jwt
+supabase secrets set PURGE_HOOK_SECRET="$(openssl rand -hex 32)"
+```
+
+Then schedule it daily in the SQL editor:
+
+```sql
+select cron.schedule('purge-justificatifs', '0 3 * * *', $$
+  select net.http_post(
+    url     := 'https://<project-ref>.supabase.co/functions/v1/purge-justificatifs',
+    headers := jsonb_build_object('x-hook-secret', '<the same PURGE_HOOK_SECRET>'));
+$$);
+```
+
+Without the schedule, expired files disappear from the app but stay in
+storage — run it before the first real upload. Once a RIB is checked, mark it
+with `set_bank_details_on_file` so nothing depends on the file after it goes.
+
 ## 7. The legal texts
 
 They live in the `legal_documents` table, not in the app bundle, so correcting
