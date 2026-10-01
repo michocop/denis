@@ -20,12 +20,20 @@ public final class ProfileViewModel {
         }
     }
 
+    /// True once the server has deleted the account, so the screen can sign
+    /// out: the login no longer exists, and staying on the tabs left the person
+    /// looking at an account that was gone until they next relaunched.
     @MainActor
-    public func deleteAccount() async {
+    public func deleteAccount() async -> Bool {
         isWorking = true
         defer { isWorking = false }
-        do { try await repository.deleteAccount() }
-        catch { errorMessage = error.localizedDescription }
+        do {
+            try await repository.deleteAccount()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 }
 
@@ -33,6 +41,7 @@ public struct ProfileView: View {
     @State private var model: ProfileViewModel
     @State private var confirmsDeletion = false
     @State private var showsMandate = false
+    @State private var shownDocument: LegalDocumentKey?
     private let dependencies: Dependencies
     private let onSignOut: () -> Void
 
@@ -88,8 +97,14 @@ public struct ProfileView: View {
                         }
                     }
 
-                    SecondaryActionButton("Conditions générales", systemImage: "doc.text") {}
-                    SecondaryActionButton("Confidentialité", systemImage: "lock") {}
+                    // Both were empty closures: required documents, and the
+                    // buttons for them did nothing.
+                    SecondaryActionButton("Conditions générales", systemImage: "doc.text") {
+                        shownDocument = LegalDocumentKey(id: "cgu")
+                    }
+                    SecondaryActionButton("Confidentialité", systemImage: "lock") {
+                        shownDocument = LegalDocumentKey(id: "confidentialite")
+                    }
                     SecondaryActionButton("Se déconnecter",
                                           systemImage: "rectangle.portrait.and.arrow.right",
                                           action: onSignOut)
@@ -116,6 +131,10 @@ public struct ProfileView: View {
             }
         }
         .task { await model.load() }
+        .sheet(item: $shownDocument) { key in
+            LegalDocumentView(model: LegalViewModel(repository: dependencies.legal),
+                              documentKey: key.id)
+        }
         .sheet(isPresented: $showsMandate) {
             LegalDocumentView(model: LegalViewModel(repository: dependencies.legal),
                               documentKey: "mandat_facturation")
@@ -123,7 +142,9 @@ public struct ProfileView: View {
         }
         .confirmationDialog("Supprimer définitivement votre compte ?",
                             isPresented: $confirmsDeletion, titleVisibility: .visible) {
-            Button("Supprimer", role: .destructive) { Task { await model.deleteAccount() } }
+            Button("Supprimer", role: .destructive) {
+                Task { if await model.deleteAccount() { onSignOut() } }
+            }
             Button("Annuler", role: .cancel) {}
         } message: {
             Text("Vos recommandations et vos factures sont conservées pour des raisons légales, mais votre compte et vos données personnelles seront supprimés.")

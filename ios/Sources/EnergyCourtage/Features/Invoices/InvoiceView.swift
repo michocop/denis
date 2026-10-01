@@ -98,6 +98,7 @@ public struct InvoiceView: View {
     @State private var model: InvoiceViewModel
     @State private var showsCreditNote = false
     @State private var creditNoteReason = ""
+    @State private var confirmsSigning = false
     private let signerName: String
     private let isAdmin: Bool
 
@@ -316,17 +317,25 @@ public struct InvoiceView: View {
 
     // MARK: - Signature panel
 
+    /// The side this reader signs for. The server derives it the same way
+    /// (`sign_invoice` looks at who is calling), so this only decides what the
+    /// panel offers.
+    private var myRole: String { isAdmin ? "entreprise" : "apporteur" }
+    private var otherPartyLabel: String { isAdmin ? "de l'apporteur" : "de l'entreprise" }
+
     private func signaturePanel(_ doc: InvoiceDocument) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            Text("VOUS ALLEZ SIGNER EN TANT QUE")
-                .font(Theme.Typography.caption)
-                .tracking(1.1)
-                .foregroundStyle(Theme.Palette.textSecondary)
-            Text(signerName)
-                .font(Theme.Typography.cardTitle)
-                .foregroundStyle(Theme.Palette.textPrimary)
+            if doc.acceptsSignatures && !doc.isSigned(by: myRole) {
+                Text("VOUS ALLEZ SIGNER EN TANT QUE")
+                    .font(Theme.Typography.caption)
+                    .tracking(1.1)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                Text(signerName)
+                    .font(Theme.Typography.cardTitle)
+                    .foregroundStyle(Theme.Palette.textPrimary)
 
-            Divider()
+                Divider()
+            }
 
             ForEach(doc.signatures) { signature in
                 HStack(spacing: Theme.Spacing.m) {
@@ -345,16 +354,36 @@ public struct InvoiceView: View {
                 .accessibilityElement(children: .combine)
             }
 
-            if !doc.isFullySigned {
+            if doc.status == "void" {
+                Text("Cette facture a été annulée et ne peut plus être signée.")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+            } else if doc.acceptsSignatures && !doc.isSigned(by: myRole) {
+                // One tap used to sign, with nothing between the finger and a
+                // legally binding signature. It asks first now.
                 PrimaryActionButton(model.isWorking ? "Signature…" : "Signer") {
-                    Task { await model.sign() }
+                    confirmsSigning = true
                 }
                 .disabled(model.isWorking)
+            } else if !doc.isFullySigned {
+                // The button stayed on screen after signing, and tapping it
+                // again only produced an error from the server.
+                Text("Vous avez signé. En attente de la signature \(otherPartyLabel).")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(Theme.Spacing.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
+        .confirmationDialog("Signer la facture \(doc.number) ?",
+                            isPresented: $confirmsSigning, titleVisibility: .visible) {
+            Button("Signer") { Task { await model.sign() } }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Votre signature électronique vaut accord sur ce document, pour un montant de \(doc.amount.ttc) \(doc.amount.currency) TTC. Elle ne pourra pas être retirée.")
+        }
     }
 
 }

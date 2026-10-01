@@ -71,6 +71,11 @@ public actor SupabaseClient: SupabaseTransport {
     private var refreshToken: String?
     private var cachedUserID: UUID?
     private var cachedUserIDToken: String?
+    /// The refresh in flight, if any. Several requests that hit a 401 at once
+    /// all wait on this one rather than each spending the same refresh token:
+    /// Supabase rotates it on use, and treats a second use as token theft.
+    private var refreshInFlight: Task<Void, Error>?
+    private var onRefreshTokenRotated: (@Sendable (String) -> Void)?
 
     /// The path prefixes default to what hosted Supabase serves, where
     /// PostgREST and GoTrue sit behind a gateway at /rest/v1 and /auth/v1.
@@ -109,6 +114,14 @@ public actor SupabaseClient: SupabaseTransport {
     /// they quit and reopen it.
     public func setRefreshToken(_ token: String?) { refreshToken = token }
 
+    /// Called with each new refresh token. Supabase replaces the token every
+    /// time it is used, so one rotated in the middle of a session has to be
+    /// written back to the Keychain -- otherwise the next launch presents the
+    /// spent one, and the person is sent back to the sign-in screen.
+    public func setRefreshTokenObserver(_ observer: (@Sendable (String) -> Void)?) {
+        onRefreshTokenRotated = observer
+    }
+
     // MARK: - Auth
 
     public struct AuthSession: Decodable, Sendable {
@@ -144,13 +157,22 @@ public actor SupabaseClient: SupabaseTransport {
 
     /// Registration is invitation-based, so this only creates the auth account;
     /// `redeem_invite` turns it into a profile.
-    public func signUp(email: String, password: String) async throws -> AuthSession {
+    ///
+    /// Returns nil when the project asks for the address to be confirmed first,
+    /// which is Supabase's default: GoTrue then answers with the new user and
+    /// no session, and there is nobody to be signed in as until the link in
+    /// the email has been opened. Decoding that reply as a session used to
+    /// fail, and the person was told sign-up had gone wrong when it had not.
+    public func signUp(email: String, password: String) async throws -> AuthSession? {
         var request = URLRequest(url: makeURL(prefix: authPath, path: "signup"))
         request.httpMethod = "POST"
         applyHeaders(to: &request, authenticated: false)
         request.httpBody = try JSONEncoder().encode(["email": email, "password": password])
 
-        let session: AuthSession = try await perform(request)
+        let data = try await performRaw(request, allowRefresh: false)
+        guard let session = try? Self.decoder.decode(AuthSession.self, from: data) else {
+            return nil
+        }
         accessToken = session.accessToken
         refreshToken = session.refreshToken
         return session
@@ -174,7 +196,23 @@ public actor SupabaseClient: SupabaseTransport {
         let session: AuthSession = try await perform(request, allowRefresh: false)
         accessToken = session.accessToken
         refreshToken = session.refreshToken
+        onRefreshTokenRotated?(session.refreshToken)
         return session
+    }
+
+    /// Renews the session once, however many requests discover it expired.
+    /// `staleAuthorization` is the header the failed request carried: if the
+    /// token has changed since, another request already renewed it and there
+    /// is nothing left to do but retry.
+    private func renewSession(staleAuthorization: String?) async throws {
+        if let accessToken, staleAuthorization != "Bearer \(accessToken)" { return }
+        if let refreshInFlight { return try await refreshInFlight.value }
+        guard let token = refreshToken else { throw SupabaseError.unauthenticated }
+
+        let task = Task { _ = try await self.restore(refreshToken: token) }
+        refreshInFlight = task
+        defer { refreshInFlight = nil }
+        try await task.value
     }
 
     /// Always reports success to the caller: whether an address has an account
@@ -334,8 +372,9 @@ public actor SupabaseClient: SupabaseTransport {
         // over lunch answers every request with "vous n'avez pas les droits"
         // until it is force-quit -- a permissions error for what is only an
         // expired session. Retried exactly once, so a genuine 401 still surfaces.
-        if http.statusCode == 401, allowRefresh, let token = refreshToken {
-            _ = try? await restore(refreshToken: token)
+        if http.statusCode == 401, allowRefresh, refreshToken != nil {
+            try? await renewSession(
+                staleAuthorization: request.value(forHTTPHeaderField: "Authorization"))
             var retry = request
             applyHeaders(to: &retry)
             return try await performRaw(retry, allowRefresh: false)

@@ -166,4 +166,15 @@ public struct InvoiceDocument: Hashable, Codable, Sendable {
     public var signatures: [Signature]
 
     public var isFullySigned: Bool { signatures.allSatisfy(\.signed) }
+
+    /// Still open for signatures. The server refuses one on a void invoice or
+    /// a sealed one, so offering the button there only produces an error.
+    public var acceptsSignatures: Bool {
+        status == "draft" || status == "awaiting_signatures"
+    }
+
+    /// Whether the party signing as `role` ("apporteur" or "entreprise") has.
+    public func isSigned(by role: String) -> Bool {
+        signatures.first { $0.role == role }?.signed ?? false
+    }
 }

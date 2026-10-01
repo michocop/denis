@@ -136,6 +136,11 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         if !draft.phone.isEmpty { values["filleul_phone"] = AnyEncodable(draft.phone) }
         if !draft.email.isEmpty { values["filleul_email"] = AnyEncodable(draft.email) }
         if !draft.company.isEmpty { values["filleul_company"] = AnyEncodable(draft.company) }
+        // The server refuses a lead without it, and records its own clock
+        // rather than this one: what is sent is the "yes", not the time.
+        if draft.consentConfirmed {
+            values["consent_confirmed_at"] = AnyEncodable(Date().ISO8601Format())
+        }
 
         struct Created: Decodable { let id: UUID }
         let created: [Created] = try await client.insert("recommendations", values: values)
@@ -446,19 +451,30 @@ public struct SupabaseInvoiceRepository: InvoiceRepository {
         // and the screen offers the PDF only once both signatures are in.
         guard document.isFullySigned else { return data }
 
+        // Only the company stores the retained copy: the server cannot check
+        // the bytes it is handed, so letting the apporteur store it would let
+        // them file a doctored one. Until the company has, the apporteur gets
+        // this rendering of the same signed document, kept on the phone only.
         do {
             try await client.upload(bucket: Self.bucket, path: path, data: data,
                                     contentType: "application/pdf")
         } catch SupabaseError.http(let status, _) where status == 409 {
             // Someone else got there first; fall through and read theirs.
+        } catch SupabaseError.http(let status, _) where status == 400 || status == 403 {
+            return data
         }
 
-        struct Recorded: Decodable { let path: String }
-        let kept: String = try await client.rpc("record_invoice_pdf", body: [
-            "p_invoice_id": AnyEncodable(invoiceID.uuidString),
-            "p_path": AnyEncodable(path),
-            "p_sha256": AnyEncodable(Self.sha256(data))
-        ])
+        let kept: String
+        do {
+            kept = try await client.rpc("record_invoice_pdf", body: [
+                "p_invoice_id": AnyEncodable(invoiceID.uuidString),
+                "p_path": AnyEncodable(path),
+                "p_sha256": AnyEncodable(Self.sha256(data))
+            ])
+        } catch SupabaseError.http(let status, _) where status == 403 {
+            // The company's file is in the bucket but not yet recorded: read it.
+            return (try? await client.download(bucket: Self.bucket, path: path)) ?? data
+        }
         return kept == path ? data : try await client.download(bucket: Self.bucket, path: kept)
     }
 

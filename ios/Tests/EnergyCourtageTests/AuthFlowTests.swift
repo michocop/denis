@@ -174,6 +174,78 @@ final class AuthFlowTests: XCTestCase {
         }
     }
 
+    // MARK: - Rotation
+
+    /// Supabase spends a refresh token on use and treats a second use as theft.
+    /// Two requests expiring together used to refresh twice with the same one.
+    func testRequestsThatExpireTogetherRefreshOnce() async throws {
+        ScriptedProtocol.handler = { request in
+            if request.url?.path.contains("auth") == true {
+                return .init(status: 200, body: Self.freshSession)
+            }
+            return request.value(forHTTPHeaderField: "Authorization") == "Bearer new-token"
+                ? .init(status: 200, body: "[]")
+                : .init(status: 401, body: #"{"message":"JWT expired"}"#)
+        }
+
+        let client = makeClient()
+        await client.setAccessToken("stale-token")
+        await client.setRefreshToken("r1")
+
+        async let first: [Row] = client.get("recommendations")
+        async let second: [Row] = client.get("notifications")
+        async let third: [Row] = client.get("threads")
+        _ = try await (first, second, third)
+
+        let refreshes = ScriptedProtocol.recorded.filter { $0.url?.path == "/auth/v1/token" }
+        XCTAssertEqual(refreshes.count, 1, "three expired requests share one refresh")
+    }
+
+    /// The token a refresh hands back replaces the one in the Keychain, or the
+    /// next launch presents a spent token and lands on the sign-in screen.
+    func testARotatedRefreshTokenIsHandedOverToBeKept() async throws {
+        let rest = Counter()
+        ScriptedProtocol.handler = { request in
+            if request.url?.path.contains("auth") == true {
+                return .init(status: 200, body: Self.freshSession)
+            }
+            rest.bump()
+            return rest.value == 1 ? .init(status: 401, body: "{}") : .init(status: 200, body: "[]")
+        }
+
+        let kept = Box()
+        let client = makeClient()
+        await client.setAccessToken("stale-token")
+        await client.setRefreshToken("r1")
+        await client.setRefreshTokenObserver { kept.value = $0 }
+
+        let _: [Row] = try await client.get("recommendations")
+        XCTAssertEqual(kept.value, "r2", "the new token is passed on to be saved")
+    }
+
+    // MARK: - Signing up
+
+    /// With "Confirm email" on, which is Supabase's default, sign-up answers
+    /// with the user and no session. That is a success, not a decoding error.
+    func testSigningUpWhenTheAddressMustBeConfirmedIsNotAnError() async throws {
+        ScriptedProtocol.handler = { _ in
+            .init(status: 200, body: #"""
+            {"id":"11111111-1111-1111-1111-111111111111","email":"a@b.test",
+             "confirmation_sent_at":"2026-10-01T09:00:00Z"}
+            """#)
+        }
+        let client = makeClient()
+        let session = try await client.signUp(email: "a@b.test", password: "12345678")
+        XCTAssertNil(session, "there is no session until the address is confirmed")
+    }
+
+    func testSigningUpWithoutConfirmationSignsIn() async throws {
+        ScriptedProtocol.handler = { _ in .init(status: 200, body: Self.freshSession) }
+        let client = makeClient()
+        let session = try await client.signUp(email: "a@b.test", password: "12345678")
+        XCTAssertEqual(session?.refreshToken, "r2")
+    }
+
     /// Whether an address has an account is not something an unauthenticated
     /// caller should be able to learn, so this never reports failure.
     func testPasswordResetIsSilentAboutWhetherTheAccountExists() async {
@@ -185,9 +257,21 @@ final class AuthFlowTests: XCTestCase {
 }
 
 /// Mutable counter shared with the stub's closure without capturing a `var`.
+/// Locked, because concurrent requests reach the stub on different threads.
 private final class Counter: @unchecked Sendable {
-    private(set) var value = 0
-    func bump() { value += 1 }
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func bump() { lock.withLock { count += 1 } }
+}
+
+private final class Box: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: String?
+    var value: String? {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
 }
 
 /// A URLProtocol whose answers are scripted per request.
@@ -199,13 +283,19 @@ private final class ScriptedProtocol: URLProtocol {
 
     nonisolated(unsafe) static var handler: ((URLRequest) -> Response)?
     nonisolated(unsafe) static var requests: [URLRequest] = []
+    private static let lock = NSLock()
+
+    /// A snapshot taken under the lock, for tests that run requests at once.
+    static var recorded: [URLRequest] { lock.withLock { requests } }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.requests.append(request)
-        let answer = Self.handler?(request) ?? Response(status: 200, body: "[]")
+        let answer: Response = Self.lock.withLock {
+            Self.requests.append(request)
+            return Self.handler?(request) ?? Response(status: 200, body: "[]")
+        }
         let response = HTTPURLResponse(url: request.url!, statusCode: answer.status,
                                        httpVersion: nil,
                                        headerFields: ["Content-Type": "application/json"])!

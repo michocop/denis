@@ -11,10 +11,21 @@ import CryptoKit
 /// what gets sent is the digest of the bytes actually rendered — the server
 /// refuses anything else, the same way it refuses a signature on an invoice
 /// whose hash does not match.
+/// Which document a sheet shows. A wrapper because `.sheet(item:)` needs
+/// something Identifiable, and the key is all there is to say.
+public struct LegalDocumentKey: Identifiable, Hashable, Sendable {
+    public let id: String
+    public init(id: String) { self.id = id }
+}
+
 @Observable
 public final class LegalViewModel {
     public private(set) var documents: [LegalDocument] = []
     public private(set) var errorMessage: String?
+    /// Set after the first load, so "not published" can be told apart from
+    /// "still loading" -- the screen used to spin forever on a document that
+    /// had not been published yet.
+    public private(set) var hasLoaded = false
     public var isWorking = false
 
     private let repository: LegalRepository
@@ -39,6 +50,7 @@ public final class LegalViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        hasLoaded = true
     }
 
     /// Hashes what was displayed rather than trusting the `sha256` that came
@@ -72,10 +84,15 @@ public struct LegalDocumentView: View {
     @State private var model: LegalViewModel
     @State private var hasReadToEnd = false
     private let documentKey: String
+    /// Shown because the person has to accept it before going on, rather than
+    /// because they asked to read it: there is no "Fermer" while the document
+    /// is there to be accepted.
+    private let isRequired: Bool
 
-    public init(model: LegalViewModel, documentKey: String) {
+    public init(model: LegalViewModel, documentKey: String, isRequired: Bool = false) {
         _model = State(wrappedValue: model)
         self.documentKey = documentKey
+        self.isRequired = isRequired
     }
 
     private var document: LegalDocument? {
@@ -118,6 +135,11 @@ public struct LegalDocumentView: View {
                         .font(Theme.Typography.secondary)
                         .foregroundStyle(Theme.Palette.destructive)
                         .padding(Theme.Spacing.gutter)
+                } else if model.hasLoaded {
+                    Text("Ce document n'est pas encore publié.")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                        .padding(Theme.Spacing.gutter)
                 } else {
                     ProgressView()
                 }
@@ -125,11 +147,14 @@ public struct LegalDocumentView: View {
             .navigationTitle(document?.title ?? "Document")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Fermer") { dismiss() }
+                if !isRequired || document == nil || document?.accepted == true {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Fermer") { dismiss() }
+                    }
                 }
             }
         }
+        .interactiveDismissDisabled(isRequired && document?.accepted == false)
         .task { await model.load() }
     }
 

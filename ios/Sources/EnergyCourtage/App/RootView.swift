@@ -10,6 +10,8 @@ public struct RootView: View {
     @State private var showsNotifications = false
     @State private var notifications: NotificationsViewModel
     @State private var connectivity = Connectivity()
+    @State private var legal: LegalViewModel
+    @State private var requiredDocument: LegalDocumentKey?
 
     private let dependencies: Dependencies
     private let role: UserRole
@@ -27,6 +29,27 @@ public struct RootView: View {
         self.onSignOut = onSignOut
         _notifications = State(wrappedValue:
             NotificationsViewModel(repository: dependencies.notifications))
+        _legal = State(wrappedValue: LegalViewModel(repository: dependencies.legal))
+    }
+
+    /// The documents everyone has to have accepted to use the app. The mandate
+    /// is not one of them: only an apporteur signs it, from the profile, and
+    /// the database already refuses to invoice anyone without it.
+    private static let requiredDocuments: Set<String> = ["cgu", "confidentialite"]
+
+    /// Presents the next published version this person has not accepted --
+    /// a first launch, or a revised CGU. `LegalViewModel.outstanding` existed
+    /// and nothing ever looked at it, so nobody was ever asked.
+    @MainActor
+    private func presentOutstandingDocuments() async {
+        guard !isDemo else { return }
+        await legal.load()
+        // Offline, the last list is all there is; presenting from it would
+        // reopen the sheet every time it was closed.
+        guard legal.errorMessage == nil else { return }
+        requiredDocument = legal.outstanding
+            .first { Self.requiredDocuments.contains($0.key) }
+            .map { LegalDocumentKey(id: $0.key) }
     }
 
     public var body: some View {
@@ -35,7 +58,9 @@ public struct RootView: View {
             // to come back as "Une erreur est survenue" — which reads as "the
             // app is broken" to someone standing in a client's basement.
             if !connectivity.isOnline {
-                Label("Hors ligne — les modifications attendront le réseau",
+                // Nothing is queued while offline, so this must not promise
+                // that changes will be sent later: they will not.
+                Label("Hors ligne — vos modifications ne peuvent pas être enregistrées",
                       systemImage: "wifi.slash")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(.white)
@@ -63,6 +88,12 @@ public struct RootView: View {
             NotificationsView(model: notifications)
                 .onDisappear { Task { await notifications.refreshBadge() } }
         }
+        .fullScreenCover(item: $requiredDocument,
+                         onDismiss: { Task { await presentOutstandingDocuments() } }) { key in
+            LegalDocumentView(model: LegalViewModel(repository: dependencies.legal),
+                              documentKey: key.id, isRequired: true)
+        }
+        .task { await presentOutstandingDocuments() }
         .task {
             // Asked for here rather than at launch: a permission prompt on the
             // first screen, before the app has done anything, is the one

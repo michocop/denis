@@ -227,12 +227,14 @@ public struct StalenessBanner: View {
     }
 }
 
-/// The private notes editor. Saved locally as you type and pushed on close, so
-/// a note is never lost to a dropped connection.
+/// The private notes editor. Saved when "Enregistrer" is tapped; if that
+/// fails the sheet stays open with the text in it, rather than closing as if
+/// the note had been kept.
 public struct PersonalNotesView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var body_ = ""
     @State private var isSaving = false
+    @State private var errorMessage: String?
 
     private let initialBody: String
     private let save: (String) async throws -> Void
@@ -258,6 +260,12 @@ public struct PersonalNotesView: View {
                         RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
                             .fill(Theme.Palette.track)
                     )
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.destructive)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Spacer()
             }
             .padding(Theme.Spacing.gutter)
@@ -272,9 +280,14 @@ public struct PersonalNotesView: View {
                     Button(Strings.Actions.save) {
                         Task {
                             isSaving = true
-                            try? await save(body_)
-                            isSaving = false
-                            dismiss()
+                            defer { isSaving = false }
+                            do {
+                                try await save(body_)
+                                dismiss()
+                            } catch {
+                                errorMessage = "La note n'a pas pu être enregistrée : "
+                                    + error.localizedDescription
+                            }
                         }
                     }
                     .disabled(isSaving || body_ == initialBody)

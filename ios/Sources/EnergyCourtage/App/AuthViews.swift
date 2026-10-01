@@ -15,9 +15,18 @@ public struct SignUpView: View {
     @State private var isWorking = false
 
     private let register: (String, String, String, String, String) async throws -> Void
+    /// False once the account exists and only the invitation is missing: the
+    /// person is already signed in, so asking for an email and password again
+    /// would only create a second account, or fail trying.
+    private let asksForCredentials: Bool
+    private let onCancel: (() -> Void)?
 
-    public init(register: @escaping (_ code: String, _ firstName: String, _ lastName: String,
+    public init(asksForCredentials: Bool = true,
+                onCancel: (() -> Void)? = nil,
+                register: @escaping (_ code: String, _ firstName: String, _ lastName: String,
                                      _ email: String, _ password: String) async throws -> Void) {
+        self.asksForCredentials = asksForCredentials
+        self.onCancel = onCancel
         self.register = register
     }
 
@@ -25,7 +34,9 @@ public struct SignUpView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    Text("Vous avez reçu une invitation de votre interlocuteur ? Saisissez son code pour créer votre compte.")
+                    Text(asksForCredentials
+                         ? "Vous avez reçu une invitation de votre interlocuteur ? Saisissez son code pour créer votre compte."
+                         : "Votre compte est créé. Saisissez le code d'invitation reçu de votre interlocuteur pour y accéder.")
                         .font(Theme.Typography.secondary)
                         .foregroundStyle(Theme.Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -42,16 +53,18 @@ public struct SignUpView: View {
                     LabelledField("Nom") {
                         TextField("Nom", text: $lastName).textContentType(.familyName)
                     }
-                    LabelledField("Email") {
-                        TextField("adresse@exemple.fr", text: $email)
-                            .keyboardType(.emailAddress)
-                            .textContentType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    }
-                    LabelledField("Mot de passe") {
-                        SecureField("8 caractères minimum", text: $password)
-                            .textContentType(.newPassword)
+                    if asksForCredentials {
+                        LabelledField("Email") {
+                            TextField("adresse@exemple.fr", text: $email)
+                                .keyboardType(.emailAddress)
+                                .textContentType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                        LabelledField("Mot de passe") {
+                            SecureField("8 caractères minimum", text: $password)
+                                .textContentType(.newPassword)
+                        }
                     }
 
                     if let errorMessage {
@@ -61,7 +74,8 @@ public struct SignUpView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    PrimaryActionButton(isWorking ? "Création…" : "Créer mon compte") {
+                    PrimaryActionButton(isWorking ? "Création…"
+                                        : (asksForCredentials ? "Créer mon compte" : "Valider mon invitation")) {
                         Task { await submit() }
                     }
                     .disabled(!isValid || isWorking)
@@ -70,11 +84,13 @@ public struct SignUpView: View {
                 .padding(Theme.Spacing.gutter)
             }
             .background(Theme.Palette.canvas)
-            .navigationTitle("Créer un compte")
+            .navigationTitle(asksForCredentials ? "Créer un compte" : "Code d'invitation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Annuler") { dismiss() }
+                    Button(onCancel == nil ? "Annuler" : "Se déconnecter") {
+                        if let onCancel { onCancel() } else { dismiss() }
+                    }
                 }
             }
         }
@@ -84,8 +100,7 @@ public struct SignUpView: View {
         !code.trimmingCharacters(in: .whitespaces).isEmpty
         && !firstName.trimmingCharacters(in: .whitespaces).isEmpty
         && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
-        && email.contains("@")
-        && password.count >= 8
+        && (!asksForCredentials || (email.contains("@") && password.count >= 8))
     }
 
     private func submit() async {
@@ -97,6 +112,39 @@ public struct SignUpView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+/// Shown after signing up on a project that confirms addresses by email.
+public struct AwaitingConfirmationView: View {
+    private let email: String
+    private let onContinue: () -> Void
+
+    public init(email: String, onContinue: @escaping () -> Void) {
+        self.email = email
+        self.onContinue = onContinue
+    }
+
+    public var body: some View {
+        VStack(spacing: Theme.Spacing.l) {
+            Spacer()
+            Image(systemName: "envelope.badge")
+                .font(.system(size: 44))
+                .foregroundStyle(Theme.Palette.brand)
+            Text("Confirmez votre adresse")
+                .font(Theme.Typography.cardTitle)
+                .foregroundStyle(Theme.Palette.textPrimary)
+                .multilineTextAlignment(.center)
+            Text("Un e-mail vient d'être envoyé à \(email). Ouvrez le lien qu'il contient, puis connectez-vous : votre code d'invitation vous sera demandé une dernière fois.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            PrimaryActionButton("Me connecter", action: onContinue)
+            Spacer()
+        }
+        .padding(Theme.Spacing.xl)
+        .background(Theme.Palette.canvas)
     }
 }
 

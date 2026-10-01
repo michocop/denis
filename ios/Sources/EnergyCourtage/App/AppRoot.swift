@@ -13,6 +13,9 @@ public final class AppModel {
     public enum Phase {
         case launching
         case signedOut(String?)
+        /// Signed up, and the project wants the address confirmed before
+        /// anyone can sign in with it.
+        case awaitingConfirmation(email: String)
         case needsInvite(email: String)
         case pendingApproval(email: String)
         case suspended
@@ -80,6 +83,13 @@ public final class AppModel {
 
         let client = SupabaseClient(baseURL: config.url, anonKey: config.key)
         self.client = client
+        // Every rotation goes to the Keychain, including the ones that happen
+        // mid-session when an access token expires. Only the launch, sign-in
+        // and sign-up saved it before, so an hour into using the app the
+        // Keychain held a spent token and the next launch meant signing in
+        // again.
+        let store = sessionStore
+        await client.setRefreshTokenObserver { token in _ = try? store.save(refreshToken: token) }
 
         guard let refreshToken = sessionStore.refreshToken() else {
             phase = .signedOut(nil)
@@ -124,11 +134,26 @@ public final class AppModel {
     public func register(code: String, firstName: String, lastName: String,
                          email: String, password: String) async throws {
         guard let client else { throw SupabaseError.notConfigured }
-        let session = try await client.signUp(email: email, password: password)
+        guard let session = try await client.signUp(email: email, password: password) else {
+            // The code is asked for again after the first sign-in, which is
+            // what .needsInvite is for: it cannot be redeemed without a session.
+            self.email = email
+            phase = .awaitingConfirmation(email: email)
+            return
+        }
         try? sessionStore.save(refreshToken: session.refreshToken)
         await client.setRefreshToken(session.refreshToken)
         self.email = session.user.email ?? email
+        try await redeem(code: code, firstName: firstName, lastName: lastName)
+    }
 
+    /// Turns a signed-in account with no profile into a member. Separate from
+    /// `register` because the account may already exist -- signed up before
+    /// confirming the address, or closed mid-sign-up -- and signing up a
+    /// second time with the same address only fails.
+    @MainActor
+    public func redeem(code: String, firstName: String, lastName: String) async throws {
+        guard let client else { throw SupabaseError.notConfigured }
         // The auth account exists but owns nothing until the invitation is
         // redeemed, which is what assigns the role.
         let _: Profile = try await client.rpc("redeem_invite", body: [
@@ -137,6 +162,11 @@ public final class AppModel {
             "p_last_name": AnyEncodable(lastName)
         ])
         phase = await resolvePhase()
+    }
+
+    @MainActor
+    public func backToSignIn() {
+        phase = .signedOut(nil)
     }
 
     @MainActor
@@ -221,12 +251,17 @@ public struct AppRootView: View {
             case .locked:
                 LockedView { await model.unlock() }
 
-            // Registered, but the invitation was never redeemed — most likely
-            // the app was closed mid-sign-up.
+            case .awaitingConfirmation(let email):
+                AwaitingConfirmationView(email: email) { model.backToSignIn() }
+
+            // Signed in, but the invitation was never redeemed: the address
+            // had to be confirmed first, or the app was closed mid-sign-up.
+            // Only the code is asked for -- the account already exists, and
+            // this used to try to create it a second time.
             case .needsInvite:
-                SignUpView { code, first, last, email, password in
-                    try await model.register(code: code, firstName: first, lastName: last,
-                                             email: email, password: password)
+                SignUpView(asksForCredentials: false,
+                           onCancel: { Task { await model.signOut() } }) { code, first, last, _, _ in
+                    try await model.redeem(code: code, firstName: first, lastName: last)
                 }
 
             case .pendingApproval(let email):
