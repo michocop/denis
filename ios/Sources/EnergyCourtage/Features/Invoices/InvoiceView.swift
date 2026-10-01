@@ -199,6 +199,7 @@ public struct InvoiceView: View {
                     amount: SignatureCodeDialog.euros(document.amount.ttc),
                     signerName: signerName,
                     sentTo: prompt.sentTo,
+                    channel: prompt.channel,
                     error: model.codeError,
                     isWorking: model.isWorking,
                     onSubmit: { code in Task { await model.submitCode(code) } },

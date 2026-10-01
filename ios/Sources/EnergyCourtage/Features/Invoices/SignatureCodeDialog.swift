@@ -11,6 +11,7 @@ public struct SignatureCodeDialog: View {
     private let amount: String
     private let signerName: String
     private let sentTo: String?
+    private let channel: String?
     private let error: String?
     private let isWorking: Bool
     private let onSubmit: (String) -> Void
@@ -18,12 +19,13 @@ public struct SignatureCodeDialog: View {
     private let onCancel: () -> Void
 
     public init(documentTitle: String, amount: String, signerName: String,
-                sentTo: String?, error: String?, isWorking: Bool,
+                sentTo: String?, channel: String? = nil, error: String?, isWorking: Bool,
                 onSubmit: @escaping (String) -> Void,
                 onResend: @escaping () -> Void,
                 onCancel: @escaping () -> Void) {
         self.documentTitle = documentTitle; self.amount = amount
-        self.signerName = signerName; self.sentTo = sentTo; self.error = error
+        self.signerName = signerName; self.sentTo = sentTo; self.channel = channel
+        self.error = error
         self.isWorking = isWorking
         self.onSubmit = onSubmit; self.onResend = onResend; self.onCancel = onCancel
     }
@@ -62,7 +64,9 @@ public struct SignatureCodeDialog: View {
                             .stroke(Theme.Palette.hairline, lineWidth: 1)
                     )
 
-                    Text(sentTo.map { "Code envoyé au \($0)" } ?? "Code envoyé par SMS")
+                    Text(channel == "whatsapp"
+                         ? "Code envoyé sur WhatsApp" + (sentTo.map { " au \($0)" } ?? "")
+                         : sentTo.map { "Code envoyé par SMS au \($0)" } ?? "Code envoyé par SMS")
                         .font(Theme.Typography.secondary)
                         .foregroundStyle(Theme.Palette.textSecondary)
 

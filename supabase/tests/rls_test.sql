@@ -2045,6 +2045,56 @@ begin
 end $$;
 set role authenticated;
 
+\echo ''
+\echo '=== 35. Codes go by SMS; WhatsApp is a switch ======================'
+reset role;
+update sms_config set enabled = true;
+update signature_otps set created_at = created_at - interval '2 hours';
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_inv    uuid;
+  v_res    jsonb;
+  v_req    net.sent_requests%rowtype;
+begin
+  perform login(v_johann);
+  select i.id into v_inv from invoices i join recommendations r on r.id = i.recommendation_id
+   where r.filleul_last_name = 'Deux';
+
+  v_res := request_signature_otp(v_inv);
+  select * into v_req from net.sent_requests order by id desc limit 1;
+  perform assert(v_res ->> 'channel' = 'sms' and v_req.body ->> 'channel' = 'sms',
+    'codes go out by SMS by default, and the app is told so');
+end $$;
+
+reset role;
+update signature_otps set created_at = created_at - interval '2 minutes';
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_inv    uuid;
+  v_res    jsonb;
+  v_req    net.sent_requests%rowtype;
+begin
+  perform login(v_johann);
+  select i.id into v_inv from invoices i join recommendations r on r.id = i.recommendation_id
+   where r.filleul_last_name = 'Deux';
+
+  perform assert_denied(v_johann, format('select request_signature_otp(%L, ''pigeon'')', v_inv),
+    'an unknown channel is refused');
+  perform login(v_johann);
+  v_res := request_signature_otp(v_inv, 'whatsapp');
+  select * into v_req from net.sent_requests order by id desc limit 1;
+  perform assert(v_res ->> 'channel' = 'whatsapp' and v_req.body ->> 'channel' = 'whatsapp',
+    'WhatsApp stays available when asked for explicitly');
+  perform assert(verify_signature_otp(v_inv, v_req.body ->> 'code') ->> 'result' = 'verified',
+    'and that code signs like any other');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

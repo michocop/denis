@@ -49,9 +49,11 @@ public struct SignatureCodeRequest: Decodable, Hashable, Identifiable, Sendable 
     public let required: Bool
     /// "06 •• •• •• 78": enough to recognise the phone, not enough to read it.
     public let sentTo: String?
+    /// "sms" (the default) or "whatsapp", if the company switches it on.
+    public let channel: String?
 
-    public init(required: Bool, sentTo: String? = nil) {
-        self.required = required; self.sentTo = sentTo
+    public init(required: Bool, sentTo: String? = nil, channel: String? = nil) {
+        self.required = required; self.sentTo = sentTo; self.channel = channel
     }
 }
 

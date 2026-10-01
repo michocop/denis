@@ -1,19 +1,24 @@
-// Energy Courtage — how a signature code becomes a request to an SMS provider.
+// Energy Courtage — how a signature code becomes a request to a provider.
 //
 // Kept apart from the HTTP handler and free of Deno globals, so the request
 // each provider receives can be checked without sending anything (see
-// providers.test.ts). Switching provider is a secret, not a code change:
+// providers.test.ts). Switching provider is a secret, not a code change.
 //
-//   SMS_PROVIDER=twilio   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM
-//                         TWILIO_FROM may be a number (+33...) or a sender name
-//                         such as TRINITY, which France accepts for one-way texts.
-//   SMS_PROVIDER=whatsapp the same Twilio credentials, plus TWILIO_WHATSAPP_FROM
-//                         (the approved WhatsApp sender, +33...) and
-//                         TWILIO_WHATSAPP_CONTENT_SID (an approved
-//                         "authentication" template whose variable {{1}} is the code).
-//                         WhatsApp refuses free text to someone who has not
-//                         written first, so a template is not optional.
-//   SMS_PROVIDER=brevo    BREVO_API_KEY, BREVO_SENDER (11 letters or digits max)
+// The database says which channel each code goes on (sms_config.channel,
+// WhatsApp by default; SMS when the signer asks for it):
+//
+//   WhatsApp   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM (the
+//              approved WhatsApp sender, +33...) and TWILIO_WHATSAPP_CONTENT_SID
+//              (an approved "authentication" template whose {{1}} is the code).
+//              WhatsApp refuses free text to someone who has not written
+//              first, so a template is not optional.
+//   SMS        SMS_PROVIDER picks who sends it:
+//              brevo   BREVO_API_KEY, BREVO_SENDER (11 letters or digits max)
+//              twilio  TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (a
+//                      number, or a sender name such as TRINITY)
+//
+// SMS_PROVIDER=whatsapp, from before channels existed, still means "WhatsApp
+// unless told otherwise", with Twilio as the SMS sender.
 
 export interface Message {
   /** E.164, already normalised by the database: +33612345678 */
@@ -22,6 +27,8 @@ export interface Message {
   code: string;
   /** the full text, for plain SMS */
   body: string;
+  /** chosen by the database; absent from callers older than channels */
+  channel?: "whatsapp" | "sms";
 }
 
 export interface ProviderRequest {
@@ -62,19 +69,22 @@ export function buildRequest(env: Env, message: Message): ProviderRequest {
     throw new Error("code is not six digits");
   }
 
-  switch ((env.SMS_PROVIDER ?? "twilio").toLowerCase()) {
+  if (channelOf(env, message) === "whatsapp") {
+    const [, , from, contentSid] = need(env, "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN",
+      "TWILIO_WHATSAPP_FROM", "TWILIO_WHATSAPP_CONTENT_SID");
+    return twilio(env, {
+      To: `whatsapp:${message.to}`,
+      From: `whatsapp:${from}`,
+      ContentSid: contentSid,
+      ContentVariables: JSON.stringify({ "1": message.code }),
+    });
+  }
+
+  const provider = (env.SMS_PROVIDER ?? "twilio").toLowerCase();
+  switch (provider === "whatsapp" ? "twilio" : provider) {
     case "twilio": {
       const [, , from] = need(env, "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM");
       return twilio(env, { To: message.to, From: from, Body: message.body });
-    }
-    case "whatsapp": {
-      const [from, contentSid] = need(env, "TWILIO_WHATSAPP_FROM", "TWILIO_WHATSAPP_CONTENT_SID");
-      return twilio(env, {
-        To: `whatsapp:${message.to}`,
-        From: `whatsapp:${from}`,
-        ContentSid: contentSid,
-        ContentVariables: JSON.stringify({ "1": message.code }),
-      });
     }
     case "brevo": {
       const [key, sender] = need(env, "BREVO_API_KEY", "BREVO_SENDER");
@@ -94,6 +104,20 @@ export function buildRequest(env: Env, message: Message): ProviderRequest {
       };
     }
     default:
-      throw new Error(`unknown SMS_PROVIDER "${env.SMS_PROVIDER}" (twilio, whatsapp or brevo)`);
+      throw new Error(`unknown SMS_PROVIDER "${env.SMS_PROVIDER}" (brevo or twilio)`);
+  }
+}
+
+export function channelOf(env: Env, message: Message): "whatsapp" | "sms" {
+  if (message.channel) return message.channel;
+  return (env.SMS_PROVIDER ?? "").toLowerCase() === "whatsapp" ? "whatsapp" : "sms";
+}
+
+/** The same code by SMS, for when WhatsApp refused it. Null when no SMS sender is set up. */
+export function smsFallback(env: Env, message: Message): ProviderRequest | null {
+  try {
+    return buildRequest(env, { ...message, channel: "sms" });
+  } catch {
+    return null;
   }
 }
