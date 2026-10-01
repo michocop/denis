@@ -16,7 +16,8 @@ grant usage on schema public, auth to anon, authenticated;
 grant select on all tables in schema public to anon;
 alter default privileges in schema public
   grant select, insert, update, delete on tables to authenticated;
-alter default privileges in schema public
-  grant execute on functions to anon, authenticated;
-grant execute on all functions in schema public to anon, authenticated;
+-- Function grants in public are the migrations' business, not this file's:
+-- 20260930000001 revokes them from anon and keeps next_invoice_index() away
+-- from everyone. Granting them here, after the migrations, would have the
+-- integration tests run against a looser database than production.
 grant execute on all functions in schema auth to anon, authenticated;

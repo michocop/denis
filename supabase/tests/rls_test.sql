@@ -474,8 +474,9 @@ declare
 begin
   -- a new reco needs no stage: the database picks the entry point
   perform login(v_marie);
-  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
-  values ('Claire', 'Petit', v_marie)
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at)
+  values ('Claire', 'Petit', v_marie, now())
   returning * into v_new;
   v_reco := v_new.id;
   perform assert(
@@ -666,14 +667,16 @@ declare
 begin
   perform login(v_johann);
   insert into recommendations (id, filleul_first_name, filleul_last_name,
-                               filleul_phone, parrain_id, reward_amount)
+                               filleul_phone, parrain_id, consent_confirmed_at)
   values ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'Luc', 'Martin',
-          '0600000001', v_johann, 750)
+          '0600000001', v_johann, now())
   returning id into v_reco;
 
   perform mark_notifications_read();
 
+  -- the commission is the company's to set, not the apporteur's (section 33)
   perform login(v_pierre);
+  perform set_reward_amount(v_reco, 750);
   perform advance_stage(v_reco, 'a_contacter');
 
   perform login(v_johann);
@@ -763,12 +766,16 @@ begin
   -- how they work -- a phoned-in referral would need a separate RPC.)
   perform login(v_johann);
   insert into recommendations (filleul_first_name, filleul_last_name, filleul_phone,
-                               parrain_id, created_at)
-  select 'Page', 'Test' || g, '0620000' || lpad(g::text, 3, '0'), v_johann,
-         now() - (g || ' hours')::interval
+                               parrain_id, consent_confirmed_at)
+  select 'Page', 'Test' || g, '0620000' || lpad(g::text, 3, '0'), v_johann, now()
   from generate_series(1, 25) g;
 
+  -- An apporteur cannot backdate a lead (section 33), so spreading them over
+  -- time is done as the admin.
   perform login(v_pierre);
+  update recommendations
+     set created_at = now() - (substr(filleul_last_name, 5)::int || ' hours')::interval
+   where filleul_first_name = 'Page';
   select count(*) into v_n from recommendation_page(false, null, null, null, 20);
   perform assert(v_n = 20, 'a page is bounded, however many rows exist');
 
@@ -841,6 +848,12 @@ begin
     format('select * from create_payout_batch(array[%L]::uuid[])', v_signed),
     'an apporteur cannot pay themselves');
 
+  perform assert_denied(v_pierre,
+    format('select * from create_payout_batch(array[%L]::uuid[])', v_signed),
+    'nobody is paid before their payment details are on file');
+  perform login(v_pierre);
+  perform set_bank_details_on_file(v_johann, true, 'COMPTA-4471');
+
   select * into v_batch from create_payout_batch(array[v_signed], 'VIR-2026-09');
   perform assert(v_batch.total > 0, 'an admin pays a batch');
   perform assert(
@@ -857,7 +870,7 @@ begin
   perform login(v_johann);
   perform assert(
     exists (select 1 from notifications
-             where profile_id = v_johann and kind = 'payout_sent'),
+             where profile_id = v_johann and kind = 'payment_sent'),
     'the apporteur is told the money is on its way');
   perform assert((select count(*) from commissions) >= 1,
     'and the commission line is theirs to see');
@@ -1088,9 +1101,18 @@ begin
     format('select record_invoice_pdf(%L, %L, %L)', v_sealed, 'x.pdf', repeat('a', 64)),
     'a stranger to the invoice cannot record its document');
 
-  perform login(v_johann);
+  -- The server cannot check the bytes it is handed, so the ten-year copy is
+  -- the issuer's to keep: otherwise the apporteur could file a doctored one.
+  perform assert_denied(v_johann,
+    format('select record_invoice_pdf(%L, %L, %L)', v_sealed, v_sealed || '.pdf', repeat('a', 64)),
+    'the apporteur does not record the retained document');
+  perform assert_denied(v_pierre,
+    format('select record_invoice_pdf(%L, %L, %L)', v_sealed, 'elsewhere.pdf', repeat('a', 64)),
+    'and it is filed under the invoice''s own name, nowhere else');
+
+  perform login(v_pierre);
   select record_invoice_pdf(v_sealed, v_sealed || '.pdf', repeat('a', 64)) into v_path;
-  perform assert(v_path = v_sealed || '.pdf', 'the apporteur records the file');
+  perform assert(v_path = v_sealed || '.pdf', 'the company records the file');
   perform assert((select pdf_sha256 from invoices where id = v_sealed) = repeat('a', 64),
     'and its digest, so a later download can be checked against it');
 
@@ -1114,21 +1136,25 @@ begin
     format('insert into storage.objects (bucket_id, name) values (%L, %L)',
            'invoices', v_sealed || '.pdf'),
     'a stranger cannot upload a document under someone else''s invoice');
-  perform assert_denied(v_johann,
+  perform assert_denied(v_pierre,
     format('insert into storage.objects (bucket_id, name) values (%L, %L)',
            'invoices', v_draft || '.pdf'),
     'nor can anyone upload one for an invoice that is not signed');
+  perform assert_denied(v_johann,
+    format('insert into storage.objects (bucket_id, name) values (%L, %L)',
+           'invoices', v_sealed || '.pdf'),
+    'and the apporteur cannot upload the retained copy of their own invoice');
 
-  perform login(v_johann);
+  perform login(v_pierre);
   insert into storage.objects (bucket_id, name) values ('invoices', v_sealed || '.pdf');
   perform assert(
     (select count(*) from storage.objects where name = v_sealed || '.pdf') = 1,
-    'the apporteur uploads the document of their own invoice');
+    'the company uploads it');
 
-  perform login(v_pierre);
+  perform login(v_johann);
   perform assert(
     (select count(*) from storage.objects where name = v_sealed || '.pdf') = 1,
-    'and the company can read it');
+    'and the apporteur can read it');
 
   perform login(v_marie);
   perform assert(
@@ -1254,8 +1280,9 @@ declare
 begin
   -- a fresh recommendation of Johann's, so this does not ride on earlier state
   perform login(v_johann);
-  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
-  values ('Claire', 'Moreau', v_johann) returning id into v_reco;
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at)
+  values ('Claire', 'Moreau', v_johann, now()) returning id into v_reco;
 
   perform login(v_pierre);
   perform assert_denied(v_pierre,
@@ -1297,8 +1324,9 @@ begin
 
   -- Marie has no mandate on file: invoicing in her name is unlawful
   perform login(v_marie);
-  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
-  values ('Hugo', 'Blanc', v_marie) returning id into v_reco;
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at)
+  values ('Hugo', 'Blanc', v_marie, now()) returning id into v_reco;
   perform login(v_pierre);
   for v_stage in select key from stages order by position loop
     perform advance_stage(v_reco, v_stage);
@@ -1367,8 +1395,9 @@ declare
   v_out    recommendations%rowtype;
 begin
   perform login(v_johann);
-  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
-  values ('Lucie', 'Perrin', v_johann) returning id into v_reco;
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at)
+  values ('Lucie', 'Perrin', v_johann, now()) returning id into v_reco;
 
   perform assert_denied(v_johann,
     format('select set_reward_amount(%L, 500)', v_reco),
@@ -1424,10 +1453,12 @@ begin
   -- cancels an uninvoiced commission. Closing a successful deal took the
   -- money off the apporteur.
   perform login(v_johann);
-  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
-  values ('Sofia', 'Nunes', v_johann) returning id into v_won;
-  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
-  values ('Karim', 'Benali', v_johann) returning id into v_lost;
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at)
+  values ('Sofia', 'Nunes', v_johann, now()) returning id into v_won;
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at)
+  values ('Karim', 'Benali', v_johann, now()) returning id into v_lost;
 
   perform login(v_pierre);
   for v_stage in select key from stages order by position loop
@@ -1478,7 +1509,8 @@ begin
      set body = regexp_replace(body, '\[[A-ZÉÈÀÇ_ /]{3,}\]', 'Trinity Énergie', 'g')
    where key = 'mandat_facturation';
   update legal_documents
-     set body = replace(body, '[X]', '30'), active = true
+     set body = regexp_replace(replace(body, '[X]', '30'), '\[[^]\n]+\]', 'à compléter', 'g'),
+         active = true
    where key = 'mandat_facturation';
 
   select * into v_doc from legal_documents where key = 'mandat_facturation' and active;
@@ -1648,6 +1680,569 @@ begin
     'while the rest of the profile stays editable');
 end $$;
 
+
+-- ------------------------------------------------- fixtures for 32 onwards
+-- Eva is a second apporteur with a mandate, so the money sections below run
+-- on their own documents instead of riding on Johann's history. The other
+-- account has signed up and has no profile: it is what anybody holds the
+-- moment sign-up is open.
 reset role;
+insert into auth.users (id, email) values
+  ('66666666-6666-6666-6666-666666666666', 'intrus@example.test'),
+  ('77777777-7777-7777-7777-777777777777', 'eva@example.test');
+insert into profiles (id, role, status, first_name, last_name, email, city,
+                      company_name, billing_mandate_signed_at)
+values ('77777777-7777-7777-7777-777777777777', 'apporteur', 'active', 'Eva', 'Garnier',
+        'eva@example.test', 'Arras', 'Garnier Conseil', timestamptz '2026-01-05 10:00');
+
+-- A recommendation of p_parrain's, walked by p_admin to the reward stage with
+-- an agreed commission. Leaves the admin logged in.
+create or replace function test_reco_at_reward(
+  p_parrain uuid, p_admin uuid, p_amount numeric, p_name text)
+returns uuid language plpgsql as $$
+declare
+  v_reco  uuid;
+  v_stage text;
+begin
+  perform login(p_parrain);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at)
+  values (p_name, 'Test', p_parrain, now())
+  returning id into v_reco;
+
+  perform login(p_admin);
+  for v_stage in select key from stages order by position loop
+    perform advance_stage(v_reco, v_stage);
+    exit when (select is_reward_trigger from stages where key = v_stage);
+  end loop;
+  perform set_reward_amount(v_reco, p_amount);
+  return v_reco;
+end $$;
+
+-- Issues the invoice for p_reco and has both parties sign it.
+create or replace function test_sealed_invoice(p_reco uuid, p_admin uuid)
+returns invoices language plpgsql as $$
+declare v_inv invoices%rowtype;
+begin
+  perform login(p_admin);
+  select * into v_inv from issue_invoice(p_reco);
+  perform login(v_inv.apporteur_id);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform login(p_admin);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  select * into v_inv from invoices where id = v_inv.id;
+  return v_inv;
+end $$;
+set role authenticated;
+
+\echo ''
+\echo '=== 32. Nobody can make themselves an administrator ==============='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_ghost  uuid := '66666666-6666-6666-6666-666666666666';
+begin
+  -- Sign-up is open in config.toml, so anyone can hold an account with no
+  -- profile. The invitation is supposed to be the only way to get one.
+  perform assert_denied(v_ghost, format(
+    'insert into profiles (id, role, status, first_name, last_name, email)
+     values (%L, ''admin'', ''active'', ''Intrus'', ''Admin'', ''intrus@example.test'')',
+    v_ghost),
+    'a fresh sign-up cannot write itself an admin profile');
+  perform assert_denied(v_ghost, format(
+    'insert into profiles (id, first_name, last_name, email)
+     values (%L, ''Intrus'', ''Apporteur'', ''intrus@example.test'')', v_ghost),
+    'nor any profile at all: a profile comes from an invitation');
+  perform login(v_ghost);
+  perform assert(my_account_state() ->> 'state' = 'needs_invite',
+    'so it is still asked for an invitation');
+
+  perform assert_denied(v_johann,
+    format('update profiles set role = ''admin'' where id = %L', v_johann),
+    'an apporteur cannot promote themselves');
+  perform assert_denied(v_johann,
+    format('update profiles set role = ''manager'' where id = %L', v_johann),
+    'nor make themselves a manager');
+  perform login(v_pierre);
+  perform set_member_status('55555555-5555-5555-5555-555555555555', 'suspended');
+  perform assert_denied('55555555-5555-5555-5555-555555555555',
+    'update profiles set status = ''active''
+      where id = ''55555555-5555-5555-5555-555555555555''',
+    'a suspended member cannot reinstate themselves');
+  perform login(v_pierre);
+  perform set_member_status('55555555-5555-5555-5555-555555555555', 'active');
+  perform assert_denied(v_johann,
+    format('update profiles set vat_liable = true, vat_number = ''FR1'' where id = %L', v_johann),
+    'nor switch on VAT, which adds 20 % to what the company pays them');
+  perform assert_denied(v_marie,
+    format('update profiles set bank_details_on_file = true where id = %L', v_marie),
+    'nor declare themselves payable');
+  perform assert_denied(v_johann,
+    format('update profiles set kyc_state = ''approved'' where id = %L', v_johann),
+    'nor approve their own identity check');
+  perform assert_denied(v_johann,
+    format('update profiles set email = ''autre@example.test'' where id = %L', v_johann),
+    'nor change the address their invitation was checked against');
+  perform assert_denied(v_johann,
+    format('update profiles set first_name = ''X'' where id = %L', v_marie),
+    'nor touch anybody else''s profile');
+
+  perform login(v_johann);
+  update profiles
+     set phone = '+33 6 00 00 00 01', company_name = 'Lefeuvre Conseil SARL',
+         siret = '12345678900011'
+   where id = v_johann;
+  perform assert(found, 'the details an apporteur owns stay theirs to edit');
+  perform assert(not is_admin(v_johann), 'and Johann is still an apporteur');
+
+  perform login(v_pierre);
+  update profiles set vat_liable = true, vat_number = 'FR00123456789' where id = v_johann;
+  perform assert((select vat_liable from profiles where id = v_johann),
+    'an admin still records a member''s VAT status');
+  update profiles set vat_liable = false, vat_number = null where id = v_johann;
+end $$;
+
+\echo ''
+\echo '=== 33. A new lead starts at the beginning, whatever the app sends ='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_first  uuid;
+  v_last   uuid;
+  v_row    recommendations%rowtype;
+begin
+  select id into v_first from stages order by position limit 1;
+  select id into v_last  from stages order by position desc limit 1;
+
+  -- The update guard stopped all of this on an existing row. On a new row
+  -- nothing did, so an apporteur could file a lead already at the last stage,
+  -- with their own commission on it, marked earned.
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at, current_stage_id, reward_amount,
+                               reward_status, status, assigned_admin_id, created_at)
+  values ('Paul', 'Faure', v_johann, timestamptz '2000-01-01', v_last, 99999,
+          'earned', 'archived_won', v_pierre, timestamptz '2020-01-01')
+  returning * into v_row;
+
+  perform assert(v_row.current_stage_id = v_first,
+    'a lead filed with a later stage still starts at the first one');
+  perform assert(v_row.reward_amount is null,
+    'an apporteur cannot name their own commission');
+  perform assert(v_row.reward_status = 'pending',
+    'nor declare it earned');
+  perform assert(v_row.status = 'active' and v_row.archived_at is null,
+    'nor file it already closed');
+  perform assert(v_row.assigned_admin_id is null,
+    'nor choose who handles it');
+  perform assert(v_row.created_at = now(),
+    'nor backdate it, which decides who holds a disputed lead');
+  perform assert(v_row.consent_confirmed_at = now(),
+    'and consent is stamped with the server''s time, not the one sent');
+
+  perform assert_denied(v_johann, format(
+    'insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+     values (''Sans'', ''Consentement'', %L)', v_johann),
+    'a lead cannot be filed without the filleul''s consent');
+  perform assert_denied(v_johann, format(
+    'insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                                  consent_confirmed_at)
+     values (''Au nom'', ''De Marie'', %L, now())', v_marie),
+    'nor in someone else''s name');
+  perform assert_denied(v_pierre,
+    format('select issue_invoice(%L)', v_row.id),
+    'so nothing about a new lead can be invoiced');
+end $$;
+
+\echo ''
+\echo '=== 34. Internal functions cannot be called from outside =========='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_before int;
+  n int;
+begin
+  perform login(v_pierre);
+  select last_index into v_before from invoice_sequences where year = 2026;
+
+  perform assert_denied(v_johann, 'select next_invoice_index(2026)',
+    'an apporteur cannot take an invoice number');
+  perform assert_denied(v_pierre, 'select next_invoice_index(2026)',
+    'nor can an admin, other than by issuing an invoice');
+  perform assert_denied(v_pierre, 'update invoice_sequences set last_index = 0',
+    'and the counter cannot be rewound by hand');
+
+  perform login(v_pierre);
+  perform assert((select last_index from invoice_sequences where year = 2026) = v_before,
+    'so the series has no hole in it');
+
+  perform assert(not has_function_privilege('anon', 'public.next_invoice_index(int)', 'execute'),
+    'somebody with no account cannot reach it either');
+  select count(*) into n
+    from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+   where ns.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute');
+  perform assert(n = 0, 'nor any other function: nothing runs without signing in');
+  perform assert(
+    has_function_privilege('authenticated', 'public.issue_invoice(uuid,text)', 'execute'),
+    'while the ones the app calls still work');
+end $$;
+
+\echo ''
+\echo '=== 35. Apporteurs talk to the company, not to each other ========='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_thread uuid;
+begin
+  perform assert_denied(v_johann,
+    format('select start_direct_thread(%L)', v_marie),
+    'an apporteur cannot open a conversation with another apporteur');
+
+  -- nor by writing the rows start_direct_thread would have written
+  perform login(v_johann);
+  insert into threads (kind, created_by) values ('direct', v_johann) returning id into v_thread;
+  perform assert_denied(v_johann, format(
+    'insert into thread_participants (thread_id, profile_id) values (%L, %L)',
+    v_thread, v_marie),
+    'nor by adding them to a thread by hand');
+
+  perform login(v_johann);
+  perform assert(chat_display_name(v_marie) is null,
+    'so another apporteur''s name stays out of reach');
+
+  perform login(v_pierre);
+  select start_direct_thread(v_marie) into v_thread;
+  perform assert(v_thread is not null, 'while the company can write to any member');
+end $$;
+
+\echo ''
+\echo '=== 36. The duplicate check is not a directory ===================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_newbie uuid := '44444444-4444-4444-4444-444444444444';
+  v_ghost  uuid := '66666666-6666-6666-6666-666666666666';
+  i int;
+begin
+  perform assert_denied(v_ghost, 'select check_duplicate_filleul(''0611223344'')',
+    'an account without a membership cannot look up who is a lead');
+
+  -- one honest form checks a handful of numbers; a script checks thousands
+  perform login(v_newbie);
+  for i in 1..120 loop
+    perform check_duplicate_filleul('06' || lpad(i::text, 8, '0'));
+  end loop;
+  perform assert_denied(v_newbie, 'select check_duplicate_filleul(''0699999999'')',
+    'and a member checking numbers by the hundred is stopped');
+
+  perform login(v_johann);
+  perform assert(check_duplicate_filleul('0699999999') ? 'held_by_someone_else',
+    'without slowing anyone else down');
+end $$;
+
+\echo ''
+\echo '=== 37. Only an invoice waiting for signatures can be signed ======'
+do $$
+declare
+  v_eva    uuid := '77777777-7777-7777-7777-777777777777';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_inv    invoices%rowtype;
+  v_sealed invoices%rowtype;
+begin
+  v_reco := test_reco_at_reward(v_eva, v_pierre, 200, 'Signature');
+  select * into v_inv from issue_invoice(v_reco);
+
+  perform assert_denied(v_pierre,
+    format('update invoices set amount_ht = 9999 where id = %L', v_inv.id),
+    'an issued invoice cannot be edited, even before anybody has signed it');
+  perform assert_denied(v_pierre,
+    format('update invoices set status = ''signed'' where id = %L', v_inv.id),
+    'nor declared signed without its two signatures');
+  perform assert_denied(v_pierre,
+    format('update invoices set status = ''paid'' where id = %L', v_inv.id),
+    'nor declared paid before anybody agreed to it');
+
+  perform assert_denied(v_eva, format(
+    'insert into invoice_signatures (invoice_id, signer_id, signer_role, signer_full_name,
+                                     document_sha256)
+     values (%L, %L, ''apporteur'', ''Eva Garnier'', %L)', v_inv.id, v_eva, repeat('d', 64)),
+    'a signature written straight into the table must still bind to the issued document');
+  perform login(v_eva);
+  insert into invoice_signatures (invoice_id, signer_id, signer_role, signer_full_name,
+                                  document_sha256)
+  values (v_inv.id, v_eva, 'apporteur', 'Quelqu''un d''autre', v_inv.document_sha256);
+  perform assert(
+    (select signer_full_name from invoice_signatures
+      where invoice_id = v_inv.id and signer_role = 'apporteur') = 'Eva Garnier',
+    'and carries the signer''s own name, not one the client typed');
+
+  perform login(v_pierre);
+  update invoices set status = 'void' where id = v_inv.id;
+  perform assert(found, 'an invoice the company has not signed can still be voided');
+  perform assert_denied(v_pierre,
+    format('select sign_invoice(%L, %L)', v_inv.id, v_inv.document_sha256),
+    'after which it can no longer be signed');
+  perform assert((select reward_status from recommendations where id = v_reco) = 'earned',
+    'and the commission is waiting to be invoiced again');
+
+  select * into v_sealed from test_sealed_invoice(v_reco, v_pierre);
+  perform assert(v_sealed.status = 'signed', 'which it then is');
+  perform assert_denied(v_pierre,
+    format('update invoices set status = ''void'' where id = %L', v_sealed.id),
+    'a signed invoice cannot be voided: only a credit note cancels it');
+  perform assert_denied(v_eva,
+    format('select sign_invoice(%L, %L)', v_sealed.id, v_sealed.document_sha256),
+    'and signing it again is refused');
+end $$;
+
+\echo ''
+\echo '=== 38. Each invoice is paid once, to someone who can be paid ====='
+do $$
+declare
+  v_eva    uuid := '77777777-7777-7777-7777-777777777777';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_a      invoices%rowtype;
+  v_b      invoices%rowtype;
+  v_note   invoices%rowtype;
+  v_fix    invoices%rowtype;
+  v_batch  payout_batches%rowtype;
+begin
+  v_reco := test_reco_at_reward(v_eva, v_pierre, 300, 'Paiement');
+  select * into v_a from test_sealed_invoice(v_reco, v_pierre);
+
+  perform assert_denied(v_pierre,
+    format('select create_payout_batch(array[%L]::uuid[])', v_a.id),
+    'nobody is paid before the company has their payment details on file');
+
+  perform login(v_pierre);
+  perform set_bank_details_on_file(v_eva, true, 'COMPTA-0007');
+  select * into v_batch from create_payout_batch(array[v_a.id], 'VIR-1');
+  perform assert(v_batch.total = 300, 'once it has, the invoice is paid');
+  perform assert_denied(v_pierre,
+    format('select create_payout_batch(array[%L]::uuid[])', v_a.id),
+    'and paying the same invoice a second time is refused');
+  perform assert((select count(*) from commissions where invoice_id = v_a.id) = 1,
+    'so it is recorded as paid exactly once');
+
+  perform login(v_eva);
+  perform assert(exists (
+      select 1 from notification_feed
+       where kind = 'payment_sent' and title = 'Paiement envoyé'
+         and body like '300%EUR en route'),
+    'the apporteur is told in words, not a blank row, that the money is coming');
+
+  -- credited before it was paid: there is nothing to pay
+  v_reco := test_reco_at_reward(v_eva, v_pierre, 120, 'Annulee');
+  select * into v_b from test_sealed_invoice(v_reco, v_pierre);
+  perform create_credit_note(v_b.id, 'Doublon');
+  perform assert_denied(v_pierre,
+    format('select create_payout_batch(array[%L]::uuid[])', v_b.id),
+    'an invoice that has been credited cannot be paid');
+
+  -- credited after it was paid: the credit note is money owed back
+  select * into v_note from create_credit_note(v_a.id, 'Montant erroné');
+  perform login(v_eva);
+  perform sign_invoice(v_note.id, v_note.document_sha256);
+  perform login(v_pierre);
+  perform sign_invoice(v_note.id, v_note.document_sha256);
+  perform assert((select count(*) from payable_invoices where invoice_id = v_note.id) = 1,
+    'a credit note on a paid invoice waits on the payables list, as money owed back');
+  perform assert_denied(v_pierre,
+    format('select create_payout_batch(array[%L]::uuid[])', v_note.id),
+    'it cannot be settled on its own: a negative transfer is not a payment');
+
+  perform set_reward_amount(v_a.recommendation_id, 350);
+  select * into v_fix from test_sealed_invoice(v_a.recommendation_id, v_pierre);
+  select * into v_batch from create_payout_batch(array[v_fix.id, v_note.id], 'VIR-2');
+  perform assert(v_batch.total = 50,
+    'set against the corrected invoice, only the difference is paid');
+end $$;
+
+\echo ''
+\echo '=== 39. A credited invoice can be reissued, on the original terms ='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_inv    invoices%rowtype;
+  v_note   invoices%rowtype;
+  v_fix    invoices%rowtype;
+begin
+  v_reco := test_reco_at_reward(v_johann, v_pierre, 400, 'Correction');
+  select * into v_inv from test_sealed_invoice(v_reco, v_pierre);
+
+  -- Johann's VAT status changes between the invoice and its correction
+  update profiles set vat_liable = true, vat_number = 'FR11111111111' where id = v_johann;
+
+  select * into v_note from create_credit_note(v_inv.id, 'Erreur de prestation');
+  perform assert(v_note.vat_rate = v_inv.vat_rate and v_note.amount_ttc = -v_inv.amount_ttc,
+    'a credit note reverses the original exactly, at the original''s VAT rate');
+
+  perform login(v_johann);
+  perform sign_invoice(v_note.id, v_note.document_sha256);
+  perform login(v_pierre);
+  perform sign_invoice(v_note.id, v_note.document_sha256);
+  perform assert((select reward_status from recommendations where id = v_reco) = 'earned',
+    'signing the credit note leaves the commission owed, instead of marking it invoiced');
+
+  select * into v_fix from issue_invoice(v_reco);
+  perform assert(v_fix.id is not null and v_fix.vat_rate = 20,
+    'and the corrected invoice can be issued, on the apporteur''s current terms');
+  perform assert(
+    (select count(*) from commission_statement where recommendation_id = v_reco) = 1,
+    'the statement lists the commission once, not once per document');
+  perform assert((select invoice_id from recommendation_feed where id = v_reco) = v_fix.id,
+    'and the card opens the corrected invoice, not the credit note');
+
+  update profiles set vat_liable = false, vat_number = null where id = v_johann;
+end $$;
+
+\echo ''
+\echo '=== 40. An invoice keeps the parties as they were when issued ====='
+do $$
+declare
+  v_johann  uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre  uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco    uuid;
+  v_inv     invoices%rowtype;
+  v_company text;
+begin
+  v_reco := test_reco_at_reward(v_johann, v_pierre, 250, 'Instantane');
+  select * into v_inv from issue_invoice(v_reco);
+
+  perform login(v_johann);
+  select company_name into v_company from profiles where id = v_johann;
+  update profiles set company_name = 'Nouvelle Raison Sociale' where id = v_johann;
+
+  perform assert(invoice_document(v_inv.id) -> 'apporteur' ->> 'company' = v_company,
+    'renaming the company afterwards does not rewrite an issued invoice');
+  perform assert(
+    encode(digest(invoice_canonical_text(v_inv.id), 'sha256'), 'hex') = v_inv.document_sha256,
+    'so what was signed can still be reproduced byte for byte');
+
+  update profiles set company_name = v_company where id = v_johann;
+end $$;
+
+\echo ''
+\echo '=== 41. The pipeline only moves forward, and only while open ======'
+do $$
+declare
+  v_eva    uuid := '77777777-7777-7777-7777-777777777777';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_n      int;
+  v_rate   numeric;
+begin
+  v_reco := test_reco_at_reward(v_eva, v_pierre, 100, 'Pipeline');
+
+  perform assert_denied(v_pierre,
+    format('select advance_stage(%L, ''a_contacter'')', v_reco),
+    'the pipeline does not move backwards: that is what "Remettre à zéro" is for');
+
+  perform login(v_pierre);
+  select count(*) into v_n from recommendation_stage_events where recommendation_id = v_reco;
+  perform advance_stage(v_reco, 'devis_signe');
+  perform assert(
+    (select count(*) from recommendation_stage_events where recommendation_id = v_reco) = v_n,
+    'validating the current stage twice changes nothing');
+
+  perform archive_recommendation(v_reco, false);
+  perform assert_denied(v_pierre,
+    format('select advance_stage(%L, ''mission_terminee'')', v_reco),
+    'a closed lead cannot be advanced');
+
+  -- that lead was lost, so it is not a conversion
+  perform login(v_eva);
+  select round(100.0 * count(*) filter (where reward_status in ('earned','invoiced','paid'))
+               / count(*), 1)
+    into v_rate
+    from recommendations;
+  perform assert((dashboard_stats() ->> 'conversion_rate')::numeric = v_rate
+                 and v_rate < 100,
+    'and a lost lead does not count as a conversion on the dashboard');
+end $$;
+
+\echo ''
+\echo '=== 42. A legal text with any blank left in it is not published ==='
+do $$
+declare
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+begin
+  -- what the old check let through: lowercase blanks, short ones, notes
+  perform login(v_pierre);
+  update legal_documents
+     set body = regexp_replace(body, '\[[A-ZÉÈÀÇ_ /]{3,}\]', 'Trinity Énergie', 'g')
+   where key = 'cgu';
+  perform assert_denied(v_pierre,
+    'update legal_documents set active = true where key = ''cgu''',
+    'blanks such as [adresse] or [X] still stop the CGU going live');
+  perform assert_denied(v_pierre,
+    $q$insert into legal_documents (key, version, title, body, sha256, active)
+       values ('essai', '1', 'Essai', 'Délai : [À VALIDER : délai]', '', true)$q$,
+    'and so does a note left for the lawyer');
+
+  perform login(v_pierre);
+  insert into legal_documents (key, version, title, body, sha256, active)
+  values ('essai', '2', 'Essai', 'Voir [la page](https://example.test).', '', true);
+  perform assert(found, 'while a link written as [text](url) is not taken for a blank');
+  delete from legal_documents where key = 'essai';
+end $$;
+
+\echo ''
+\echo '=== 43. Deleting an account removes the person, not the invoices =='
+do $$
+declare
+  v_eva    uuid := '77777777-7777-7777-7777-777777777777';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_inv    uuid;
+  v_n      int;
+  v_prof   profiles%rowtype;
+begin
+  perform assert_denied(v_pierre, 'select request_account_deletion()',
+    'the last administrator cannot delete their account and lock the company out');
+
+  perform login(v_eva);
+  select id into v_inv from invoices where apporteur_id = v_eva order by created_at limit 1;
+  select count(*) into v_n from invoices where apporteur_id = v_eva;
+  perform register_device_token('token-eva');
+  perform request_account_deletion();
+  perform assert(my_account_state() ->> 'state' = 'suspended',
+    'the account is closed at once');
+
+  perform login(v_pierre);
+  select * into v_prof from profiles where id = v_eva;
+  perform assert(v_prof.first_name = 'Compte' and v_prof.last_name = 'supprimé'
+                 and v_prof.email like 'deleted+%@invalid'
+                 and v_prof.phone is null and v_prof.company_name is null
+                 and v_prof.city is null and not v_prof.bank_details_on_file,
+    'and the person''s details are erased from it');
+  perform assert((select count(*) from invoices where apporteur_id = v_eva) = v_n,
+    'while every invoice issued in their name is kept, as the law requires');
+  perform assert(invoice_document(v_inv) -> 'apporteur' ->> 'name' = 'Eva Garnier',
+    'under the name it was issued to');
+end $$;
+
+reset role;
+do $$
+begin
+  perform assert(
+    not exists (select 1 from auth.users where id = '77777777-7777-7777-7777-777777777777'),
+    'the login itself is deleted, so the address can no longer sign in');
+  perform assert(
+    not exists (select 1 from device_tokens
+                 where profile_id = '77777777-7777-7777-7777-777777777777'),
+    'and no device keeps receiving their notifications');
+end $$;
+
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='
