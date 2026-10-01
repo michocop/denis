@@ -1,0 +1,633 @@
+import Foundation
+import CryptoKit
+
+/// Fixtures transcribed from the source app's screenshots, so the previews
+/// reproduce the two reference states exactly: the completed Thomas Dubois
+/// card, and the same card mid-pipeline.
+public enum SampleData {
+
+    public static let stages: [Stage] = {
+        let banner = "Contrat signé. Disponible dans l'onglet Documents"
+        return [
+            Stage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                  key: "a_contacter", label: "À contacter", position: 1),
+            Stage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+                  key: "rdv_programme", label: "RDV programmé", position: 2),
+            Stage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+                  key: "proposition_envoyee", label: "Proposition envoyée", position: 3),
+            Stage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+                  key: "devis_signe", label: "Devis signé", position: 4,
+                  isRewardTrigger: true, bannerTemplate: banner),
+            Stage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!,
+                  key: "mission_terminee", label: "Mission terminée", position: 5,
+                  isTerminal: true, bannerTemplate: banner)
+        ]
+    }()
+
+    public static let comments: [String: String] = [
+        "a_contacter": "Merci pour la mise en relation. Nous avons bien reçu les coordonnées de Thomas Dubois. Prochain point après le 1er échange.",
+        "rdv_programme": "J'ai contacté Thomas Dubois. Le rendez-vous est planifié. Je vous tiens informé(e) de la suite.",
+        "proposition_envoyee": "J'ai transmis à Thomas Dubois la proposition. Retour attendu très prochainement.",
+        "devis_signe": "Thomas Dubois a signé le devis. Votre récompense est validée, nous revenons vers vous pour le règlement.",
+        "mission_terminee": """
+        Bonjour Johann,
+        Je vous informe que nous allons procéder au paiement de vos honoraires. Vous recevrez votre gain très prochainement.
+        N'oubliez pas de procéder à votre déclaration de revenu en fin d'année.
+        Si vous êtes un apporteur d'affaire occasionnel, vous devez déclarer les sommes perçues au titre des bénéfices non commerciaux (BNC) via votre déclaration de revenus - CERFA 2042 C -
+        Bonne journée.
+        """
+    ]
+
+    private static func event(_ stageKey: String, minutesAgo: Int) -> StageEvent {
+        let stage = stages.first { $0.key == stageKey }!
+        return StageEvent(id: UUID(), stageID: stage.id, comment: comments[stageKey],
+                          completedAt: Date().addingTimeInterval(-Double(minutesAgo) * 60))
+    }
+
+    /// Screenshot 1: every stage green, reward earned, contract available.
+    public static var completedRecommendation: Recommendation {
+        Recommendation(
+            id: UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")!,
+            filleulFirstName: "Thomas", filleulLastName: "Dubois",
+            filleulPhone: "+33 6 75 75 75 75",
+            parrainName: "Johann Lefeuvre",
+            createdAt: Date().addingTimeInterval(-60 * 60 * 8),
+            currentStageID: stages[4].id,
+            events: [
+                event("a_contacter", minutesAgo: 480),
+                event("rdv_programme", minutesAgo: 360),
+                event("proposition_envoyee", minutesAgo: 240),
+                event("devis_signe", minutesAgo: 120),
+                event("mission_terminee", minutesAgo: 30)
+            ],
+            rewardAmount: 1000,
+            rewardStatus: .invoiced,
+            hasContract: true,
+            invoiceNumber: "FA-2026-0001",
+            invoiceID: UUID(uuidString: "dddddddd-dddd-dddd-dddd-dddddddddddd")!,
+            daysSinceActivity: 0,
+            hasNote: true
+        )
+    }
+
+    /// Screenshot 5: one stage done, one in progress, three ahead — and
+    /// therefore no amount and no banner.
+    public static var inProgressRecommendation: Recommendation {
+        Recommendation(
+            id: UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")!,
+            filleulFirstName: "Thomas", filleulLastName: "Dubois",
+            filleulPhone: "+33 6 75 75 75 75",
+            parrainName: "Johann Lefeuvre",
+            createdAt: Date().addingTimeInterval(-60 * 60 * 8),
+            currentStageID: stages[1].id,
+            events: [event("a_contacter", minutesAgo: 60)],
+            rewardAmount: 1000,
+            rewardStatus: .pending,
+            hasContract: false,
+            // Deliberately stale, so the staleness banner has something to show.
+            daysSinceActivity: 11
+        )
+    }
+}
+
+/// In-memory repository for previews, UI work and tests.
+public struct PreviewRecommendationsRepository: RecommendationsRepository {
+    private let items: [Recommendation]
+    private let delay: Duration
+
+    public init(items: [Recommendation] = [SampleData.completedRecommendation,
+                                           SampleData.inProgressRecommendation],
+                delay: Duration = .milliseconds(120)) {
+        self.items = items
+        self.delay = delay
+    }
+
+    public func loadPipeline() async throws -> [Stage] {
+        try? await Task.sleep(for: delay)
+        return SampleData.stages
+    }
+
+    public func loadPage(archived: Bool, search: String,
+                         cursor: RecommendationCursor?) async throws -> [Recommendation] {
+        try? await Task.sleep(for: delay)
+        guard cursor == nil else { return [] }   // previews hold one page
+        return items
+            .filter { $0.status.isArchived == archived }
+            .filter { search.isEmpty
+                      || $0.filleulName.localizedCaseInsensitiveContains(search)
+                      || $0.parrainName.localizedCaseInsensitiveContains(search) }
+    }
+
+    public func advanceStage(recommendationID: UUID, stageKey: String) async throws -> Recommendation {
+        try? await Task.sleep(for: delay)
+        guard var reco = items.first(where: { $0.id == recommendationID }),
+              let stage = SampleData.stages.first(where: { $0.key == stageKey })
+        else { throw PreviewError.notFound }
+
+        reco.events.append(StageEvent(id: UUID(), stageID: stage.id,
+                                      comment: SampleData.comments[stageKey],
+                                      completedAt: .now))
+        reco.currentStageID = stage.id
+        if stage.isRewardTrigger, reco.rewardStatus == .pending { reco.rewardStatus = .earned }
+        return reco
+    }
+
+    public func create(_ draft: RecommendationDraft) async throws -> Recommendation {
+        try? await Task.sleep(for: delay)
+        return Recommendation(
+            id: UUID(),
+            filleulFirstName: draft.firstName,
+            filleulLastName: draft.lastName,
+            filleulPhone: draft.phone,
+            parrainName: "Johann Lefeuvre",
+            createdAt: .now,
+            currentStageID: SampleData.stages[0].id
+        )
+    }
+
+    enum PreviewError: Error { case notFound }
+}
+
+// MARK: - Fakes for the other screens
+//
+// Enough behaviour to exercise the states each screen actually has, so a
+// preview shows something real rather than an empty frame.
+
+/// Demo chat that actually holds what you type. A stateless fake looked fine
+/// in a screenshot and was useless in the simulator: every message you sent
+/// disappeared on the next read, which is exactly the thing a demo is supposed
+/// to let you try.
+public actor DemoChatStore {
+    static let shared = DemoChatStore()
+
+    public static let me = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+    public static let them = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+
+    private let supportThread = UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000001")!
+    private let mariThread    = UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000002")!
+    private let ticketThread  = UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000003")!
+
+    private var threads: [ChatThread]
+    private var messages: [UUID: [ChatMessage]]
+
+    public init() {
+        let now = Date.now
+        threads = [
+            ChatThread(id: supportThread, kind: .direct,
+                       counterpartName: "Pierre-Louis Tettamanti",
+                       lastMessage: "Je vous réponds tout de suite.",
+                       lastMessageAt: now.addingTimeInterval(-600), unreadCount: 1),
+            ChatThread(id: mariThread, kind: .direct, counterpartName: "Marie Durand",
+                       lastMessage: "Merci !",
+                       lastMessageAt: now.addingTimeInterval(-7200), pinned: true),
+            ChatThread(id: ticketThread, kind: .ticket, title: "Problème de virement",
+                       counterpartName: "Support",
+                       lastMessage: "Je n'ai pas reçu mon paiement.",
+                       lastMessageAt: now.addingTimeInterval(-86_400))
+        ]
+        messages = [
+            supportThread: [
+                ChatMessage(id: UUID(), threadID: supportThread, senderID: Self.me,
+                            senderName: "Johann Lefeuvre",
+                            body: "Bonjour, une question sur Thomas Dubois.",
+                            createdAt: now.addingTimeInterval(-900)),
+                ChatMessage(id: UUID(), threadID: supportThread, senderID: Self.them,
+                            senderName: "Pierre-Louis Tettamanti",
+                            body: "Je vous réponds tout de suite.",
+                            createdAt: now.addingTimeInterval(-600))
+            ],
+            mariThread: [
+                ChatMessage(id: UUID(), threadID: mariThread, senderID: Self.me,
+                            senderName: "Johann Lefeuvre", body: "C'est signé pour Boulangerie Petit.",
+                            createdAt: now.addingTimeInterval(-7400)),
+                ChatMessage(id: UUID(), threadID: mariThread, senderID: UUID(),
+                            senderName: "Marie Durand", body: "Merci !",
+                            createdAt: now.addingTimeInterval(-7200))
+            ],
+            ticketThread: [
+                ChatMessage(id: UUID(), threadID: ticketThread, senderID: Self.me,
+                            senderName: "Johann Lefeuvre",
+                            body: "Je n'ai pas reçu mon paiement.",
+                            createdAt: now.addingTimeInterval(-86_400))
+            ]
+        ]
+    }
+
+    /// A direct conversation is named after the other person, so the name
+    /// depends on who is reading -- the admin demo must not see a thread
+    /// labelled with the admin's own name.
+    func loadThreads(as viewer: UUID) -> [ChatThread] {
+        guard viewer == Self.them else { return threads }
+        return threads.map { thread in
+            guard thread.id == supportThread else { return thread }
+            var flipped = thread
+            flipped.counterpartName = "Johann Lefeuvre"
+            return flipped
+        }
+    }
+    func loadMessages(_ id: UUID) -> [ChatMessage] { messages[id] ?? [] }
+
+    func send(_ body: String, to id: UUID, from sender: UUID) -> ChatMessage {
+        let name = sender == Self.them ? "Pierre-Louis Tettamanti" : "Johann Lefeuvre"
+        let message = ChatMessage(id: UUID(), threadID: id, senderID: sender,
+                                  senderName: name, body: body, createdAt: .now)
+        messages[id, default: []].append(message)
+        update(id) { $0.lastMessage = body; $0.lastMessageAt = message.createdAt }
+        return message
+    }
+
+    func markRead(_ id: UUID) { update(id) { $0.unreadCount = 0 } }
+
+    func setFlags(_ id: UUID, pinned: Bool?, archived: Bool?) {
+        update(id) {
+            if let pinned { $0.pinned = pinned }
+            if let archived { $0.archived = archived }
+        }
+    }
+
+    func startSupport() -> UUID { supportThread }
+
+    func startDirect(with profileID: UUID) -> UUID {
+        if let existing = threads.first(where: { $0.id == profileID }) { return existing.id }
+        let thread = ChatThread(id: profileID, kind: .direct, counterpartName: "Nouvelle discussion")
+        threads.append(thread)
+        return thread.id
+    }
+
+    private func update(_ id: UUID, _ change: (inout ChatThread) -> Void) {
+        guard let index = threads.firstIndex(where: { $0.id == id }) else { return }
+        change(&threads[index])
+    }
+}
+
+public struct PreviewChatRepository: ChatRepository {
+    /// The viewer decides how a direct conversation is named, so the demo
+    /// repository is told which side of it the app is showing.
+    private let viewer: UUID
+    public init(viewer: UUID = DemoChatStore.me) { self.viewer = viewer }
+
+    public func loadThreads() async throws -> [ChatThread] {
+        await DemoChatStore.shared.loadThreads(as: viewer)
+    }
+
+    public func loadMessages(threadID: UUID) async throws -> [ChatMessage] {
+        await DemoChatStore.shared.loadMessages(threadID)
+    }
+
+    public func send(body: String, threadID: UUID) async throws -> ChatMessage {
+        await DemoChatStore.shared.send(body, to: threadID, from: viewer)
+    }
+
+    public func markRead(threadID: UUID) async throws {
+        await DemoChatStore.shared.markRead(threadID)
+    }
+
+    public func openTicket(subject: String, body: String) async throws -> UUID { UUID() }
+
+    public func startSupportThread() async throws -> UUID {
+        await DemoChatStore.shared.startSupport()
+    }
+
+    public func startDirectThread(with profileID: UUID) async throws -> UUID {
+        await DemoChatStore.shared.startDirect(with: profileID)
+    }
+
+    public func setFlags(threadID: UUID, pinned: Bool?, archived: Bool?) async throws {
+        await DemoChatStore.shared.setFlags(threadID, pinned: pinned, archived: archived)
+    }
+}
+
+public struct PreviewProfileRepository: ProfileRepository {
+    /// Drives the mandate notice on Accueil, which only appears when one is
+    /// missing — the state worth seeing in a preview.
+    private let hasMandate: Bool
+    private let role: UserRole
+    public init(hasMandate: Bool = false, role: UserRole = .apporteur) {
+        self.hasMandate = hasMandate
+        self.role = role
+    }
+
+    public func currentProfile() async throws -> Profile {
+        // Stable id, not a fresh UUID per call: the chat decides which bubbles
+        // are yours by comparing sender ids, and a random id put every message
+        // on the same side of the conversation.
+        let isAdmin = role.isAdmin
+        return Profile(
+            id: isAdmin ? DemoChatStore.them : DemoChatStore.me,
+            role: role,
+            firstName: isAdmin ? "Pierre-Louis" : "Johann",
+            lastName: isAdmin ? "Tettamanti" : "Lefeuvre",
+            email: isAdmin ? "pl@trinity-energie.test" : "johann@example.test",
+            companyName: isAdmin ? "Trinity Énergie" : "Lefeuvre Conseil",
+            city: "Lille",
+            billingMandateSignedAt: hasMandate ? .now.addingTimeInterval(-86_400 * 90) : nil)
+    }
+
+    public func save(_ profile: Profile) async throws -> Profile { profile }
+
+    public func dashboardStats() async throws -> DashboardStats {
+        try? await Task.sleep(for: .milliseconds(100))
+        return DashboardStats(activeCount: 3, archivedCount: 1, pendingTotal: 1500,
+                              earnedTotal: 1300, paidTotal: 300, conversionRate: 25)
+    }
+
+    public func deleteAccount() async throws {}
+}
+
+/// Demo invoicing that remembers a signature, so the two-signature flow and
+/// the PDF that appears at the end of it can actually be tried rather than
+/// only looked at.
+actor DemoInvoiceStore {
+    static let shared = DemoInvoiceStore()
+
+    private var signedBy: Set<String> = ["apporteur"]
+
+    func sign(as role: String) { signedBy.insert(role) }
+    func isSigned(_ role: String) -> Bool { signedBy.contains(role) }
+}
+
+public struct PreviewInvoiceRepository: InvoiceRepository {
+    public init() {}
+
+    public func document(invoiceID: UUID) async throws -> InvoiceDocument {
+        let apporteurSigned = await DemoInvoiceStore.shared.isSigned("apporteur")
+        let entrepriseSigned = await DemoInvoiceStore.shared.isSigned("entreprise")
+        return InvoiceDocument(
+            number: "FA-2026-0001",
+            documentSha256: String(repeating: "a", count: 64),
+            issuer: .init(name: "Pierre-Louis Tettamanti", company: "Trinity Énergie",
+                          city: "AIX-EN-PEVELE", siret: nil),
+            apporteur: .init(name: "Johann Lefeuvre", company: "Lefeuvre Conseil",
+                             city: nil, siret: "12345678900011"),
+            attestation: .init(soussigne: "Johann Lefeuvre",
+                               misEnRelation: "Trinity Énergie",
+                               avec: "Thomas Dubois",
+                               prestation: "Apport d'affaires - mise en relation",
+                               intervenueLe: "17.09.2026"),
+            amount: .init(ht: "300.00", vatRate: 0, vat: "0.00", ttc: "300.00",
+                          currency: "EUR"),
+            legalMentions: "TVA non applicable – Régime d'exonération de TVA (Article 293B du Code général des impôts)",
+            paymentMethod: "Virement bancaire",
+            place: "AIX-EN-PEVELE",
+            issuedOn: "17.09.2026",
+            taxNotice: "N'oubliez pas de procéder à votre déclaration de revenu en fin d'année.",
+            status: entrepriseSigned && apporteurSigned ? "signed" : "awaiting_signatures",
+            signatures: [
+                .init(role: "apporteur", name: "Johann Lefeuvre", signed: apporteurSigned,
+                      signedAt: apporteurSigned ? .now : nil),
+                .init(role: "entreprise", name: "Pierre-Louis Tettamanti",
+                      signed: entrepriseSigned, signedAt: entrepriseSigned ? .now : nil)
+            ]
+        )
+    }
+
+    public func latestInvoiceID(recommendationID: UUID) async throws -> UUID? { UUID() }
+
+    public func sign(invoiceID: UUID, documentSHA256: String) async throws {
+        // The demo has no second party to wait for, so whichever signature is
+        // still missing is the one this tap adds.
+        let role = await DemoInvoiceStore.shared.isSigned("apporteur")
+            ? "entreprise" : "apporteur"
+        await DemoInvoiceStore.shared.sign(as: role)
+    }
+
+    /// Rendered locally and not kept anywhere: the demo has no storage behind
+    /// it, and a PDF it pretended to retain would be a lie about the one
+    /// guarantee this file has.
+    public func pdf(for document: InvoiceDocument, invoiceID: UUID) async throws -> Data {
+        InvoicePDF.render(document)
+    }
+
+    public func issue(recommendationID: UUID) async throws -> UUID { UUID() }
+    public func createCreditNote(invoiceID: UUID, reason: String) async throws -> UUID { UUID() }
+}
+
+public struct PreviewRemindersRepository: RemindersRepository {
+    public init() {}
+
+    public func reminders(recommendationID: UUID) async throws -> [Reminder] {
+        [
+            Reminder(id: UUID(), label: "Relancer Thomas Dubois",
+                     dueAt: .now.addingTimeInterval(86_400), status: .scheduled),
+            Reminder(id: UUID(), label: "Envoyer la proposition",
+                     dueAt: .now.addingTimeInterval(-86_400), status: .scheduled)
+        ]
+    }
+
+    public func schedule(recommendationID: UUID, label: String, dueAt: Date) async throws -> Reminder {
+        Reminder(id: UUID(), label: label, dueAt: dueAt, status: .scheduled)
+    }
+
+    public func complete(reminderID: UUID) async throws {}
+}
+
+public struct PreviewAdminRepository: AdminRepository {
+    public init() {}
+
+    public func members() async throws -> [MemberOverview] {
+        try? await Task.sleep(for: .milliseconds(100))
+        return [
+            MemberOverview(id: UUID(), fullName: "Johann Lefeuvre",
+                           email: "johann@example.test", phone: "+33 6 11 11 11 11",
+                           role: .apporteur, status: "active", vatLiable: false,
+                           hasMandate: true, bankDetailsOnFile: true,
+                           totalRecommendations: 18,
+                           activeRecommendations: 4, paidTotal: 2300, owedTotal: 1000,
+                           lastRecommendationAt: .now),
+            MemberOverview(id: UUID(), fullName: "Marie Durand",
+                           email: "marie@example.test", phone: nil,
+                           role: .apporteur, status: "pending", vatLiable: false,
+                           hasMandate: false, bankDetailsOnFile: false,
+                           totalRecommendations: 0,
+                           activeRecommendations: 0, paidTotal: 0, owedTotal: 0,
+                           lastRecommendationAt: nil),
+            MemberOverview(id: UUID(), fullName: "Paul Riviere",
+                           email: "paul@example.test", phone: nil,
+                           role: .apporteur, status: "active", vatLiable: true,
+                           hasMandate: true, bankDetailsOnFile: false,
+                           totalRecommendations: 0,
+                           activeRecommendations: 0, paidTotal: 0, owedTotal: 0,
+                           lastRecommendationAt: nil)
+        ]
+    }
+
+    public func setStatus(profileID: UUID, status: String) async throws {}
+    public func approve(profileID: UUID) async throws {}
+
+    public func createInvite(email: String?, role: UserRole,
+                             autoActivate: Bool) async throws -> Invite {
+        Invite(code: "K7M2QXPZ", email: email, role: role,
+               autoActivate: autoActivate, expiresAt: .now.addingTimeInterval(30 * 86_400))
+    }
+
+    public func payableInvoices() async throws -> [PayableInvoice] {
+        try? await Task.sleep(for: .milliseconds(100))
+        return [
+            PayableInvoice(invoiceId: UUID(), number: "FA-2026-0004", issuedOn: .now,
+                           amountTtc: 300, apporteurId: UUID(),
+                           apporteurName: "Johann Lefeuvre", hasBankDetails: true,
+                           recommendationId: UUID(), filleul: "Thomas Dubois"),
+            PayableInvoice(invoiceId: UUID(), number: "FA-2026-0005", issuedOn: .now,
+                           amountTtc: 750, apporteurId: UUID(),
+                           apporteurName: "Johann Lefeuvre", hasBankDetails: true,
+                           recommendationId: UUID(), filleul: "Claire Petit"),
+            // Deliberately unpayable, so the blocked state is visible.
+            PayableInvoice(invoiceId: UUID(), number: "FA-2026-0006", issuedOn: .now,
+                           amountTtc: 500, apporteurId: UUID(),
+                           apporteurName: "Paul Riviere", hasBankDetails: false,
+                           recommendationId: UUID(), filleul: "Luc Martin")
+        ]
+    }
+
+    public func payBatch(invoiceIDs: [UUID], reference: String?) async throws {}
+    public func setBankDetailsOnFile(profileID: UUID, onFile: Bool,
+                                     reference: String?) async throws {}
+}
+
+public struct PreviewCommissionsRepository: CommissionsRepository {
+    public init() {}
+
+    public func statement(year: Int?) async throws -> [CommissionLine] {
+        let thisYear = Calendar.current.component(.year, from: .now)
+        return [
+            CommissionLine(recommendationId: UUID(), year: thisYear, filleul: "Thomas Dubois",
+                           rewardAmount: 1000, rewardStatus: .paid,
+                           invoiceNumber: "FA-2026-0001", issuedOn: .now,
+                           amountTtc: 1000, invoiceStatus: "paid"),
+            CommissionLine(recommendationId: UUID(), year: thisYear, filleul: "Claire Petit",
+                           rewardAmount: 300, rewardStatus: .invoiced,
+                           invoiceNumber: "FA-2026-0002", issuedOn: .now,
+                           amountTtc: 300, invoiceStatus: "signed"),
+            CommissionLine(recommendationId: UUID(), year: thisYear, filleul: "Luc Martin",
+                           rewardAmount: 750, rewardStatus: .earned,
+                           invoiceNumber: nil, issuedOn: nil,
+                           amountTtc: nil, invoiceStatus: nil)
+        ]
+    }
+
+}
+
+/// Demo notifications that clear when you open them, so the badge behaves.
+actor DemoNotificationStore {
+    static let shared = DemoNotificationStore()
+    private var readAll = false
+
+    func markAllRead() { readAll = true }
+    func isRead() -> Bool { readAll }
+}
+
+public struct PreviewNotificationsRepository: NotificationsRepository {
+    public init() {}
+
+    public func notifications() async throws -> [AppNotification] {
+        let read: Date? = await DemoNotificationStore.shared.isRead() ? .now : nil
+        return [
+            AppNotification(id: UUID(), kind: "reward_earned",
+                            title: "Commission acquise",
+                            body: "Thomas Dubois a signé — 300.00 €",
+                            readAt: read, createdAt: .now.addingTimeInterval(-1800)),
+            AppNotification(id: UUID(), kind: "message_received",
+                            title: "Pierre-Louis Tettamanti",
+                            body: "Je vous réponds tout de suite.",
+                            readAt: read, createdAt: .now.addingTimeInterval(-600)),
+            AppNotification(id: UUID(), kind: "invoice_ready",
+                            title: "Facture à signer",
+                            body: "Facture FA-2026-0001 — 300.00 EUR",
+                            readAt: .now.addingTimeInterval(-86_000),
+                            createdAt: .now.addingTimeInterval(-86_400))
+        ]
+    }
+
+    public func unreadCount() async throws -> Int {
+        await DemoNotificationStore.shared.isRead() ? 0 : 2
+    }
+
+    public func markAllRead() async throws {
+        await DemoNotificationStore.shared.markAllRead()
+    }
+
+    public func register(deviceToken: String) async throws {}
+    public func forgetDevices() async throws {}
+}
+
+/// Demo legal documents. The mandate carries enough real text that the
+/// scroll-to-the-end rule and the accept button can actually be tried.
+actor DemoLegalStore {
+    static let shared = DemoLegalStore()
+    private var accepted: Set<String> = []
+    func accept(_ key: String) { accepted.insert(key) }
+    func isAccepted(_ key: String) -> Bool { accepted.contains(key) }
+}
+
+public struct PreviewLegalRepository: LegalRepository {
+    public init() {}
+
+    private static let mandate = """
+    Entre les soussignés :
+
+    Trinity Énergie, SAS au capital de 10 000 €, dont le siège social est situé
+    à AIX-EN-PEVELE, immatriculée au RCS de Lille sous le numéro 000 000 000,
+    représentée par Pierre-Louis Tettamanti, en qualité de Président,
+
+    ci-après « le Mandataire »,
+
+    Et : Johann Lefeuvre, micro-entrepreneur, immatriculé sous le numéro SIREN
+    000 000 000, ci-après « le Mandant ».
+
+    Article 1 — Objet
+
+    Le Mandant donne mandat au Mandataire d'établir, en son nom et pour son
+    compte, les factures correspondant aux commissions d'apport d'affaires qui
+    lui sont dues au titre des mises en relation qu'il réalise.
+
+    Article 2 — Obligations du Mandataire
+
+    Le Mandataire s'engage à établir les factures conformément aux mentions
+    obligatoires prévues par l'article 242 nonies A de l'annexe II au CGI, à
+    respecter une numérotation chronologique et continue, à mettre chaque
+    facture à disposition du Mandant préalablement à son émission définitive,
+    et à en conserver un double pendant dix ans.
+
+    Article 3 — Obligations du Mandant
+
+    Le Mandant s'engage à signaler sans délai tout changement de sa situation,
+    notamment le passage à un régime assujetti à la TVA, à vérifier chaque
+    facture établie en son nom, et à procéder lui-même aux déclarations
+    fiscales et sociales qui lui incombent.
+
+    Article 5 — Absence de lien de subordination
+
+    Le Mandant exerce son activité en toute indépendance. Le présent mandat ne
+    crée ni lien de subordination, ni exclusivité, ni obligation de résultat.
+
+    Article 7 — Signature électronique
+
+    Les parties conviennent que la signature électronique apposée via
+    l'application constitue une signature au sens de l'article 1367 du Code
+    civil et vaut preuve de leur consentement.
+
+    — Données de démonstration, sans valeur contractuelle —
+    """
+
+    public func documents() async throws -> [LegalDocument] {
+        let accepted = await DemoLegalStore.shared.isAccepted("mandat_facturation")
+        return [
+            LegalDocument(key: "mandat_facturation", version: "demo-1",
+                          title: "Mandat de facturation",
+                          body: Self.mandate,
+                          sha256: Self.digest(Self.mandate),
+                          publishedAt: .now.addingTimeInterval(-86_400 * 30),
+                          accepted: accepted)
+        ]
+    }
+
+    public func accept(key: String, sha256: String) async throws {
+        await DemoLegalStore.shared.accept(key)
+    }
+
+    /// Same digest the screen computes, so the demo exercises the check rather
+    /// than skipping past it.
+    private static func digest(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+}

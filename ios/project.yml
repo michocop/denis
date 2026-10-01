@@ -1,0 +1,55 @@
+# XcodeGen spec for the runnable app.
+#
+# A Swift package previews in Xcode but cannot run in the Simulator on its
+# own; it needs an app target to host it. Generate the project with:
+#
+#   brew install xcodegen && cd ios && xcodegen generate && open EnergyCourtage.xcodeproj
+#
+# Then pick a simulator and press Run, or use scripts/run_simulator.sh.
+#
+# Or skip XcodeGen entirely: File > New > Project > iOS App, then
+# File > Add Package Dependencies > Add Local... and point it at ios/.
+name: EnergyCourtage
+options:
+  bundleIdPrefix: com.trinityenergie
+  deploymentTarget:
+    iOS: "17.0"
+# Copy Config.example.xcconfig to Config.xcconfig and put your project's URL
+# and anon key there. It is git-ignored, so nobody's project ends up in the
+# repository, and an absent file simply leaves both empty -- which makes the
+# app fall back to demo data rather than fail.
+configFiles:
+  Debug: Config.xcconfig
+  Release: Config.xcconfig
+settings:
+  base:
+    SUPABASE_URL: ""
+    SUPABASE_ANON_KEY: ""
+packages:
+  EnergyCourtage:
+    path: .
+targets:
+  # Named apart from the package product: two schemes called EnergyCourtage
+  # makes -scheme ambiguous from the command line.
+  EnergyCourtageApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    # No `info:` block on purpose. That key makes XcodeGen GENERATE an
+    # Info.plist at the given path, overwriting the committed one -- which is
+    # how the app lost its UILaunchScreen and ran letterboxed, and how the
+    # Supabase keys disappeared from the bundle. INFOPLIST_FILE below points
+    # at the real file instead.
+    dependencies:
+      - package: EnergyCourtage
+        product: EnergyCourtage
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.trinityenergie.energycourtage
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"      # iPhone; the source app is phone-only
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.1"

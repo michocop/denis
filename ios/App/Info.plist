@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>fr_FR</string>
+  <key>CFBundleDisplayName</key>
+  <string>Energy Courtage</string>
+  <key>CFBundleExecutable</key>
+  <string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIdentifier</key>
+  <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>$(PRODUCT_NAME)</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSRequiresIPhoneOS</key>
+  <true/>
+
+  <!-- Without this the app runs in compatibility mode: iOS letterboxes it at a
+       legacy resolution instead of using the whole screen. An empty dictionary
+       is the modern equivalent of a blank launch storyboard. -->
+  <!--
+    A launch screen must exist or iOS letterboxes the app into a 320x480 box,
+    which is how this one first ran. The colour and image are asset names, so
+    they come from Assets.xcassets rather than being repeated here.
+  -->
+  <key>UILaunchScreen</key>
+  <dict>
+    <key>UIColorName</key>
+    <string>LaunchBackground</string>
+    <key>UIImageName</key>
+    <string>LaunchLogo</string>
+    <key>UIImageRespectsSafeAreaInsets</key>
+    <true/>
+  </dict>
+
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+  </array>
+  <key>UIRequiredDeviceCapabilities</key>
+  <array>
+    <string>armv7</string>
+  </array>
+
+  <!-- Substituted from the build settings so real keys stay out of source
+       control. The anon key is public by design: it grants nothing on its own,
+       because every table is behind RLS. -->
+  <key>SUPABASE_URL</key>
+  <string>$(SUPABASE_URL)</string>
+  <key>SUPABASE_ANON_KEY</key>
+  <string>$(SUPABASE_ANON_KEY)</string>
+</dict>
+</plist>
