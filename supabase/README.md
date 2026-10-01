@@ -13,7 +13,7 @@ scripts/db_test.sh -h /tmp -p 5433 -U postgres
 The script creates a throwaway database, applies `local/00_auth_shim.sql`
 (which fakes `auth.users` and `auth.uid()` — **never apply it to a real
 Supabase project**, which already has them), then every migration in order,
-then `tests/rls_test.sql`. A clean run means all 168 assertions held.
+then `tests/rls_test.sql`. A clean run means all 331 assertions held.
 
 ## Deploying
 

@@ -378,13 +378,24 @@ public struct SupabaseProfileRepository: ProfileRepository {
     }
 
     public func save(_ profile: Profile) async throws -> Profile {
+        // Empty fields are sent as null, not "": an invoice prints what is
+        // there, and a blank string reads as a value that was entered.
+        func value(_ text: String?) -> AnyEncodable {
+            let trimmed = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? AnyEncodable(nilLiteral: ()) : AnyEncodable(trimmed)
+        }
+        // Only the columns a member owns. role, status, email, VAT and the
+        // bank flag are the company's, and the database refuses them anyway.
         let rows: [Profile] = try await client.update("profiles", values: [
             "first_name": AnyEncodable(profile.firstName),
             "last_name": AnyEncodable(profile.lastName),
-            "phone": AnyEncodable(profile.phone ?? ""),
-            "company_name": AnyEncodable(profile.companyName ?? ""),
-            "siret": AnyEncodable(profile.siret ?? ""),
-            "city": AnyEncodable(profile.city ?? "")
+            "phone": value(profile.phone),
+            "company_name": value(profile.companyName),
+            "legal_form": value(profile.legalForm),
+            "siret": value(profile.siret.map { $0.filter(\.isNumber) }),
+            "address": value(profile.address),
+            "postal_code": value(profile.postalCode),
+            "city": value(profile.city)
         ], match: [URLQueryItem(name: "id", value: "eq.\(profile.id.uuidString)")])
         return rows.first ?? profile
     }

@@ -16,7 +16,7 @@ blocks what. "You" is whoever is building; "the client" is Trinity Énergie.
 | Every screen walked by hand on device: create a reco, advance it, issue an invoice, sign both sides, open a conversation, schedule a reminder | You | 1 d |
 | The four remaining screens reworked to match the real app | You, once screenshots arrive | 6 d |
 
-The backend is verified (168 assertions) and the app compiles with its tests
+The backend is verified (331 assertions) and the app compiles with its tests
 passing, including a suite that drives the real client against a real
 PostgREST. What has never happened is either of them meeting *hosted*
 Supabase: GoTrue, Storage and the free plan's limits are still untested,

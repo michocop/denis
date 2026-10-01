@@ -10,21 +10,28 @@ with a Postgres backend that owns every rule that matters.
 | | |
 |---|---|
 | `docs/PLAN.md` | screen-by-screen analysis of the source app, data model, effort breakdown, legal constraints |
-| `supabase/` | schema, RLS, functions, migrations, 71-assertion test suite — see its README |
+| `supabase/` | schema, RLS, functions, migrations, 331-assertion test suite — see its README |
 | `ios/` | SwiftUI package and app target — see its README |
 | `scripts/db_test.sh` | applies the migrations to a throwaway database and runs the tests |
 
 ## Status
 
-**Backend: built and verified.** 71 assertions pass against a real Postgres.
+**Backend: built and verified.** 331 assertions pass against a real Postgres.
 Covers isolation between apporteurs, the pipeline state machine, gapless
 invoice numbering, VAT derivation, the self-billing mandate, signature
-sealing and immutability, soft deletes, chat privacy and ticketing.
+sealing and immutability, soft deletes, chat privacy and ticketing -- and,
+since an audit in September 2026, that nobody can make themselves an admin,
+set their own commission, burn invoice numbers, pay an invoice twice, or
+publish a legal text with blanks in it. Every one of those is a test that
+attempts the thing.
 
-**iOS: written, not yet compiled.** No Swift toolchain exists on Linux, where
-this was built. Every screen from the screenshots is implemented and wired to
-a repository protocol with a Supabase implementation behind it. Expect a few
-fixes on first `swift build`.
+**iOS: builds, and 65 tests pass**, 19 of them driving the real client
+against a real PostgREST: a lead walked to an invoice, signed by both sides,
+rendered to a PDF that is read back and checked for every mandatory mention,
+credited and reissued.
+
+**Not yet met:** hosted Supabase (GoTrue, Storage), a real device, and the
+App Store. See [docs/HANDOVER.md](docs/HANDOVER.md).
 
 ## Getting it running
 

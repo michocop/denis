@@ -1,5 +1,6 @@
 import XCTest
 import CryptoKit
+import PDFKit
 @testable import EnergyCourtage
 
 /// Exercises the real SupabaseClient against a real PostgREST.
@@ -407,6 +408,104 @@ final class IntegrationTests: XCTestCase {
             "recommendations",
             values: ["reward_amount": AnyEncodable(amount)],
             match: [URLQueryItem(name: "id", value: "eq.\(id.uuidString)")])
+    }
+
+    /// The whole road from a commission to a document both parties signed,
+    /// through the same client the app uses: the apporteur's billing details
+    /// entered in the app, the legal mentions on the issued invoice, one
+    /// signature each and no more, the PDF drawn from what the server sent,
+    /// then a credit note and the corrected invoice after it.
+    func testAnInvoiceIsSignedByBothSidesAndRendersEverythingTheLawAsks() async throws {
+        let johannClient = await signedIn(as: Self.johann)
+        let pierreClient = await signedIn(as: Self.pierre)
+        let profiles = SupabaseProfileRepository(client: johannClient)
+        let johann = SupabaseRecommendationsRepository(client: johannClient)
+        let admin = SupabaseRecommendationsRepository(client: pierreClient)
+        let company = SupabaseInvoiceRepository(client: pierreClient)
+        let apporteur = SupabaseInvoiceRepository(client: johannClient)
+
+        // what BillingDetailsView saves
+        var me = try await profiles.currentProfile()
+        me.address = "12 rue des Lilas"
+        me.postalCode = "59000"
+        me.city = "Lille"
+        me.legalForm = "Micro-entreprise"
+        me = try await profiles.save(me)
+        XCTAssertTrue(me.hasBillingAddress, "the billing address round-trips")
+
+        var draft = RecommendationDraft()
+        draft.firstName = "Sacha"
+        draft.lastName = "Signature\(Int.random(in: 1000...9999))"
+        draft.phone = "07\(Int.random(in: 10_000_000...99_999_999))"
+        draft.consentConfirmed = true
+        let created = try await johann.create(draft)
+        for stage in try await admin.loadPipeline() {
+            _ = try await admin.advanceStage(recommendationID: created.id, stageKey: stage.key)
+            if stage.isRewardTrigger { break }
+        }
+        try await admin.setRewardAmount(recommendationID: created.id, amount: 500)
+
+        let invoiceID = try await company.issue(recommendationID: created.id)
+        var document = try await company.document(invoiceID: invoiceID)
+        XCTAssertEqual(document.kind, "invoice")
+        XCTAssertEqual(document.customer?.legalName, "Trinity Énergie",
+                       "the customer is the company, not the admin who issued it")
+        XCTAssertEqual(document.apporteur.address, "12 rue des Lilas")
+        XCTAssertNotNil(document.dueOn)
+        XCTAssertTrue(document.selfBillingMention?.hasPrefix("Autofacturation") == true)
+        XCTAssertTrue(document.acceptsSignatures)
+
+        let digest = try XCTUnwrap(document.documentSha256)
+        try await apporteur.sign(invoiceID: invoiceID, documentSHA256: digest)
+        document = try await apporteur.document(invoiceID: invoiceID)
+        XCTAssertTrue(document.isSigned(by: "apporteur"))
+        XCTAssertFalse(document.isFullySigned, "one signature does not seal it")
+        do {
+            try await apporteur.sign(invoiceID: invoiceID, documentSHA256: digest)
+            XCTFail("signing twice is refused")
+        } catch {}
+
+        try await company.sign(invoiceID: invoiceID, documentSHA256: digest)
+        document = try await company.document(invoiceID: invoiceID)
+        XCTAssertEqual(document.status, "signed")
+        XCTAssertTrue(document.isFullySigned)
+        XCTAssertFalse(document.acceptsSignatures, "a sealed invoice takes no more signatures")
+
+        // the PDF, drawn from what the server actually sent
+        let pdf = InvoicePDF.render(document)
+        XCTAssertGreaterThan(pdf.count, 1000)
+        let text = (PDFDocument(data: pdf)?.string ?? "")
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        for expected in ["FACTURE N° \(document.number)", "12 rue des Lilas", "SIREN",
+                         "Autofacturation", "Échéance", "500,00 €",
+                         "Johann Lefeuvre — signé électroniquement",
+                         "Pierre-Louis Tettamanti — signé électroniquement", digest] {
+            XCTAssertTrue(text.contains(expected), "the signed PDF says “\(expected)”")
+        }
+
+        // and the correction
+        let noteID = try await company.createCreditNote(invoiceID: invoiceID, reason: "Erreur")
+        let note = try await company.document(invoiceID: noteID)
+        XCTAssertTrue(note.isCreditNote)
+        XCTAssertEqual(note.correctsNumber, document.number)
+        let corrected = try await company.issue(recommendationID: created.id)
+        XCTAssertNotEqual(corrected, invoiceID, "a credited invoice can be reissued")
+    }
+
+    /// The client sends a PATCH like any other; the database is what refuses it.
+    func testAnApporteurCannotPromoteThemselvesThroughTheClient() async throws {
+        let client = await signedIn(as: Self.johann)
+        struct Row: Decodable { let id: UUID }
+        do {
+            let _: [Row] = try await client.update(
+                "profiles", values: ["role": AnyEncodable("admin")],
+                match: [URLQueryItem(name: "id", value: "eq.\(Self.johann.uuidString)")])
+            XCTFail("an apporteur promoting themselves must be refused")
+        } catch SupabaseError.http(let status, _) {
+            XCTAssertEqual(status, 403)
+        }
+        let profile = try await SupabaseProfileRepository(client: client).currentProfile()
+        XCTAssertEqual(profile.role, .apporteur)
     }
 
     func testRegisteringTheSameDeviceTwiceIsNotAnError() async throws {

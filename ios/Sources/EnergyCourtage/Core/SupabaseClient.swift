@@ -46,7 +46,15 @@ public struct AnyEncodable: Encodable, Sendable {
     private let encodeTo: @Sendable (Encoder) throws -> Void
 
     public init<T: Encodable & Sendable>(_ value: T) {
-        encodeTo = { encoder in try value.encode(to: encoder) }
+        // Through a single-value container, not `value.encode(to:)`. JSONEncoder
+        // writes Decimal, Date and URL specially only when it is handed them;
+        // called directly, Decimal encodes its internals, and the commission
+        // went out as {"mantissa":[5,0,...],"exponent":2} -- which Postgres
+        // refused, so "Définir la commission" never worked against a server.
+        encodeTo = { encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        }
     }
 
     public init(nilLiteral: ()) {

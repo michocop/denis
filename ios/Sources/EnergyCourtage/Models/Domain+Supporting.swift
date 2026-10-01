@@ -12,6 +12,9 @@ public struct Profile: Identifiable, Hashable, Codable, Sendable {
     public var companyName: String?
     public var siret: String?
     public var city: String?
+    public var legalForm: String?
+    public var address: String?
+    public var postalCode: String?
     public var vatLiable: Bool
     /// Self-billing is only lawful with a prior mandate, so the app has to know
     /// whether this apporteur has signed one.
@@ -23,14 +26,23 @@ public struct Profile: Identifiable, Hashable, Codable, Sendable {
     }
     public var canBeInvoiced: Bool { billingMandateSignedAt != nil }
 
+    /// What an invoice in this person's name needs to name its supplier:
+    /// where they can be reached. The SIRET is not required, because an
+    /// occasional apporteur declaring in BNC has none.
+    public var hasBillingAddress: Bool {
+        ![address, postalCode, city].contains { ($0 ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
     public init(id: UUID, role: UserRole, firstName: String, lastName: String, email: String,
                 phone: String? = nil, companyName: String? = nil, siret: String? = nil,
                 city: String? = nil, vatLiable: Bool = false,
-                billingMandateSignedAt: Date? = nil) {
+                billingMandateSignedAt: Date? = nil,
+                legalForm: String? = nil, address: String? = nil, postalCode: String? = nil) {
         self.id = id; self.role = role; self.firstName = firstName; self.lastName = lastName
         self.email = email; self.phone = phone; self.companyName = companyName
         self.siret = siret; self.city = city; self.vatLiable = vatLiable
         self.billingMandateSignedAt = billingMandateSignedAt
+        self.legalForm = legalForm; self.address = address; self.postalCode = postalCode
     }
 }
 
@@ -113,6 +125,24 @@ public struct InvoiceDocument: Hashable, Codable, Sendable {
         public var company: String?
         public var city: String?
         public var siret: String?
+        public var legalForm: String?
+        public var address: String?
+        public var postalCode: String?
+        public var vatNumber: String?
+    }
+
+    /// The company, by its legal identity, as it stood when the invoice was
+    /// issued. Absent on invoices issued before it was recorded.
+    public struct Customer: Hashable, Codable, Sendable {
+        public var legalName: String
+        public var legalForm: String?
+        public var shareCapital: String?
+        public var siren: String
+        public var rcsCity: String?
+        public var vatNumber: String?
+        public var address: String
+        public var postalCode: String
+        public var city: String
     }
 
     public struct Attestation: Hashable, Codable, Sendable {
@@ -153,7 +183,12 @@ public struct InvoiceDocument: Hashable, Codable, Sendable {
     /// retained document is the one that was kept, not a fresh rendering that
     /// happens to look like it.
     public var pdfPath: String?
+    /// "invoice" or "credit_note". A credit note carries the number of the
+    /// invoice it cancels in `correctsNumber`.
+    public var kind: String?
+    public var correctsNumber: String?
     public var issuer: Party
+    public var customer: Customer?
     public var apporteur: Party
     public var attestation: Attestation
     public var amount: Amount
@@ -161,11 +196,19 @@ public struct InvoiceDocument: Hashable, Codable, Sendable {
     public var paymentMethod: String
     public var place: String
     public var issuedOn: String
+    public var dueOn: String?
+    /// "Autofacturation …": the company drew the invoice up in the
+    /// apporteur's name, which the invoice has to say.
+    public var selfBillingMention: String?
+    /// The late-payment rate and the 40 € recovery fee (art. L441-10).
+    public var latePaymentMention: String?
     public var taxNotice: String?
     public var status: String
     public var signatures: [Signature]
 
     public var isFullySigned: Bool { signatures.allSatisfy(\.signed) }
+
+    public var isCreditNote: Bool { kind == "credit_note" }
 
     /// Still open for signatures. The server refuses one on a void invoice or
     /// a sealed one, so offering the button there only produces an error.

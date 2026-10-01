@@ -138,6 +138,7 @@ SDK = {
     "UNMutableNotificationContent", "UNCalendarNotificationTrigger",
     "UNNotificationRequest", "UNTimeIntervalNotificationTrigger", "Notification",
     "NotificationCenter", "Bundle", "Data", "Timer",
+    "NSLock", "PDFDocument", "WritableKeyPath",
     "RelativeDateTimeFormatter", "Decimal", "UNAuthorizationOptions", "UNNotificationSound", "ToolbarContentBuilder", "ToolbarContent", "UIApplication",
     "PropertyListSerialization", "MainActor",
 }

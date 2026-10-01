@@ -25,6 +25,14 @@ values
    'Trinity Énergie', 'AIX-EN-PEVELE', null)
 on conflict (id) do nothing;
 
+-- The customer named on every invoice. Replace with the client's real legal
+-- identity before the first invoice is issued in production.
+insert into billing_settings (legal_name, legal_form, share_capital, siren, rcs_city,
+                              address, postal_code, city)
+values ('Trinity Énergie', 'SAS', '10 000 €', '000000000', 'Lille',
+        '1 rue de la Gare', '59310', 'Aix-en-Pévèle')
+on conflict (id) do nothing;
+
 -- Mid-pipeline: one stage done, one current, three ahead. No amount, no banner.
 insert into recommendations (id, filleul_first_name, filleul_last_name, filleul_phone,
                              parrain_id, assigned_admin_id, reward_amount)

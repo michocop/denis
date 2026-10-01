@@ -240,10 +240,19 @@ public struct InvoiceView: View {
 
     private func documentCard(_ doc: InvoiceDocument) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+            // The customer is the company by its legal identity; the admin's
+            // own name is only shown on invoices issued before that was kept.
             VStack(alignment: .leading, spacing: 2) {
-                Text(doc.issuer.name).font(Theme.Typography.body.weight(.semibold))
-                if let company = doc.issuer.company { Text(company) }
-                if let city = doc.issuer.city { Text(city) }
+                if let customer = doc.customer {
+                    Text(customer.legalName).font(Theme.Typography.body.weight(.semibold))
+                    Text(customer.address)
+                    Text("\(customer.postalCode) \(customer.city)")
+                    Text("SIREN \(customer.siren)")
+                } else {
+                    Text(doc.issuer.name).font(Theme.Typography.body.weight(.semibold))
+                    if let company = doc.issuer.company { Text(company) }
+                    if let city = doc.issuer.city { Text(city) }
+                }
             }
             .foregroundStyle(Theme.Palette.textPrimary)
 
@@ -251,10 +260,17 @@ public struct InvoiceView: View {
                 .font(Theme.Typography.body.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
-            Text("• Numéro de facture \(doc.number)")
-                .font(Theme.Typography.body.weight(.semibold))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, Theme.Spacing.l)
+            VStack(spacing: 4) {
+                Text(doc.isCreditNote ? "• Avoir \(doc.number)" : "• Numéro de facture \(doc.number)")
+                    .font(Theme.Typography.body.weight(.semibold))
+                if doc.isCreditNote, let original = doc.correctsNumber {
+                    Text("sur la facture \(original)")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, Theme.Spacing.l)
 
             VStack(alignment: .leading, spacing: 6) {
                 line("Je soussigné", doc.attestation.soussigne)
@@ -288,6 +304,19 @@ public struct InvoiceView: View {
                 line("Modalité de règlement", doc.paymentMethod)
                 line("Fait à", doc.place)
                 line("Le", doc.issuedOn)
+                if let due = doc.dueOn { line("Échéance", due) }
+            }
+
+            if let selfBilling = doc.selfBillingMention {
+                Text(selfBilling)
+                    .font(Theme.Typography.secondary.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let late = doc.latePaymentMention {
+                Text(late)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let notice = doc.taxNotice {

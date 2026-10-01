@@ -64,6 +64,12 @@ begin
      null, null),
     (v_pierre, 'admin',     'active', 'Pierre-Louis', 'Tettamanti',
      'pierre-louis@trinity-energie.test', 'AIX-EN-PEVELE', 'Trinity Énergie', null);
+
+  -- the customer on every invoice (section 44)
+  insert into billing_settings (legal_name, legal_form, share_capital, siren, rcs_city,
+                                vat_number, address, postal_code, city)
+  values ('Trinity Énergie', 'SAS', '10 000 €', '123456789', 'Lille',
+          'FR12123456789', '1 rue de la Gare', '59310', 'Aix-en-Pévèle');
 end $$;
 
 -- Johann creates a recommendation (Thomas Dubois, as in the screenshots)
@@ -2244,5 +2250,115 @@ begin
     'and no device keeps receiving their notifications');
 end $$;
 
+set role authenticated;
+
+\echo ''
+\echo '=== 44. An invoice carries what the law requires of it ============'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_inv    invoices%rowtype;
+  v_note   invoices%rowtype;
+  v_doc    jsonb;
+  v_text   text;
+begin
+  perform login(v_johann);
+  update profiles set address = '12 rue des Lilas', postal_code = '59000'
+   where id = v_johann;
+
+  v_reco := test_reco_at_reward(v_johann, v_pierre, 600, 'Mentions');
+  select * into v_inv from issue_invoice(v_reco);
+  v_doc  := invoice_document(v_inv.id);
+  v_text := invoice_canonical_text(v_inv.id);
+
+  perform assert(v_doc ->> 'kind' = 'invoice', 'an invoice says it is one');
+  perform assert(v_doc ->> 'self_billing_mention' like 'Autofacturation%',
+    'and that the customer drew it up in the supplier''s name');
+  perform assert(v_doc -> 'customer' ->> 'legal_name' = 'Trinity Énergie'
+                 and v_doc -> 'customer' ->> 'siren' = '123456789'
+                 and v_doc -> 'customer' ->> 'address' = '1 rue de la Gare',
+    'the customer is the company, by its legal identity, not the admin who clicked');
+  perform assert(v_doc -> 'apporteur' ->> 'address' = '12 rue des Lilas',
+    'the supplier''s address is on it');
+  perform assert(v_inv.due_on = v_inv.issued_on + 30,
+    'payment is due thirty days after issue unless the company says otherwise');
+  perform assert(v_doc ->> 'late_payment_mention' like '%trois fois le taux d''intérêt légal%'
+                 and v_doc ->> 'late_payment_mention' like '%40 €%',
+    'with the late-payment rate and the 40 € recovery fee spelled out');
+  perform assert(v_text like '%Autofacturation%' and v_text like '%123456789%',
+    'and all of it is part of what both parties sign');
+
+  -- the company's details changing later does not rewrite an issued invoice
+  perform login(v_pierre);
+  update billing_settings set address = '99 avenue Ailleurs';
+  perform assert(invoice_document(v_inv.id) -> 'customer' ->> 'address' = '1 rue de la Gare',
+    'moving offices does not move the address on invoices already issued');
+  update billing_settings set address = '1 rue de la Gare';
+
+  -- a credit note says what it is and what it cancels
+  perform login(v_johann);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform login(v_pierre);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  select * into v_note from create_credit_note(v_inv.id, 'Erreur');
+  v_doc := invoice_document(v_note.id);
+  perform assert(v_doc ->> 'kind' = 'credit_note' and v_doc ->> 'corrects_number' = v_inv.number,
+    'a credit note is titled as one and names the invoice it cancels');
+
+
+  perform assert_denied(v_johann, 'update billing_settings set siren = ''000000000''',
+    'only the company edits its own identity');
+end $$;
+
+reset role;
+do $$
+begin
+  -- what happens on a project where nobody filled the company in. There has
+  -- to be something invoiceable, or the refusal below would prove nothing.
+  perform assert(exists (select 1 from recommendations r
+                          where reward_status = 'earned' and reward_amount > 0
+                            and not has_live_invoice(r.id)),
+    'a commission is waiting to be invoiced');
+  delete from billing_settings;
+  perform assert_denied('33333333-3333-3333-3333-333333333333',
+    'select issue_invoice(id) from recommendations r
+      where reward_status = ''earned'' and reward_amount > 0
+        and not has_live_invoice(r.id) limit 1',
+    'no invoice can be issued before the company''s identity is set up');
+  insert into billing_settings (legal_name, siren, address, postal_code, city)
+  values ('Trinity Énergie', '123456789', '1 rue de la Gare', '59310', 'Aix-en-Pévèle');
+end $$;
+set role authenticated;
+
+\echo ''
+\echo '=== 45. A signature records where it came from, not what it claims '
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_inv    invoices%rowtype;
+  v_sig    invoice_signatures%rowtype;
+begin
+  v_reco := test_reco_at_reward(v_johann, v_pierre, 80, 'Preuve');
+  select * into v_inv from issue_invoice(v_reco);
+
+  -- what PostgREST passes the database for a request from the phone
+  perform set_config('request.headers',
+    '{"x-forwarded-for": "203.0.113.7, 10.0.0.1", "user-agent": "TrinityEnergie/1 CFNetwork"}',
+    true);
+  perform login(v_johann);
+  select * into v_sig from sign_invoice(v_inv.id, v_inv.document_sha256,
+                                        '1.2.3.4'::inet, 'forged agent');
+  perform assert(v_sig.ip_address = '203.0.113.7'::inet,
+    'the address kept is the one the request came from, not the one the app sent');
+  perform assert(v_sig.user_agent = 'TrinityEnergie/1 CFNetwork',
+    'and so is the user agent');
+  perform set_config('request.headers', '', true);
+end $$;
+
+reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

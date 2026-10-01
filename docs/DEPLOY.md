@@ -90,6 +90,25 @@ select id, 'admin', 'active', 'Pierre-Louis', 'Tettamanti', email
 
 From then on, invitations are created from the app.
 
+### The company's identity on invoices
+
+Every invoice names the company as the customer, by its legal identity, and
+**no invoice can be issued until this row exists**. Fill it with the real
+details from the Kbis -- they are copied onto each invoice when it is issued,
+so a mistake here is printed on documents kept for ten years:
+
+```sql
+insert into billing_settings (legal_name, legal_form, share_capital, siren, rcs_city,
+                              vat_number, address, postal_code, city,
+                              payment_term_days)
+values ('Trinity Énergie', 'SAS', '10 000 €', '123456789', 'Lille',
+        'FR00123456789', '1 rue …', '59310', 'Aix-en-Pévèle', 30);
+```
+
+`payment_term_days` is the due date printed on each invoice (30 by default,
+60 at most under art. L441-10). Changing the row later affects only invoices
+issued afterwards.
+
 ## 4. Point the app at it
 
 The two values are in **Project Settings → API**:

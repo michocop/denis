@@ -22,6 +22,21 @@ final class RequestShapeTests: XCTestCase {
 
     private let base = URL(string: "https://project.supabase.co")!
 
+    /// A commission is a Decimal. Encoded through the type-erased box it came
+    /// out as Decimal's internals rather than a number, and the server
+    /// refused every amount an admin tried to set.
+    func testAmountsAndDatesInARequestBodyAreWrittenAsJSONValues() throws {
+        let body: [String: AnyEncodable] = [
+            "p_amount": AnyEncodable(Decimal(string: "450.50")!),
+            "p_when": AnyEncodable("2026-10-01"),
+            "p_none": AnyEncodable(nilLiteral: ())
+        ]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let json = String(decoding: try encoder.encode(body), as: UTF8.self)
+        XCTAssertEqual(json, #"{"p_amount":450.5,"p_none":null,"p_when":"2026-10-01"}"#)
+    }
+
     func testTableReadUsesTheSupabaseRestPrefix() async throws {
         let client = SupabaseClient(baseURL: base, anonKey: "anon-key",
                                     session: makeSession())

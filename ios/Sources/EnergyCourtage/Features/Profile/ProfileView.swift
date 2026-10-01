@@ -24,6 +24,11 @@ public final class ProfileViewModel {
     /// out: the login no longer exists, and staying on the tabs left the person
     /// looking at an account that was gone until they next relaunched.
     @MainActor
+    public func save(_ updated: Profile) async throws {
+        profile = try await repository.save(updated)
+    }
+
+    @MainActor
     public func deleteAccount() async -> Bool {
         isWorking = true
         defer { isWorking = false }
@@ -42,6 +47,7 @@ public struct ProfileView: View {
     @State private var confirmsDeletion = false
     @State private var showsMandate = false
     @State private var shownDocument: LegalDocumentKey?
+    @State private var showsBillingDetails = false
     private let dependencies: Dependencies
     private let onSignOut: () -> Void
 
@@ -131,6 +137,11 @@ public struct ProfileView: View {
             }
         }
         .task { await model.load() }
+        .sheet(isPresented: $showsBillingDetails) {
+            if let profile = model.profile {
+                BillingDetailsView(profile: profile) { try await model.save($0) }
+            }
+        }
         .sheet(item: $shownDocument) { key in
             LegalDocumentView(model: LegalViewModel(repository: dependencies.legal),
                               documentKey: key.id)
@@ -204,6 +215,35 @@ public struct ProfileView: View {
             Text("Facturation")
                 .font(Theme.Typography.body.weight(.semibold))
                 .foregroundStyle(Theme.Palette.textPrimary)
+
+            Button { showsBillingDetails = true } label: {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Coordonnées sur vos factures")
+                            .font(Theme.Typography.secondary)
+                            .foregroundStyle(Theme.Palette.textSecondary)
+                        if profile.hasBillingAddress {
+                            Text([profile.address, [profile.postalCode, profile.city]
+                                    .compactMap { $0 }.joined(separator: " ")]
+                                    .compactMap { $0 }.joined(separator: ", "))
+                                .font(Theme.Typography.secondary)
+                                .foregroundStyle(Theme.Palette.textPrimary)
+                                .multilineTextAlignment(.leading)
+                        } else {
+                            Text("Adresse à compléter")
+                                .font(Theme.Typography.secondary)
+                                .foregroundStyle(Theme.Palette.destructive)
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Divider()
 
             HStack {
                 Text("Régime de TVA")

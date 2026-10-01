@@ -10,12 +10,12 @@ company signature panel). Authority is enforced in Postgres — see
 
 | | |
 |---|---|
-| Built | All five tabs (Accueil, Reco, Catalogue, Chat, Profil), sign-in, create-recommendation form with the RGPD consent gate, the admin action sheet, the invoice viewer with dual signature, the product wizard, the design system, Supabase repositories for every screen, and unit tests |
-| Not built yet | Push notifications, realtime subscriptions, the thread detail view, offline cache, reminders UI, PDF rendering |
+| Built | Four tabs (Accueil, Reco, Chat, Profil), sign-in and invitation sign-up (including projects that confirm email), Face ID lock, create-recommendation with the RGPD consent sent to the server, the admin action sheet, the invoice viewer with dual signature and confirmation, the invoice / credit-note PDF with every mandatory mention, billing details, legal documents (mandate, CGU, privacy) with acceptance, members, payables, commissions, notifications, chat, reminders |
+| Not built yet | Realtime (a 30 s poll stands in), offline cache, the catalogue and product wizard from docs/PLAN.md, document upload on leads, OTP at signature |
 
-**Not yet compiled.** This package was written on Linux, where no Swift
-toolchain is available, so it has had a careful read-through but not a build.
-Expect to fix a few small things on first `swift build` / Xcode open.
+**Compiles, and 65 tests pass** on the simulator, 19 of them against a real
+PostgREST (see `.github/workflows/ci.yml`, job `integration`). The app has not
+yet run against hosted Supabase or on a device.
 
 ## Run it
 
