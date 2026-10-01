@@ -261,18 +261,22 @@ begin
      values (%L, %L, ''entreprise'', ''Johann Lefeuvre'', %L)', v_inv, v_johann, repeat('a',64)),
     'Johann cannot sign in the company''s name');
 
+  -- not even for oneself: the row can only be written by sign_invoice, so
+  -- the evidence it carries (otp_verified among it) is never the client's word
+  perform assert_denied(v_johann, format(
+    'insert into invoice_signatures (invoice_id, signer_id, signer_role, signer_full_name, document_sha256, otp_verified)
+     values (%L, %L, ''apporteur'', ''Johann Lefeuvre'', %L, true)', v_inv, v_johann,
+     (select document_sha256 from invoices where id = v_inv)),
+    'Johann cannot write his own signature row and claim the SMS code was checked');
+
   perform login(v_johann);
-  insert into invoice_signatures (invoice_id, signer_id, signer_role, signer_full_name, document_sha256)
-  values (v_inv, v_johann, 'apporteur', 'Johann Lefeuvre',
-          (select document_sha256 from invoices where id = v_inv));
+  perform sign_invoice(v_inv, (select document_sha256 from invoices where id = v_inv));
 
   select status into v_status from invoices where id = v_inv;
   perform assert(v_status <> 'signed', 'one signature is not enough to seal the invoice');
 
   perform login(v_pierre);
-  insert into invoice_signatures (invoice_id, signer_id, signer_role, signer_full_name, document_sha256)
-  values (v_inv, v_pierre, 'entreprise', 'Pierre-Louis Tettamanti',
-          (select document_sha256 from invoices where id = v_inv));
+  perform sign_invoice(v_inv, (select document_sha256 from invoices where id = v_inv));
 
   select status into v_status from invoices where id = v_inv;
   perform assert(v_status = 'signed', 'both signatures seal the invoice automatically');
@@ -1646,6 +1650,310 @@ begin
   update profiles set city = 'Roubaix' where id = v_johann;
   perform assert((select city from profiles where id = v_johann) = 'Roubaix',
     'while the rest of the profile stays editable');
+end $$;
+
+\echo ''
+\echo '=== 32. A code by SMS before signing ==============================='
+-- Two fresh invoices of Johann's, so this does not ride on earlier state.
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_stage  text;
+  v_name   text;
+begin
+  foreach v_name in array array['Un', 'Deux'] loop
+    perform login(v_johann);
+    insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+    values ('Otp', v_name, v_johann) returning id into v_reco;
+    perform login(v_pierre);
+    for v_stage in select key from stages order by position loop
+      perform advance_stage(v_reco, v_stage);
+      exit when (select is_reward_trigger from stages where key = v_stage);
+    end loop;
+    update recommendations set reward_amount = 200 where id = v_reco;
+    perform issue_invoice(v_reco);
+  end loop;
+
+  -- shipped state: no sender configured, so no code is asked for
+  perform login(v_johann);
+  perform assert(not signature_otp_required(),
+    'with no SMS sender configured, signing does not ask for a code');
+  perform assert((request_signature_otp((select i.id from invoices i join recommendations r
+                    on r.id = i.recommendation_id where r.filleul_last_name = 'Un'))) ->> 'required' = 'false',
+    'and requesting one says so, so the app goes straight to signing');
+end $$;
+
+reset role;
+insert into sms_config (function_url, hook_secret)
+values ('https://project.supabase.co/functions/v1/send-sms', 'sms-secret');
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_inv    invoices%rowtype;
+  v_req    net.sent_requests%rowtype;
+  v_res    jsonb;
+  v_code   text;
+  v_wrong  text;
+begin
+  perform login(v_johann);
+  select i.* into v_inv from invoices i join recommendations r on r.id = i.recommendation_id
+   where r.filleul_last_name = 'Un';
+  perform assert(signature_otp_required(), 'once a sender is configured, a code is required');
+
+  update profiles set phone = null where id = v_johann;
+  perform assert_denied(v_johann, format('select request_signature_otp(%L)', v_inv.id),
+    'no code can be sent to someone without a mobile number on file');
+
+  perform login(v_johann);
+  update profiles set phone = '06 12 34 56 78' where id = v_johann;
+  v_res := request_signature_otp(v_inv.id);
+  perform assert(v_res ->> 'required' = 'true' and v_res ->> 'sent_to' = '06 •• •• •• 78',
+    'the app is told a code went out, and to a masked number it can show');
+
+  select * into v_req from net.sent_requests order by id desc limit 1;
+  perform assert(v_req.url = 'https://project.supabase.co/functions/v1/send-sms',
+    'the code is posted to the SMS function');
+  perform assert(v_req.headers ->> 'x-hook-secret' = 'sms-secret',
+    'with the shared secret');
+  perform assert(v_req.body ->> 'to' = '+33612345678',
+    'to the number in international format, however it was typed');
+  v_code := v_req.body ->> 'code';
+  perform assert(v_code ~ '^[0-9]{6}$' and position(v_code in v_req.body ->> 'body') > 0,
+    'a six-digit code, written into the text itself');
+
+  perform assert_denied(v_marie, format('select request_signature_otp(%L)', v_inv.id),
+    'a stranger to the invoice cannot have a code sent');
+  perform assert_denied(v_marie, format('select verify_signature_otp(%L, %L)', v_inv.id, v_code),
+    'nor use one, even knowing it');
+  perform assert_denied(v_johann, 'select code_sha256 from signature_otps',
+    'nobody signed in can read the stored codes');
+  perform assert_denied(v_johann, 'select hook_secret from sms_config',
+    'nor the SMS secret');
+
+  perform assert_denied(v_johann, format('select sign_invoice(%L, %L)', v_inv.id, v_inv.document_sha256),
+    'signing before the code is confirmed is refused');
+  perform assert_denied(v_johann, format('select request_signature_otp(%L)', v_inv.id),
+    'and a second code cannot be fired off within the minute');
+
+  perform login(v_johann);
+  v_wrong := lpad(((v_code::int + 1) % 1000000)::text, 6, '0');
+  v_res := verify_signature_otp(v_inv.id, v_wrong);
+  perform assert(v_res ->> 'result' = 'wrong' and (v_res ->> 'remaining')::int = 4,
+    'a wrong code is refused and the attempts left are counted down');
+
+  v_res := verify_signature_otp(v_inv.id, ' ' || substr(v_code, 1, 3) || ' ' || substr(v_code, 4));
+  perform assert(v_res ->> 'result' = 'verified',
+    'the right code is accepted, spaces and all');
+
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert((select otp_verified from invoice_signatures
+                   where invoice_id = v_inv.id and signer_role = 'apporteur'),
+    'the signature records that the SMS code was checked');
+
+  perform assert_denied(v_johann, format('select request_signature_otp(%L)', v_inv.id),
+    'no further code is sent for a side already signed');
+
+  -- the company signs the same way, with its own code
+  perform login(v_pierre);
+  update profiles set phone = '+33 7 57 42 52 37' where id = v_pierre;
+  perform request_signature_otp(v_inv.id);
+  select * into v_req from net.sent_requests order by id desc limit 1;
+  perform assert(v_req.body ->> 'to' = '+33757425237', 'the company''s code goes to its own number');
+  perform assert_denied(v_pierre, format('select sign_invoice(%L, %L)', v_inv.id, v_inv.document_sha256),
+    'Johann''s verified code does not let the company sign');
+  perform login(v_pierre);
+  perform assert(verify_signature_otp(v_inv.id, v_req.body ->> 'code') ->> 'result' = 'verified',
+    'the company confirms its own code');
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert((select status from invoices where id = v_inv.id) = 'signed'
+             and (select bool_and(otp_verified) from invoice_signatures where invoice_id = v_inv.id),
+    'both signatures, both confirmed by SMS, seal the invoice');
+end $$;
+
+-- skip the one-minute wait between codes
+reset role;
+update signature_otps set created_at = created_at - interval '2 minutes';
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_inv    invoices%rowtype;
+  v_req    net.sent_requests%rowtype;
+  v_res    jsonb;
+  v_code   text;
+  v_wrong  text;
+  i int;
+begin
+  perform login(v_johann);
+  select i.* into v_inv from invoices i join recommendations r on r.id = i.recommendation_id
+   where r.filleul_last_name = 'Deux';
+  perform request_signature_otp(v_inv.id);
+  select * into v_req from net.sent_requests order by id desc limit 1;
+  v_code := v_req.body ->> 'code';
+  v_wrong := lpad(((v_code::int + 7) % 1000000)::text, 6, '0');
+
+  for i in 1..4 loop
+    perform verify_signature_otp(v_inv.id, v_wrong);
+  end loop;
+  v_res := verify_signature_otp(v_inv.id, v_wrong);
+  perform assert(v_res ->> 'result' = 'locked', 'the fifth wrong code locks it');
+  v_res := verify_signature_otp(v_inv.id, v_code);
+  perform assert(v_res ->> 'result' = 'locked',
+    'after which even the right code is refused: the attempts were really counted');
+  perform assert_denied(v_johann, format('select sign_invoice(%L, %L)', v_inv.id, v_inv.document_sha256),
+    'and signing stays closed');
+end $$;
+
+reset role;
+update signature_otps set created_at = created_at - interval '2 minutes';
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_inv    uuid;
+  v_req    net.sent_requests%rowtype;
+begin
+  perform login(v_johann);
+  select i.id into v_inv from invoices i join recommendations r on r.id = i.recommendation_id
+   where r.filleul_last_name = 'Deux';
+  perform request_signature_otp(v_inv);
+  select * into v_req from net.sent_requests order by id desc limit 1;
+  perform set_config('test.code', v_req.body ->> 'code', false);
+  perform assert(verify_signature_otp(v_inv, '000000') ->> 'result' in ('wrong', 'verified'),
+    'a new code starts with a fresh set of attempts');
+end $$;
+
+reset role;
+update signature_otps set expires_at = now() - interval '1 second';
+set role authenticated;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_inv    uuid;
+begin
+  perform login(v_johann);
+  select i.id into v_inv from invoices i join recommendations r on r.id = i.recommendation_id
+   where r.filleul_last_name = 'Deux';
+  perform assert(verify_signature_otp(v_inv, current_setting('test.code')) ->> 'result' = 'expired',
+    'a code older than ten minutes is refused as expired');
+end $$;
+
+reset role;
+update sms_config set enabled = false;
+set role authenticated;
+
+do $$
+begin
+  perform login('11111111-1111-1111-1111-111111111111');
+  perform assert(not signature_otp_required(),
+    'disabling the sender lifts the requirement instead of blocking every signature');
+end $$;
+
+\echo ''
+\echo '=== 33. Validating the reward stage, service by service ============'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_stage  stages%rowtype;
+  v_reward text;
+  v_before text;
+  v_r      recommendations%rowtype;
+  v_b      jsonb;
+  v_inv    invoices%rowtype;
+  v_ok     constant jsonb := '[
+     {"label": "Mandat de vente", "turnover": 1300000, "reward": 1300, "signed": true},
+     {"label": "Étude de financement", "turnover": 2000, "reward": 150, "signed": false}]';
+begin
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id)
+  values ('Prime', 'Lignes', v_johann) returning id into v_reco;
+
+  select key into v_reward from stages where is_reward_trigger;
+  select key into v_before from stages
+   where position < (select position from stages where is_reward_trigger)
+   order by position desc limit 1;
+
+  perform login(v_pierre);
+  for v_stage in select * from stages where not is_reward_trigger order by position loop
+    exit when v_stage.position > (select position from stages where is_reward_trigger);
+    perform advance_stage(v_reco, v_stage.key, 'Étape ' || v_stage.label);
+  end loop;
+  perform assert((select comment from recommendation_stage_events e join stages s on s.id = e.stage_id
+                   where e.recommendation_id = v_reco and s.key = v_before) = 'Étape ' ||
+                 (select label from stages where key = v_before),
+    'the comment typed when validating a stage is the one the apporteur reads');
+
+  perform assert_denied(v_johann,
+    format('select validate_reward_stage(%L, %L, %L, ''virement'')', v_reco, v_reward, v_ok),
+    'an apporteur cannot validate their own reward');
+  perform assert_denied(v_pierre,
+    format('select validate_reward_stage(%L, %L, %L, ''virement'')', v_reco, v_before, v_ok),
+    'the service screen only validates the reward stage');
+  perform assert_denied(v_pierre,
+    format('select validate_reward_stage(%L, %L, %L, ''virement'')', v_reco, v_reward,
+      '[{"label": "A", "turnover": 10, "reward": 1500, "signed": true},
+        {"label": "B", "turnover": 10, "reward": 600, "signed": true}]'),
+    'signed rewards adding up past the 2000 EUR ceiling are refused');
+  perform assert_denied(v_pierre,
+    format('select validate_reward_stage(%L, %L, %L, ''virement'')', v_reco, v_reward,
+      '[{"label": "A", "turnover": 10, "reward": 100, "signed": false}]'),
+    'with no service ticked as signed there is nothing to reward');
+  perform assert_denied(v_pierre,
+    format('select validate_reward_stage(%L, %L, %L, ''virement'')', v_reco, v_reward,
+      '[{"label": "  ", "turnover": 10, "reward": 100, "signed": true}]'),
+    'a service needs a name');
+  perform assert_denied(v_pierre,
+    format('select validate_reward_stage(%L, %L, %L, ''virement'')', v_reco, v_reward,
+      '[{"label": "A", "turnover": -5, "reward": 100, "signed": true}]'),
+    'and no negative amounts');
+  perform assert((select current_stage_id from recommendations where id = v_reco)
+                 <> (select id from stages where key = v_reward),
+    'a refused validation leaves the stage where it was');
+
+  perform login(v_pierre);
+  select * into v_r from validate_reward_stage(v_reco, v_reward, v_ok, 'cheque',
+                                               'Merci pour cette belle mise en relation !');
+  perform assert(v_r.reward_amount = 1300 and v_r.turnover_amount = 1300000,
+    'only the services ticked as signed count, for the reward and for the turnover');
+  perform assert(v_r.reward_status = 'earned' and v_r.payout_method = 'cheque',
+    'the stage is reached, the reward earned, and how it is paid recorded');
+  perform assert((select comment from recommendation_stage_events
+                   where recommendation_id = v_reco and stage_id = (select id from stages where key = v_reward))
+                 = 'Merci pour cette belle mise en relation !',
+    'the message for the apporteur is the comment on that stage');
+
+  perform login(v_johann);
+  v_b := reward_breakdown(v_reco);
+  perform assert(jsonb_array_length(v_b -> 'lines') = 2 and (v_b ->> 'max_reward')::numeric = 2000
+             and v_b -> 'lines' -> 0 ->> 'label' = 'Mandat de vente',
+    'the apporteur sees how the reward was made up, line by line, unsigned ones included');
+  perform login(v_marie);
+  perform assert((select count(*) from reward_lines where recommendation_id = v_reco) = 0
+             and reward_breakdown(v_reco) is null,
+    'another apporteur sees none of it');
+  perform assert_denied(v_pierre,
+    format('insert into reward_lines (recommendation_id, position, label) values (%L, 9, ''x'')', v_reco),
+    'nobody writes the lines directly, not even an admin');
+
+  perform login(v_pierre);
+  select * into v_inv from issue_invoice(v_reco);
+  perform assert(v_inv.payment_method = 'Chèque' and v_inv.amount_ht = 1300,
+    'the invoice is issued for the reward, paid the way the stage said');
+  perform assert_denied(v_pierre,
+    format('select validate_reward_stage(%L, %L, %L, ''virement'')', v_reco, v_reward, v_ok),
+    'once invoiced, the services can no longer be changed');
 end $$;
 
 reset role;

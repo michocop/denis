@@ -1,0 +1,99 @@
+// Energy Courtage — how a signature code becomes a request to an SMS provider.
+//
+// Kept apart from the HTTP handler and free of Deno globals, so the request
+// each provider receives can be checked without sending anything (see
+// providers.test.ts). Switching provider is a secret, not a code change:
+//
+//   SMS_PROVIDER=twilio   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM
+//                         TWILIO_FROM may be a number (+33...) or a sender name
+//                         such as TRINITY, which France accepts for one-way texts.
+//   SMS_PROVIDER=whatsapp the same Twilio credentials, plus TWILIO_WHATSAPP_FROM
+//                         (the approved WhatsApp sender, +33...) and
+//                         TWILIO_WHATSAPP_CONTENT_SID (an approved
+//                         "authentication" template whose variable {{1}} is the code).
+//                         WhatsApp refuses free text to someone who has not
+//                         written first, so a template is not optional.
+//   SMS_PROVIDER=brevo    BREVO_API_KEY, BREVO_SENDER (11 letters or digits max)
+
+export interface Message {
+  /** E.164, already normalised by the database: +33612345678 */
+  to: string;
+  /** the six digits on their own, for template-based channels */
+  code: string;
+  /** the full text, for plain SMS */
+  body: string;
+}
+
+export interface ProviderRequest {
+  url: string;
+  init: { method: "POST"; headers: Record<string, string>; body: string };
+}
+
+type Env = Record<string, string | undefined>;
+
+function need(env: Env, ...keys: string[]): string[] {
+  const missing = keys.filter((k) => !env[k]);
+  if (missing.length) {
+    throw new Error(`SMS is not configured: missing ${missing.join(", ")}`);
+  }
+  return keys.map((k) => env[k]!);
+}
+
+function twilio(env: Env, form: Record<string, string>): ProviderRequest {
+  const [sid, token] = need(env, "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN");
+  return {
+    url: `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+    init: {
+      method: "POST",
+      headers: {
+        authorization: "Basic " + btoa(`${sid}:${token}`),
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams(form).toString(),
+    },
+  };
+}
+
+export function buildRequest(env: Env, message: Message): ProviderRequest {
+  if (!/^\+[1-9][0-9]{7,14}$/.test(message.to)) {
+    throw new Error("recipient is not an E.164 number");
+  }
+  if (!/^[0-9]{6}$/.test(message.code)) {
+    throw new Error("code is not six digits");
+  }
+
+  switch ((env.SMS_PROVIDER ?? "twilio").toLowerCase()) {
+    case "twilio": {
+      const [, , from] = need(env, "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM");
+      return twilio(env, { To: message.to, From: from, Body: message.body });
+    }
+    case "whatsapp": {
+      const [from, contentSid] = need(env, "TWILIO_WHATSAPP_FROM", "TWILIO_WHATSAPP_CONTENT_SID");
+      return twilio(env, {
+        To: `whatsapp:${message.to}`,
+        From: `whatsapp:${from}`,
+        ContentSid: contentSid,
+        ContentVariables: JSON.stringify({ "1": message.code }),
+      });
+    }
+    case "brevo": {
+      const [key, sender] = need(env, "BREVO_API_KEY", "BREVO_SENDER");
+      return {
+        url: "https://api.brevo.com/v3/transactionalSMS/sms",
+        init: {
+          method: "POST",
+          headers: { "api-key": key, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({
+            type: "transactional",
+            sender,
+            // Brevo wants the number without the leading +
+            recipient: message.to.slice(1),
+            content: message.body,
+          }),
+        },
+      };
+    }
+    default:
+      throw new Error(`unknown SMS_PROVIDER "${env.SMS_PROVIDER}" (twilio, whatsapp or brevo)`);
+  }
+}

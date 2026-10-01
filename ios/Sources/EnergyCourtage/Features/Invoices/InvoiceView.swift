@@ -69,26 +69,82 @@ public final class InvoiceViewModel {
         }
     }
 
-    /// Signs the digest the server issued with the document. The server checks
-    /// it against the invoice and refuses a mismatch, so a signature can only
-    /// ever attach to the document that was served.
+    /// Set while the SMS code sheet is up: where the code went.
+    public var codePrompt: SignatureCodeRequest?
+    public private(set) var codeError: String?
+
+    /// "Signer": asks the server for a code first. When SMS is not set up the
+    /// answer says so and the signature goes ahead straight away.
     @MainActor
     public func sign() async {
-        guard let digest = document?.documentSha256 else {
+        guard document?.documentSha256 != nil else {
             errorMessage = "Cette facture n'a pas encore de document à signer."
             return
         }
         isWorking = true
         defer { isWorking = false }
         do {
-            try await repository.sign(invoiceID: invoiceID, documentSHA256: digest)
-            await load()
-            // The retained document shows both signatures, so it can only be
-            // produced once the second one is in.
-            if document?.isFullySigned == true { await preparePDF() }
+            let request = try await repository.requestSignatureCode(invoiceID: invoiceID)
+            errorMessage = nil
+            if request.required {
+                codeError = nil
+                codePrompt = request
+            } else {
+                try await completeSignature()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// "Renvoyer le code".
+    @MainActor
+    public func resendCode() async {
+        do {
+            codePrompt = try await repository.requestSignatureCode(invoiceID: invoiceID)
+            codeError = nil
+        } catch {
+            codeError = error.localizedDescription
+        }
+    }
+
+    /// The code typed into the sheet. Only a verified code leads to signing.
+    @MainActor
+    public func submitCode(_ code: String) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let check = try await repository.verifySignatureCode(invoiceID: invoiceID, code: code)
+            switch check.result {
+            case .verified:
+                try await completeSignature()
+                codePrompt = nil
+            case .wrong:
+                let left = check.remaining ?? 0
+                codeError = "Code incorrect. \(left) essai\(left > 1 ? "s" : "") restant\(left > 1 ? "s" : "")."
+            case .expired:
+                codeError = "Ce code a expiré. Demandez-en un nouveau."
+            case .locked:
+                codeError = "Trop d'essais. Demandez un nouveau code."
+            case .none:
+                codeError = "Aucun code en cours. Demandez-en un nouveau."
+            }
+        } catch {
+            codeError = error.localizedDescription
+        }
+    }
+
+    /// Signs the digest the server issued with the document. The server checks
+    /// it against the invoice and refuses a mismatch, so a signature can only
+    /// ever attach to the document that was served.
+    @MainActor
+    private func completeSignature() async throws {
+        guard let digest = document?.documentSha256 else { return }
+        try await repository.sign(invoiceID: invoiceID, documentSHA256: digest)
+        await load()
+        // The retained document shows both signatures, so it can only be
+        // produced once the second one is in.
+        if document?.isFullySigned == true { await preparePDF() }
     }
 }
 
@@ -140,6 +196,17 @@ public struct InvoiceView: View {
         .task {
             await model.load()
             if model.document?.isFullySigned == true { await model.preparePDF() }
+        }
+        // the SMS code, asked for by "Signer"
+        .sheet(item: $model.codePrompt) { prompt in
+            SignatureCodeSheet(
+                sentTo: prompt.sentTo,
+                error: model.codeError,
+                isWorking: model.isWorking,
+                onSubmit: { code in Task { await model.submitCode(code) } },
+                onResend: { Task { await model.resendCode() } }
+            )
+            .presentationDetents([.medium])
         }
     }
 

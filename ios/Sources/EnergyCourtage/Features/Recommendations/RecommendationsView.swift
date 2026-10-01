@@ -26,6 +26,7 @@ public struct RecommendationsView: View {
         case detail(Recommendation)
         case actions(Recommendation)
         case reminders(Recommendation)
+        case validate(Recommendation, Stage)
 
         var id: String {
             switch self {
@@ -34,6 +35,7 @@ public struct RecommendationsView: View {
             case .detail(let r):     return "detail-\(r.id)"
             case .actions(let r):    return "actions-\(r.id)"
             case .reminders(let r):  return "reminders-\(r.id)"
+            case .validate(let r, let s): return "validate-\(r.id)-\(s.id)"
             }
         }
     }
@@ -138,6 +140,19 @@ public struct RecommendationsView: View {
                 RemindersView(recommendationID: reco.id,
                               filleulName: reco.filleulName,
                               repository: dependencies.reminders)
+
+            case .validate(let reco, let stage):
+                StageValidationView(
+                    recommendation: reco,
+                    stage: stage,
+                    loadBreakdown: { await model.rewardBreakdown(for: reco) },
+                    onComment: { comment in
+                        try await model.advance(reco, to: stage, comment: comment)
+                    },
+                    onReward: { form in
+                        try await model.validateReward(reco, stage: stage, form: form)
+                    }
+                )
             }
         }
         .animation(.snappy(duration: 0.25), value: model.hasStaleData)
@@ -229,7 +244,13 @@ public struct RecommendationsView: View {
                             if let invoiceID = reco.invoiceID { sheet = .invoice(invoiceID) }
                         },
                         onMore: { sheet = .detail(reco) },
-                        onValidate: { Task { await model.validateNextStage(for: reco) } }
+                        onValidate: {
+                            // the comment, or on the reward stage the services,
+                            // are asked for before anything moves
+                            if let next = model.nextStage(for: reco) {
+                                sheet = .validate(reco, next)
+                            }
+                        }
                     )
                     // The action sheet is admin-only, and reached by pressing
                     // the card rather than by a control that would clutter it

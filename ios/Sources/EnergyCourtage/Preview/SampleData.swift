@@ -132,6 +132,27 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
         return reco
     }
 
+    public func advanceStage(recommendationID: UUID, stageKey: String,
+                             comment: String?) async throws -> Recommendation {
+        var reco = try await advanceStage(recommendationID: recommendationID, stageKey: stageKey)
+        if let comment, let last = reco.events.indices.last {
+            let event = reco.events[last]
+            reco.events[last] = StageEvent(id: event.id, stageID: event.stageID,
+                                           comment: comment, completedAt: event.completedAt)
+        }
+        return reco
+    }
+
+    public func validateRewardStage(recommendationID: UUID, stageKey: String,
+                                    lines: [RewardLineDraft], payoutMethod: PayoutMethod,
+                                    message: String?) async throws -> Recommendation {
+        var reco = try await advanceStage(recommendationID: recommendationID,
+                                          stageKey: stageKey, comment: message)
+        let total: Decimal = lines.filter(\.signed).reduce(0) { $0 + ($1.reward ?? 0) }
+        reco.rewardAmount = total
+        return reco
+    }
+
     public func create(_ draft: RecommendationDraft) async throws -> Recommendation {
         try? await Task.sleep(for: delay)
         return Recommendation(
@@ -382,6 +403,16 @@ public struct PreviewInvoiceRepository: InvoiceRepository {
     }
 
     public func latestInvoiceID(recommendationID: UUID) async throws -> UUID? { UUID() }
+
+    /// The demo asks for a code too, so the step can be tried: it is 123456.
+    public func requestSignatureCode(invoiceID: UUID) async throws -> SignatureCodeRequest {
+        SignatureCodeRequest(required: true, sentTo: "06 •• •• •• 78")
+    }
+
+    public func verifySignatureCode(invoiceID: UUID, code: String) async throws -> SignatureCodeCheck {
+        code == "123456" ? SignatureCodeCheck(result: .verified)
+                         : SignatureCodeCheck(result: .wrong, remaining: 4)
+    }
 
     public func sign(invoiceID: UUID, documentSHA256: String) async throws {
         // The demo has no second party to wait for, so whichever signature is

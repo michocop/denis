@@ -199,6 +199,50 @@ enabled = false;`
 
 ---
 
+## 6b. SMS code before signing
+
+Until this is done, invoices are signed without a code and the signature
+records `otp_verified = false`. Configuring the sender is what switches the
+code on — the database never asks for a code it cannot deliver.
+
+### Pick a provider
+
+| `SMS_PROVIDER` | Secrets | Notes |
+|---|---|---|
+| `twilio` (default) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | `TWILIO_FROM` can be a sender name such as `TRINITY` (France allows it) or a Twilio number |
+| `brevo` | `BREVO_API_KEY`, `BREVO_SENDER` | French company, invoices in euros; sender name max 11 characters |
+| `whatsapp` | Twilio secrets + `TWILIO_WHATSAPP_FROM`, `TWILIO_WHATSAPP_CONTENT_SID` | Needs a WhatsApp Business sender and an approved *authentication* template whose `{{1}}` is the code; Meta's approval takes a few days |
+
+### Deploy the sender
+
+```bash
+supabase functions deploy send-sms --no-verify-jwt
+supabase secrets set \
+  SMS_HOOK_SECRET="$(openssl rand -hex 32)" \
+  SMS_PROVIDER=twilio \
+  TWILIO_ACCOUNT_SID=AC... TWILIO_AUTH_TOKEN=... TWILIO_FROM=TRINITY
+```
+
+### Switch the code on
+
+In the SQL editor:
+
+```sql
+insert into sms_config (function_url, hook_secret)
+values ('https://<project-ref>.supabase.co/functions/v1/send-sms',
+        '<the same SMS_HOOK_SECRET>');
+```
+
+Every signer then needs a mobile number in their profile (`profiles.phone`,
+any French format). To switch it off again without blocking anyone:
+`update sms_config set enabled = false;`.
+
+The rules: one code a minute and five an hour per person, valid 10 minutes,
+five wrong tries lock it, only a hash is stored, and the signature row can
+no longer be written by the app directly — only `sign_invoice` writes it.
+
+Provider-request tests: `node --experimental-strip-types supabase/functions/send-sms/providers.test.ts`.
+
 ## 7. The legal texts
 
 They live in the `legal_documents` table, not in the app bundle, so correcting

@@ -116,6 +116,54 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         return try await reload(recommendationID)
     }
 
+    public func advanceStage(recommendationID: UUID, stageKey: String,
+                             comment: String?) async throws -> Recommendation {
+        var body: [String: AnyEncodable] = [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString),
+            "p_stage_key": AnyEncodable(stageKey)
+        ]
+        // Left out rather than sent empty: without it the server renders the
+        // stage's own template, which is the right text when none was typed.
+        if let comment { body["p_comment"] = AnyEncodable(comment) }
+        try await client.rpcVoid("advance_stage", body: body)
+        return try await reload(recommendationID)
+    }
+
+    private struct RewardLinePayload: Encodable, Sendable {
+        let label: String
+        let turnover: Decimal
+        let reward: Decimal
+        let signed: Bool
+    }
+
+    public func validateRewardStage(recommendationID: UUID, stageKey: String,
+                                    lines: [RewardLineDraft], payoutMethod: PayoutMethod,
+                                    message: String?) async throws -> Recommendation {
+        // The totals are not sent: the server adds up the ticked lines itself
+        // and enforces the ceiling, so a client cannot pay more than it shows.
+        let payload = lines.map {
+            RewardLinePayload(label: $0.label.trimmingCharacters(in: .whitespaces),
+                              turnover: $0.turnover ?? 0, reward: $0.reward ?? 0,
+                              signed: $0.signed)
+        }
+        var body: [String: AnyEncodable] = [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString),
+            "p_stage_key": AnyEncodable(stageKey),
+            "p_lines": AnyEncodable(payload),
+            "p_payout_method": AnyEncodable(payoutMethod.rawValue)
+        ]
+        if let message { body["p_message"] = AnyEncodable(message) }
+        try await client.rpcVoid("validate_reward_stage", body: body)
+        return try await reload(recommendationID)
+    }
+
+    public func rewardBreakdown(recommendationID: UUID) async throws -> RewardBreakdown {
+        let breakdown: RewardBreakdown? = try await client.rpc("reward_breakdown", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString)
+        ])
+        return breakdown ?? RewardBreakdown()
+    }
+
     private func reload(_ id: UUID) async throws -> Recommendation {
         let pipeline = try await loadPipeline()
         let rows: [FeedRow] = try await client.get("recommendation_feed", query: [
@@ -415,6 +463,19 @@ public struct SupabaseInvoiceRepository: InvoiceRepository {
             URLQueryItem(name: "limit", value: "1")
         ])
         return rows.first?.id
+    }
+
+    public func requestSignatureCode(invoiceID: UUID) async throws -> SignatureCodeRequest {
+        try await client.rpc("request_signature_otp", body: [
+            "p_invoice_id": AnyEncodable(invoiceID.uuidString)
+        ])
+    }
+
+    public func verifySignatureCode(invoiceID: UUID, code: String) async throws -> SignatureCodeCheck {
+        try await client.rpc("verify_signature_otp", body: [
+            "p_invoice_id": AnyEncodable(invoiceID.uuidString),
+            "p_code": AnyEncodable(code)
+        ])
     }
 
     public func sign(invoiceID: UUID, documentSHA256: String) async throws {

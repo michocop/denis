@@ -10,6 +10,15 @@ public protocol RecommendationsRepository: Sendable {
     func loadPage(archived: Bool, search: String,
                   cursor: RecommendationCursor?) async throws -> [Recommendation]
     func advanceStage(recommendationID: UUID, stageKey: String) async throws -> Recommendation
+    /// "Commentaire pour l'étape": the text the apporteur reads on that step.
+    func advanceStage(recommendationID: UUID, stageKey: String,
+                      comment: String?) async throws -> Recommendation
+    /// "Validation de l'étape" on the reward stage: the services, the payout
+    /// method and the message, saved together with the stage advance.
+    func validateRewardStage(recommendationID: UUID, stageKey: String,
+                             lines: [RewardLineDraft], payoutMethod: PayoutMethod,
+                             message: String?) async throws -> Recommendation
+    func rewardBreakdown(recommendationID: UUID) async throws -> RewardBreakdown
 
     // Creation, and the five admin powers behind the action sheet.
     func create(_ draft: RecommendationDraft) async throws -> Recommendation
@@ -85,6 +94,19 @@ public extension RecommendationsRepository {
     func resetPipeline(recommendationID: UUID) async throws {}
     func softDelete(recommendationID: UUID) async throws {}
     func loadAdmins() async throws -> [Profile] { [] }
+    func advanceStage(recommendationID: UUID, stageKey: String,
+                      comment: String?) async throws -> Recommendation {
+        try await advanceStage(recommendationID: recommendationID, stageKey: stageKey)
+    }
+    func validateRewardStage(recommendationID: UUID, stageKey: String,
+                             lines: [RewardLineDraft], payoutMethod: PayoutMethod,
+                             message: String?) async throws -> Recommendation {
+        try await advanceStage(recommendationID: recommendationID, stageKey: stageKey,
+                               comment: message)
+    }
+    func rewardBreakdown(recommendationID: UUID) async throws -> RewardBreakdown {
+        RewardBreakdown()
+    }
 }
 
 /// Where the last page stopped. A position in the ordering rather than a row
@@ -243,6 +265,44 @@ public final class RecommendationsViewModel {
             }
         } catch {
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    /// "Valider l'étape" from the comment screen.
+    @MainActor
+    public func advance(_ recommendation: Recommendation, to stage: Stage,
+                        comment: String) async throws {
+        let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let updated = try await repository.advanceStage(
+            recommendationID: recommendation.id, stageKey: stage.key,
+            comment: text.isEmpty ? nil : text
+        )
+        replace(updated)
+    }
+
+    /// "Valider l'étape" from the reward screen.
+    @MainActor
+    public func validateReward(_ recommendation: Recommendation, stage: Stage,
+                               form: RewardStageForm) async throws {
+        let message = form.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let updated = try await repository.validateRewardStage(
+            recommendationID: recommendation.id, stageKey: stage.key,
+            lines: form.submittedLines, payoutMethod: form.payoutMethod,
+            message: message.isEmpty ? nil : message
+        )
+        replace(updated)
+    }
+
+    @MainActor
+    public func rewardBreakdown(for recommendation: Recommendation) async -> RewardBreakdown {
+        (try? await repository.rewardBreakdown(recommendationID: recommendation.id))
+            ?? RewardBreakdown()
+    }
+
+    @MainActor
+    private func replace(_ updated: Recommendation) {
+        if let index = recommendations.firstIndex(where: { $0.id == updated.id }) {
+            recommendations[index] = updated
         }
     }
 
