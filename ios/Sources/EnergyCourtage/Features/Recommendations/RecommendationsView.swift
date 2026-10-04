@@ -194,6 +194,8 @@ public struct RecommendationsView: View {
                 try await repository.archive(recommendationID: reco.id, won: false)
             case .delete:
                 try await repository.softDelete(recommendationID: reco.id)
+            case .eraseFilleul:
+                try await repository.eraseFilleul(recommendationID: reco.id)
             case .issueInvoice:
                 // Straight into the invoice: it needs both signatures before
                 // anyone is paid, and the admin's is one of them.

@@ -464,10 +464,9 @@ public struct PreviewAdminRepository: AdminRepository {
     public func setStatus(profileID: UUID, status: String) async throws {}
     public func approve(profileID: UUID) async throws {}
 
-    public func createInvite(email: String?, role: UserRole,
+    public func createInvite(email: String, role: UserRole,
                              autoActivate: Bool) async throws -> Invite {
-        Invite(code: "K7M2QXPZ", email: email, role: role,
-               autoActivate: autoActivate, expiresAt: .now.addingTimeInterval(30 * 86_400))
+        Invite(code: "K7M2QXPZ", email: email)
     }
 
     public func payableInvoices() async throws -> [PayableInvoice] {

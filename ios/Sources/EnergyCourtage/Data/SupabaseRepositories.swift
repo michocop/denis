@@ -116,6 +116,17 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         return try await reload(recommendationID)
     }
 
+    /// The details go in the database; the documents' bytes are removed
+    /// through the Storage API, which erase_filleul hands the paths for.
+    public func eraseFilleul(recommendationID: UUID) async throws {
+        let paths: [String] = try await client.rpc("erase_filleul", body: [
+            "p_recommendation_id": AnyEncodable(recommendationID.uuidString)
+        ])
+        for path in paths {
+            try? await client.removeObject(bucket: "documents", path: path)
+        }
+    }
+
     public func recommendation(id: UUID) async throws -> Recommendation? {
         try? await reload(id)
     }
@@ -403,6 +414,10 @@ public struct SupabaseProfileRepository: ProfileRepository {
             "email_notifications": AnyEncodable(profile.emailNotifications ?? true)
         ], match: [URLQueryItem(name: "id", value: "eq.\(profile.id.uuidString)")])
         return rows.first ?? profile
+    }
+
+    public func exportMyData() async throws -> Data {
+        try await client.rpcData("export_my_data")
     }
 
     public func dashboardStats() async throws -> DashboardStats {

@@ -29,8 +29,11 @@ public enum SupabaseError: LocalizedError {
         case .http(let status, let message):
             // PostgREST returns 42501 for an RLS refusal; say something a user
             // can act on rather than surfacing the raw code.
-            if status == 401 || status == 403 {
+            if (status == 401 || status == 403) && message.isEmpty {
                 return "Vous n'avez pas les droits pour cette action."
+            }
+            if status == 401 || status == 403 {
+                return message
             }
             return message.isEmpty ? "Erreur serveur (\(status))." : message
         case .decoding(let detail):
@@ -316,6 +319,15 @@ public actor SupabaseClient: SupabaseTransport {
         return try await perform(request)
     }
 
+    /// The function's JSON as returned, for a file the person keeps.
+    public func rpcData(_ function: String, body: [String: AnyEncodable] = [:]) async throws -> Data {
+        var request = URLRequest(url: restURL("rpc/\(function)"))
+        request.httpMethod = "POST"
+        applyHeaders(to: &request)
+        request.httpBody = try JSONEncoder().encode(body)
+        return try await performRaw(request)
+    }
+
     public func rpcVoid(_ function: String, body: [String: AnyEncodable] = [:]) async throws {
         var request = URLRequest(url: restURL("rpc/\(function)"))
         request.httpMethod = "POST"
@@ -323,6 +335,23 @@ public actor SupabaseClient: SupabaseTransport {
         request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
         request.httpBody = try JSONEncoder().encode(body)
         _ = try await performRaw(request)   // refresh-on-401 applies here too
+    }
+
+    // MARK: - Edge Functions
+
+    /// Calls a Supabase Edge Function as the signed-in user. A function
+    /// answers errors as {"error": "..."}, which becomes the message shown.
+    public func invokeFunction<T: Decodable>(_ name: String,
+                                             body: [String: AnyEncodable]) async throws -> T {
+        var request = URLRequest(url: makeURL(prefix: "functions/v1", path: name))
+        request.httpMethod = "POST"
+        applyHeaders(to: &request)
+        request.httpBody = try JSONEncoder().encode(body)
+        do {
+            return try await perform(request)
+        } catch SupabaseError.http(let status, let message) where message.isEmpty {
+            throw SupabaseError.http(status: status, message: "")
+        }
     }
 
     // MARK: - Identity
@@ -432,10 +461,11 @@ public actor SupabaseClient: SupabaseTransport {
     }
 
     /// PostgREST puts the useful part in `message`; a RAISE from one of our
-    /// own functions lands there too.
+    /// own functions lands there too. Edge Functions answer with `error`.
     private static func message(from data: Data) -> String {
-        struct Payload: Decodable { let message: String? }
-        return (try? JSONDecoder().decode(Payload.self, from: data))?.message ?? ""
+        struct Payload: Decodable { let message: String?; let error: String? }
+        let payload = try? JSONDecoder().decode(Payload.self, from: data)
+        return payload?.message ?? payload?.error ?? ""
     }
 
     public static let decoder: JSONDecoder = {

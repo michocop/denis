@@ -142,6 +142,7 @@ SDK = {
     "CTFontManagerRegisterFontsForURL", "LinearGradient", "Path", "RadialGradient",
     "StrokeStyle", "UIFontMetrics", "UINavigationBarAppearance",
     "NSNull", "Result", "URLComponents",
+    "CFBooleanGetTypeID", "CFGetTypeID",
     "Int64", "UIGraphicsImageRenderer", "UIGraphicsImageRendererFormat", "UIImage", "UTType", "VNDocumentCameraViewController",
     "RelativeDateTimeFormatter", "Decimal", "UNAuthorizationOptions", "UNNotificationSound", "ToolbarContentBuilder", "ToolbarContent", "UIApplication",
     "PropertyListSerialization", "MainActor",

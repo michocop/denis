@@ -29,6 +29,8 @@ public protocol RecommendationsRepository: Sendable {
     /// One recommendation, for a notification that names one not on the
     /// loaded page.
     func recommendation(id: UUID) async throws -> Recommendation?
+    /// A prospect who asked to be forgotten. Admin only.
+    func eraseFilleul(recommendationID: UUID) async throws
 }
 
 /// Deliberately says only *that* a lead is held, never by whom: an apporteur
@@ -89,6 +91,7 @@ public extension RecommendationsRepository {
     func softDelete(recommendationID: UUID) async throws {}
     func loadAdmins() async throws -> [Profile] { [] }
     func recommendation(id: UUID) async throws -> Recommendation? { nil }
+    func eraseFilleul(recommendationID: UUID) async throws {}
 }
 
 /// Where the last page stopped. A position in the ordering rather than a row

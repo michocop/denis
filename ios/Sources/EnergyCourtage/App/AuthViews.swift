@@ -370,3 +370,111 @@ public struct NewPasswordView: View {
         .background(BrandBackground())
     }
 }
+
+
+/// The invited person's first screen: their name and a password. The email
+/// they came from is the invitation; nothing else is asked.
+public struct CompleteInviteView: View {
+    @State private var firstName = ""
+    @State private var lastName = ""
+    @State private var password = ""
+    @State private var errorMessage: String?
+    @State private var isWorking = false
+
+    private let email: String
+    private let complete: (String, String, String) async throws -> Void
+
+    public init(email: String, complete: @escaping (String, String, String) async throws -> Void) {
+        self.email = email
+        self.complete = complete
+    }
+
+    private var isValid: Bool {
+        !firstName.trimmingCharacters(in: .whitespaces).isEmpty
+        && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
+        && password.count >= 8
+    }
+
+    public var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+                TrinityWordmark()
+                    .padding(.top, Theme.Spacing.xl)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bienvenue chez")
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text("Trinity Énergie.")
+                        .brandGradient()
+                }
+                .font(Theme.Typography.display(32, .semibold, relativeTo: .largeTitle))
+                .padding(.top, 24)
+
+                Text("Votre invitation pour \(email) est valable. Il ne reste qu'à vous présenter et choisir un mot de passe.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                    LabelledField("Prénom") {
+                        TextField("Prénom", text: $firstName).textContentType(.givenName)
+                    }
+                    LabelledField("Nom") {
+                        TextField("Nom", text: $lastName).textContentType(.familyName)
+                    }
+                    LabelledField("Mot de passe") {
+                        SecureField("8 caractères minimum", text: $password)
+                            .textContentType(.newPassword)
+                    }
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(Theme.Typography.secondary)
+                            .foregroundStyle(Theme.Palette.destructive)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    PrimaryActionButton(isWorking ? "Création…" : "Rejoindre Trinity Énergie") {
+                        Task {
+                            isWorking = true
+                            defer { isWorking = false }
+                            do { try await complete(firstName, lastName, password) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
+                    }
+                    .disabled(!isValid || isWorking)
+                    .opacity(isValid ? 1 : 0.6)
+                }
+                .padding(Theme.Spacing.cardPadding)
+                .cardSurface()
+            }
+            .padding(Theme.Spacing.gutter)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(BrandBackground())
+    }
+}
+
+/// What "J'ai reçu une invitation" explains, now that nobody can sign up
+/// without one: the invitation is an email, and its link opens the app.
+public struct InvitationHelpView: View {
+    @Environment(\.dismiss) private var dismiss
+    public init() {}
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+            Image(systemName: "envelope.open.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(Theme.Palette.brand)
+            Text("Votre invitation est dans votre boîte mail")
+                .font(Theme.Typography.cardTitle)
+                .foregroundStyle(Theme.Palette.textPrimary)
+            Text("Ouvrez l'e-mail de Trinity Énergie sur cet iPhone et touchez le lien : l'application s'ouvre pour que vous choisissiez votre mot de passe. Vous ne le trouvez pas ? Regardez dans les indésirables, ou demandez à votre interlocuteur de vous l'envoyer à nouveau.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            PrimaryActionButton("Compris") { dismiss() }
+        }
+        .padding(Theme.Spacing.xl)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(BrandBackground())
+    }
+}

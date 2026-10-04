@@ -68,11 +68,18 @@ public final class MembersViewModel {
     }
 
     @MainActor
-    public func invite(email: String?, role: UserRole, autoActivate: Bool) async {
-        do { lastInvite = try await repository.createInvite(email: email, role: role,
-                                                            autoActivate: autoActivate) }
-        catch { errorMessage = error.localizedDescription }
+    public func invite(email: String, role: UserRole, autoActivate: Bool) async {
+        do {
+            lastInvite = try await repository.createInvite(email: email, role: role,
+                                                           autoActivate: autoActivate)
+            inviteError = nil
+        } catch {
+            inviteError = error.localizedDescription
+        }
     }
+
+    /// Shown in the invite sheet itself, where the admin is looking.
+    public var inviteError: String?
 }
 
 /// Pierre-Louis's side: who is in, who is waiting, and who has gone quiet.
@@ -137,7 +144,8 @@ public struct MembersView: View {
         }
         .task { await model.load() }
         .sheet(isPresented: $showsInvite) {
-            InviteSheet(lastInvite: model.lastInvite) { email, role, autoActivate in
+            InviteSheet(lastInvite: model.lastInvite,
+                        errorMessage: model.inviteError) { email, role, autoActivate in
                 await model.invite(email: email, role: role, autoActivate: autoActivate)
             }
         }
@@ -270,7 +278,13 @@ struct InviteSheet: View {
     @State private var isWorking = false
 
     let lastInvite: Invite?
-    let create: (String?, UserRole, Bool) async -> Void
+    let errorMessage: String?
+    let create: (String, UserRole, Bool) async -> Void
+
+    private var isValidEmail: Bool {
+        email.trimmingCharacters(in: .whitespaces)
+            .range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#, options: .regularExpression) != nil
+    }
 
     var body: some View {
         NavigationStack {
@@ -278,9 +292,13 @@ struct InviteSheet: View {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
                     if let invite = lastInvite {
                         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                            Text("Code d'invitation")
+                            Label("Invitation envoyée à \(invite.email)", systemImage: "checkmark.circle.fill")
+                                .font(Theme.Typography.body.weight(.semibold))
+                                .foregroundStyle(Theme.Palette.success)
+                            Text("Si l'e-mail n'arrive pas, voici le code à lui communiquer :")
                                 .font(Theme.Typography.secondary)
                                 .foregroundStyle(Theme.Palette.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(invite.code)
                                 .font(.system(size: 34, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(Theme.Palette.textPrimary)
@@ -295,8 +313,8 @@ struct InviteSheet: View {
                         .cardSurface()
                     }
 
-                    LabelledField("Email (facultatif)") {
-                        TextField("Verrouille le code sur cette adresse", text: $email)
+                    LabelledField("Adresse e-mail") {
+                        TextField("apporteur@exemple.fr", text: $email)
                             .keyboardType(.emailAddress)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -315,20 +333,28 @@ struct InviteSheet: View {
                         .font(Theme.Typography.body)
 
                     Text(autoActivate
-                         ? "La personne accède à l'application dès qu'elle utilise le code."
-                         : "La personne devra être validée par un administrateur après son inscription.")
+                         ? "La personne reçoit un e-mail, choisit son mot de passe et accède aussitôt à l'application."
+                         : "La personne reçoit un e-mail ; un administrateur devra ensuite valider son inscription.")
                         .font(Theme.Typography.secondary)
                         .foregroundStyle(Theme.Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    PrimaryActionButton(isWorking ? "Création…" : "Générer le code") {
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(Theme.Typography.secondary)
+                            .foregroundStyle(Theme.Palette.destructive)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    PrimaryActionButton(isWorking ? "Envoi…" : "Envoyer l'invitation") {
                         Task {
                             isWorking = true
-                            await create(email.isEmpty ? nil : email, role, autoActivate)
+                            await create(email.trimmingCharacters(in: .whitespaces), role, autoActivate)
                             isWorking = false
                         }
                     }
-                    .disabled(isWorking)
+                    .disabled(isWorking || !isValidEmail)
+                    .opacity(isValidEmail ? 1 : 0.6)
                 }
                 .padding(Theme.Spacing.gutter)
             }

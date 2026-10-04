@@ -25,14 +25,16 @@ public struct SupabaseAdminRepository: AdminRepository {
         ])
     }
 
-    public func createInvite(email: String?, role: UserRole,
+    public func createInvite(email: String, role: UserRole,
                              autoActivate: Bool) async throws -> Invite {
-        var body: [String: AnyEncodable] = [
-            "p_role": AnyEncodable(role.rawValue),
-            "p_auto_activate": AnyEncodable(autoActivate)
-        ]
-        if let email, !email.isEmpty { body["p_email"] = AnyEncodable(email) }
-        return try await client.rpc("create_invite", body: body)
+        // Through the send-invite function, not create_invite directly: the
+        // function also has Supabase Auth email the invitation, which is how
+        // an account comes to exist now that sign-up is closed.
+        try await client.invokeFunction("send-invite", body: [
+            "email": AnyEncodable(email),
+            "role": AnyEncodable(role.rawValue),
+            "auto_activate": AnyEncodable(autoActivate)
+        ])
     }
 
     public func payableInvoices() async throws -> [PayableInvoice] {

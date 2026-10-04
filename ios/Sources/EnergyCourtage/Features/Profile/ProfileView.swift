@@ -23,6 +23,21 @@ public final class ProfileViewModel {
     /// True once the server has deleted the account, so the screen can sign
     /// out: the login no longer exists, and staying on the tabs left the person
     /// looking at an account that was gone until they next relaunched.
+    /// A file named for what it is, ready for the share sheet.
+    @MainActor
+    public func exportData() async -> URL? {
+        do {
+            let data = try await repository.exportMyData()
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Mes données Trinity Énergie.json")
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     @MainActor
     public func setEmailNotifications(_ on: Bool) async {
         guard var updated = profile else { return }
@@ -57,6 +72,8 @@ public struct ProfileView: View {
     @State private var showsMandate = false
     @State private var shownDocument: LegalDocumentKey?
     @State private var showsBillingDetails = false
+    @State private var exportURL: URL?
+    @State private var isExporting = false
     private let dependencies: Dependencies
     private let onSignOut: () -> Void
 
@@ -136,6 +153,27 @@ public struct ProfileView: View {
                         .tint(Theme.Palette.brandFill)
                         .padding(Theme.Spacing.l)
                         .cardSurface()
+                    }
+
+                    // RGPD: what is held about you, in one file you keep.
+                    if let exportURL {
+                        ShareLink(item: exportURL) {
+                            Label("Partager le fichier de mes données", systemImage: "square.and.arrow.up")
+                                .font(Theme.Typography.body.weight(.semibold))
+                                .foregroundStyle(Theme.Palette.textPrimary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 15)
+                                .brandGlass(in: Capsule(), interactive: true)
+                        }
+                    } else {
+                        SecondaryActionButton(isExporting ? "Préparation…" : "Exporter mes données",
+                                              systemImage: "arrow.down.doc") {
+                            Task {
+                                isExporting = true
+                                exportURL = await model.exportData()
+                                isExporting = false
+                            }
+                        }
                     }
 
                     SecondaryActionButton("Se déconnecter",

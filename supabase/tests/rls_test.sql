@@ -2604,5 +2604,106 @@ begin
 end $$;
 
 reset role;
+insert into auth.users (id, email) values ('99999999-9999-9999-9999-999999999999', 'invitee@example.test');
+set role authenticated;
+
+\echo ''
+\echo '=== 49. Invitations arrive by email; prospects can be forgotten ==='
+do $$
+declare
+  v_johann  uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie   uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre  uuid := '33333333-3333-3333-3333-333333333333';
+  v_invitee uuid := '99999999-9999-9999-9999-999999999999';
+  v_reco    uuid;
+  v_path    text;
+  v_paths   text[];
+  v_export  jsonb;
+  v_prof    profiles%rowtype;
+begin
+  perform assert_denied(v_pierre, 'select create_invite()',
+    'an invitation names the address it is sent to');
+  perform assert_denied(v_pierre, 'select create_invite(''johann@example.test'')',
+    'and is not sent to someone who already has an account');
+
+  perform login(v_pierre);
+  perform create_invite('invitee@example.test');
+  perform login(v_invitee);
+  select * into v_prof from redeem_invite(null, 'Nina', 'Invitée');
+  perform assert(v_prof.role = 'apporteur' and v_prof.status = 'active',
+    'whoever opens the invitation email joins with no code to type');
+
+  -- a prospect who asks to be forgotten
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, filleul_phone,
+                               filleul_email, parrain_id, consent_confirmed_at)
+  values ('Oubli', 'Demande', '0611119999', 'oubli@example.test', v_johann, now())
+  returning id into v_reco;
+  v_path := v_reco || '/' || gen_random_uuid() || '.pdf';
+  insert into storage.objects (bucket_id, name, owner) values ('documents', v_path, v_johann);
+  perform register_document(v_reco, v_path, 'facture.pdf', 1000, 'application/pdf');
+
+  perform login(v_pierre);
+  v_export := filleul_data_export('06 11 11 99 99', null);
+  perform assert(jsonb_array_length(v_export) = 1
+                 and v_export -> 0 ->> 'email' = 'oubli@example.test'
+                 and jsonb_array_length(v_export -> 0 -> 'documents') = 1,
+    'everything held about a prospect can be produced on request, documents included');
+  perform assert_denied(v_johann, 'select filleul_data_export(''0611119999'')',
+    'by the company, not by an apporteur');
+
+  perform assert_denied(v_johann, format('select erase_filleul(%L)', v_reco),
+    'an apporteur cannot erase a prospect');
+  perform login(v_pierre);
+  v_paths := erase_filleul(v_reco);
+  perform assert(v_paths = array[v_path], 'erasing hands back the files to delete from storage');
+  perform assert(
+    (select filleul_last_name = 'anonymisé' and filleul_phone is null and filleul_email is null
+       from recommendations where id = v_reco),
+    'and the prospect''s details are gone from the lead');
+  perform assert(not exists (select 1 from documents where recommendation_id = v_reco),
+    'with their documents');
+  perform assert(jsonb_array_length(filleul_data_export('0611119999', null)) = 0,
+    'so a second request finds nothing');
+
+  -- an apporteur's own data
+  perform login(v_johann);
+  v_export := export_my_data();
+  perform assert(v_export -> 'profile' ->> 'email' = 'johann@example.test'
+                 and jsonb_array_length(v_export -> 'recommendations') > 0
+                 and jsonb_array_length(v_export -> 'invoices') > 0,
+    'an apporteur can take everything held about them in one file');
+  perform assert(v_export -> 'profile' -> 'bank_details_reference' is null,
+    'without the company''s internal reference');
+
+  perform login(v_johann);
+  perform report_diagnostic('crash', '1.0 (7)', 'iOS 26.0', '{"signal": "SIGABRT"}');
+  perform login(v_pierre);
+  perform assert(exists (select 1 from client_diagnostics where kind = 'crash' and profile_id = v_johann),
+    'a crash on a phone reaches the company');
+  perform login(v_johann);
+  perform assert((select count(*) from client_diagnostics) = 0,
+    'and only the company reads crash reports');
+end $$;
+
+reset role;
+set role service_role;
+do $$
+declare v_result jsonb;
+begin
+  -- leads lost long ago are anonymised by the monthly sweep
+  update recommendations set archived_at = now() - interval '4 years'
+   where status = 'archived_lost';
+  v_result := purge_stale_leads();
+  perform assert((v_result ->> 'anonymised')::int >= 1,
+    'a lead lost for longer than the retention period is anonymised');
+  perform assert(not exists (select 1 from recommendations
+                              where status = 'archived_lost' and filleul_phone is not null
+                                and archived_at < now() - interval '3 years'),
+    'all of them');
+  perform assert((purge_stale_leads() ->> 'anonymised')::int = 0, 'and only once');
+end $$;
+
+reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

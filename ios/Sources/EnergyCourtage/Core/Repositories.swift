@@ -19,6 +19,12 @@ public protocol ProfileRepository: Sendable {
     func save(_ profile: Profile) async throws -> Profile
     func dashboardStats() async throws -> DashboardStats
     func deleteAccount() async throws
+    /// Everything held about the signed-in person, as JSON (RGPD art. 15, 20).
+    func exportMyData() async throws -> Data
+}
+
+public extension ProfileRepository {
+    func exportMyData() async throws -> Data { Data("{}".utf8) }
 }
 
 public protocol InvoiceRepository: Sendable {

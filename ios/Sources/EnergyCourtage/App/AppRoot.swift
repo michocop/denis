@@ -23,6 +23,9 @@ public final class AppModel {
         /// Arrived from a password-reset link, signed in, and asked for a new
         /// password before anything else.
         case choosingPassword
+        /// Arrived from an invitation email: the account exists and has no
+        /// password or name yet.
+        case completingInvite(email: String)
         case pendingApproval(email: String)
         case suspended
         case locked
@@ -201,11 +204,32 @@ public final class AppModel {
                 let session = try await client.restore(refreshToken: callback.refreshToken)
                 try? sessionStore.save(refreshToken: session.refreshToken)
                 email = session.user.email ?? ""
-                phase = callback.kind == .recovery ? .choosingPassword : await resolvePhase()
+                switch callback.kind {
+                case .recovery:
+                    phase = .choosingPassword
+                case .invite:
+                    let state = await resolvePhase()
+                    if case .needsInvite = state {
+                        phase = .completingInvite(email: email)
+                    } else {
+                        phase = state      // already joined: the link only signs in
+                    }
+                default:
+                    phase = await resolvePhase()
+                }
             } catch {
                 phase = .signedOut(AuthCallback.Failure.expired.localizedDescription)
             }
         }
+    }
+
+    /// The invited person names themselves and chooses a password; the
+    /// invitation addressed to their email does the rest -- no code to type.
+    @MainActor
+    public func completeInvite(firstName: String, lastName: String, password: String) async throws {
+        guard let client else { throw SupabaseError.notConfigured }
+        try await client.updatePassword(password)
+        try await redeem(code: "", firstName: firstName, lastName: lastName)
     }
 
     @MainActor
@@ -240,6 +264,7 @@ public final class AppModel {
         }
         await LocalNotifications.setBadge(0)
         PushCenter.shared.detach()
+        DiagnosticsReporter.shared.stop()
         await client?.signOut()
         sessionStore.clear()
         phase = .signedOut(nil)
@@ -254,6 +279,7 @@ public final class AppModel {
             let account: AccountState = try await client.rpc("my_account_state")
             switch account.state {
             case "ready":
+                DiagnosticsReporter.shared.start(client: client)
                 let profiles = SupabaseProfileRepository(client: client)
                 return .ready(
                     Dependencies(
@@ -338,6 +364,11 @@ public struct AppRootView: View {
             case .choosingPassword:
                 NewPasswordView { password in try await model.setNewPassword(password) }
 
+            case .completingInvite(let email):
+                CompleteInviteView(email: email) { first, last, password in
+                    try await model.completeInvite(firstName: first, lastName: last, password: password)
+                }
+
             case .awaitingConfirmation(let email):
                 AwaitingConfirmationView(email: email) { model.backToSignIn() }
 
@@ -392,11 +423,10 @@ public struct AppRootView: View {
                     .padding(.horizontal, Theme.Spacing.gutter)
             }
         }
+        // Sign-up is closed: an account comes from the invitation email.
         .sheet(isPresented: $showsSignUp) {
-            SignUpView { code, first, last, email, password in
-                try await model.register(code: code, firstName: first, lastName: last,
-                                         email: email, password: password)
-            }
+            InvitationHelpView()
+                .presentationDetents([.medium])
         }
         .sheet(isPresented: $showsForgotPassword) {
             ForgotPasswordView { email in await model.requestPasswordReset(email: email) }

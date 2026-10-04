@@ -292,7 +292,7 @@ public struct SignInView: View {
                 .padding(Theme.Spacing.cardPadding)
                 .cardSurface()
 
-                SecondaryActionButton("J'ai un code d'invitation", systemImage: "ticket",
+                SecondaryActionButton("J'ai reçu une invitation", systemImage: "envelope.open",
                                       action: onCreateAccount)
 
                 Text("L'accès est réservé aux apporteurs invités par Trinity Énergie.")

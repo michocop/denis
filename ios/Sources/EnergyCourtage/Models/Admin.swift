@@ -48,19 +48,23 @@ public struct PayableInvoice: Identifiable, Hashable, Codable, Sendable {
     public var id: UUID { invoiceId }
 }
 
+/// An invitation that has been emailed. The code is kept to read out if the
+/// email does not arrive.
 public struct Invite: Hashable, Codable, Sendable {
     public var code: String
-    public var email: String?
-    public var role: UserRole
-    public var autoActivate: Bool
-    public var expiresAt: Date
+    public var email: String
+
+    public init(code: String, email: String) {
+        self.code = code; self.email = email
+    }
 }
 
 public protocol AdminRepository: Sendable {
     func members() async throws -> [MemberOverview]
     func setStatus(profileID: UUID, status: String) async throws
     func approve(profileID: UUID) async throws
-    func createInvite(email: String?, role: UserRole, autoActivate: Bool) async throws -> Invite
+    /// Creates the invitation and emails it (the send-invite function).
+    func createInvite(email: String, role: UserRole, autoActivate: Bool) async throws -> Invite
     func payableInvoices() async throws -> [PayableInvoice]
     func payBatch(invoiceIDs: [UUID], reference: String?) async throws
     /// Whether this member's payment details are held in the client's own

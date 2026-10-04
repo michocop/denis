@@ -9,7 +9,7 @@ public struct RecommendationActionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     public enum Action: Hashable {
-        case reassign, reminders, reset, archiveWon, archiveLost, delete, issueInvoice
+        case reassign, reminders, reset, archiveWon, archiveLost, delete, issueInvoice, eraseFilleul
     }
 
     private let recommendation: Recommendation
@@ -146,6 +146,11 @@ public struct RecommendationActionSheet: View {
             actionRow("Supprimer", icon: "trash", tint: Theme.Palette.destructive) {
                 confirming = .delete
             }
+            Divider().padding(.leading, 56)
+            actionRow("Effacer les données du filleul", icon: "person.crop.circle.badge.xmark",
+                      tint: Theme.Palette.destructive) {
+                confirming = .eraseFilleul
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
@@ -179,6 +184,7 @@ public struct RecommendationActionSheet: View {
         case .archiveLost: return "Clôturer comme perdue ?"
         case .delete:  return "Supprimer cette recommandation ?"
         case .issueInvoice: return "Établir la facture ?"
+        case .eraseFilleul: return "Effacer les données du filleul ?"
         default:       return ""
         }
     }
@@ -200,6 +206,9 @@ public struct RecommendationActionSheet: View {
             // Said out loud because it is irreversible: the number is assigned
             // at issuing and a mistake is corrected by an avoir, not an edit.
             return "La facture sera établie au montant de la commission convenue, puis numérotée définitivement. Une erreur se corrige ensuite par un avoir, jamais par une modification."
+        case .eraseFilleul:
+            // A right the prospect has (RGPD art. 17), and it cannot be undone.
+            return "À la demande de la personne : son nom, ses coordonnées et ses documents seront effacés définitivement. Les factures déjà émises gardent leur copie, comme la loi l'impose."
         default:
             return ""
         }
@@ -212,6 +221,7 @@ public struct RecommendationActionSheet: View {
         case .archiveLost: return "Affaire perdue"
         case .delete:  return "Supprimer"
         case .issueInvoice: return "Établir la facture"
+        case .eraseFilleul: return "Effacer définitivement"
         default:       return "Confirmer"
         }
     }
