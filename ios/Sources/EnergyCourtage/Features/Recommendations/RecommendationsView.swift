@@ -138,7 +138,8 @@ public struct RecommendationsView: View {
                             await model.load()
                             sheet = nil
                         } catch { await model.report(error) }
-                    } : nil
+                    } : nil,
+                    documents: dependencies.documents
                 )
 
             case .actions(let reco):

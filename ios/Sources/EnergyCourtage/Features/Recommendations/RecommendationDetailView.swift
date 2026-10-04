@@ -17,6 +17,7 @@ public struct RecommendationDetailView: View {
     private let admins: [Profile]
     private let onReassign: ((UUID) async -> Void)?
     private let onSetAmount: ((Decimal) async -> Void)?
+    private let documents: DocumentsRepository?
 
     @State private var amountText = ""
     @State private var isWorking = false
@@ -27,7 +28,8 @@ public struct RecommendationDetailView: View {
                 onOpenInvoice: @escaping () -> Void,
                 onOpenNotes: @escaping () -> Void,
                 onReassign: ((UUID) async -> Void)? = nil,
-                onSetAmount: ((Decimal) async -> Void)? = nil) {
+                onSetAmount: ((Decimal) async -> Void)? = nil,
+                documents: DocumentsRepository? = nil) {
         self.recommendation = recommendation
         self.pipeline = pipeline
         self.daysSinceActivity = daysSinceActivity
@@ -36,6 +38,7 @@ public struct RecommendationDetailView: View {
         self.onOpenNotes = onOpenNotes
         self.onReassign = onReassign
         self.onSetAmount = onSetAmount
+        self.documents = documents
     }
 
     /// The invoice copies the amount, so changing it afterwards would make the
@@ -119,6 +122,11 @@ public struct RecommendationDetailView: View {
                             row("Facture", number)
                         }
                         if canSetAmount { amountEditor }
+                    }
+
+                    if let documents {
+                        LeadDocumentsSection(recommendationID: recommendation.id,
+                                             repository: documents)
                     }
 
                     if let onReassign, !admins.isEmpty {

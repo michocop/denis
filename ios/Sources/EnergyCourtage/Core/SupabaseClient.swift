@@ -362,6 +362,16 @@ public actor SupabaseClient: SupabaseTransport {
         _ = try await performRaw(request)
     }
 
+    /// Removes an object through the Storage API -- deleting the row in SQL
+    /// would leave the bytes behind.
+    public func removeObject(bucket: String, path: String) async throws {
+        var request = URLRequest(url: makeURL(prefix: storagePath,
+                                              path: "object/\(bucket)/\(path)"))
+        request.httpMethod = "DELETE"
+        applyHeaders(to: &request)
+        _ = try await performRaw(request)
+    }
+
     public func download(bucket: String, path: String) async throws -> Data {
         var request = URLRequest(url: makeURL(prefix: storagePath,
                                               path: "object/\(bucket)/\(path)"))

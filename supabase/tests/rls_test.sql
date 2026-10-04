@@ -2428,6 +2428,79 @@ begin
     'the signed PDF is addressed to the apporteur');
 end $$;
 
+set role authenticated;
+
+\echo ''
+\echo '=== 47. A lead''s documents are seen by whoever sees the lead ======'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_path   text;
+  v_doc    documents%rowtype;
+begin
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id,
+                               consent_confirmed_at)
+  values ('Facture', 'Energie', v_johann, now()) returning id into v_reco;
+  v_path := v_reco || '/' || gen_random_uuid() || '.pdf';
+
+  perform assert_denied(v_marie, format(
+    'insert into storage.objects (bucket_id, name, owner) values (''documents'', %L, %L)',
+    v_path, v_marie),
+    'another apporteur cannot put a file in Johann''s lead');
+  perform assert_denied(v_johann, format(
+    'insert into storage.objects (bucket_id, name, owner) values (''documents'', %L, %L)',
+    v_reco || '/../../invoices/x.pdf', v_johann),
+    'nor can a name escape the lead it is filed under');
+
+  perform login(v_johann);
+  insert into storage.objects (bucket_id, name, owner) values ('documents', v_path, v_johann);
+
+  perform assert_denied(v_johann, format(
+    'select register_document(%L, %L, ''facture.pdf'', 120000, ''application/pdf'', ''contract'')',
+    v_reco, v_path),
+    'an apporteur files a bill, not a contract: those are the company''s');
+  perform assert_denied(v_johann, format(
+    'select register_document(%L, %L, ''facture.exe'', 120000, ''application/x-msdownload'')',
+    v_reco, v_path),
+    'only PDFs and photos are accepted');
+  perform assert_denied(v_johann, format(
+    'select register_document(%L, %L, ''facture.pdf'', 50000000, ''application/pdf'')',
+    v_reco, v_path),
+    'and nothing over 10 MB');
+  perform assert_denied(v_johann, format(
+    'select register_document(%L, %L, ''x.pdf'', 1000, ''application/pdf'')',
+    v_reco, v_reco || '/' || gen_random_uuid() || '.pdf'),
+    'a file that was never uploaded cannot be listed');
+
+  perform login(v_johann);
+  select * into v_doc from register_document(v_reco, v_path, '  ../Facture EDF mars.pdf ',
+                                             120000, 'application/pdf');
+  perform assert(v_doc.kind = 'energy_bill' and v_doc.uploaded_by = v_johann,
+    'Johann attaches the filleul''s energy bill to his lead');
+  perform assert(v_doc.filename = '..-Facture EDF mars.pdf',
+    'under a display name that can never be taken for a path');
+
+  perform login(v_marie);
+  perform assert((select count(*) from documents where recommendation_id = v_reco) = 0,
+    'another apporteur does not see it listed');
+  perform assert((select count(*) from storage.objects where name = v_path) = 0,
+    'nor can read the file');
+
+  perform login(v_pierre);
+  perform assert((select count(*) from storage.objects where name = v_path) = 1,
+    'the company reads it');
+  perform assert_denied(v_marie, format('select remove_document(%L)', v_doc.id),
+    'and only the person who added it, or the company, can take it back');
+
+  perform login(v_johann);
+  perform assert(remove_document(v_doc.id) = v_path,
+    'Johann can take back what he added today');
+end $$;
+
 reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

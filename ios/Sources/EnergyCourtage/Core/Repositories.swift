@@ -51,6 +51,7 @@ public struct Dependencies: Sendable {
     public let notifications: NotificationsRepository
     public let legal: LegalRepository
     public let changeMonitor: ChangeMonitor
+    public let documents: DocumentsRepository
 
     public init(recommendations: RecommendationsRepository,
                 chat: ChatRepository,
@@ -61,7 +62,8 @@ public struct Dependencies: Sendable {
                 commissions: CommissionsRepository,
                 notifications: NotificationsRepository,
                 legal: LegalRepository,
-                changeMonitor: ChangeMonitor = InertChangeMonitor()) {
+                changeMonitor: ChangeMonitor = InertChangeMonitor(),
+                documents: DocumentsRepository = PreviewDocumentsRepository()) {
         self.recommendations = recommendations
         self.chat = chat
         self.profiles = profiles
@@ -72,5 +74,6 @@ public struct Dependencies: Sendable {
         self.notifications = notifications
         self.legal = legal
         self.changeMonitor = changeMonitor
+        self.documents = documents
     }
 }

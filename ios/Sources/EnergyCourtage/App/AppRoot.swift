@@ -266,7 +266,8 @@ public final class AppModel {
                         commissions: SupabaseCommissionsRepository(client: client),
                         notifications: SupabaseNotificationsRepository(client: client),
                         legal: SupabaseLegalRepository(client: client),
-                        changeMonitor: PollingChangeMonitor(client: client)
+                        changeMonitor: PollingChangeMonitor(client: client),
+                        documents: SupabaseDocumentsRepository(client: client)
                     ),
                     account.role ?? .apporteur,
                     account.fullName ?? "",

@@ -14,13 +14,19 @@ public struct CreateRecommendationView: View {
     @State private var isSaving = false
     @State private var duplicate = DuplicateCheck()
     @State private var duplicateTask: Task<Void, Never>?
+    /// The filleul's bill, attached before the lead exists and sent right
+    /// after it is created: the website's "envoyez votre facture", in the app.
+    @State private var attachments: [DocumentUpload] = []
 
     private let recommendations: RecommendationsRepository
+    private let documents: DocumentsRepository?
     private let onCreated: (Recommendation) -> Void
 
     public init(recommendations: RecommendationsRepository,
+                documents: DocumentsRepository? = nil,
                 onCreated: @escaping (Recommendation) -> Void) {
         self.recommendations = recommendations
+        self.documents = documents
         self.onCreated = onCreated
     }
 
@@ -55,6 +61,8 @@ public struct CreateRecommendationView: View {
                         TextField("Raison sociale", text: $draft.company)
                     }
 
+
+                    if documents != nil { attachmentsCard }
 
                     if let warning = duplicate.warning {
                         DuplicateWarning(text: warning, blocking: duplicate.blocksSubmission)
@@ -133,11 +141,69 @@ public struct CreateRecommendationView: View {
         defer { isSaving = false }
         do {
             let created = try await recommendations.create(draft)
+            // The lead exists whatever happens to the files; one that fails
+            // to send can be added again from the lead's page.
+            var failed: [String] = []
+            if let documents {
+                for upload in attachments {
+                    do { _ = try await documents.add(upload, to: created.id) }
+                    catch { failed.append(upload.filename) }
+                }
+            }
             onCreated(created)
-            dismiss()
+            if failed.isEmpty {
+                dismiss()
+            } else {
+                attachments = []
+                errorMessage = "Recommandation envoyée, mais ces documents n'ont pas pu l'être : "
+                    + failed.joined(separator: ", ") + ". Ajoutez-les depuis la recommandation."
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private var attachmentsCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            Text("Facture d'énergie du filleul")
+                .font(Theme.Typography.body.weight(.semibold))
+                .foregroundStyle(Theme.Palette.textPrimary)
+            Text("Facultatif, mais c'est elle qui permet de lui proposer une meilleure offre.")
+                .font(Theme.Typography.secondary)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(Array(attachments.enumerated()), id: \.offset) { index, upload in
+                HStack {
+                    Image(systemName: upload.mimeType == "application/pdf" ? "doc.richtext" : "photo")
+                        .foregroundStyle(Theme.Palette.brand)
+                    Text(upload.filename)
+                        .font(Theme.Typography.label)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        attachments.remove(at: index)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Theme.Palette.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Retirer \(upload.filename)")
+                }
+            }
+
+            AddDocumentButton(title: attachments.isEmpty ? "Joindre la facture" : "Ajouter un document",
+                              onPicked: { picked in
+                                  let tooLarge = picked.filter { $0.data.count > DocumentUpload.maxBytes }
+                                  attachments += picked.filter { $0.data.count <= DocumentUpload.maxBytes }
+                                  if !tooLarge.isEmpty { errorMessage = DocumentError.tooLarge.localizedDescription }
+                              },
+                              onError: { errorMessage = $0 })
+        }
+        .padding(Theme.Spacing.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
     }
 }
 

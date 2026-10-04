@@ -71,6 +71,10 @@
   <!-- Required before LocalAuthentication may use Face ID. Without it the
        system terminates the app the first time the lock screen asks, on every
        Face ID iPhone -- which is every iPhone this app supports. -->
+  <!-- The document scanner, for photographing the filleul's energy bill. -->
+  <key>NSCameraUsageDescription</key>
+  <string>L'appareil photo sert à scanner la facture d'énergie de votre filleul.</string>
+
   <key>NSFaceIDUsageDescription</key>
   <string>Face ID protège l'accès à votre espace et à vos commissions.</string>
 

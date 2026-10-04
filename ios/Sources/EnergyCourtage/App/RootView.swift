@@ -200,7 +200,8 @@ public struct RootView: View {
         }
         .tint(Theme.Palette.brand)
         .sheet(isPresented: $showsCreate) {
-            CreateRecommendationView(recommendations: dependencies.recommendations) { _ in
+            CreateRecommendationView(recommendations: dependencies.recommendations,
+                                     documents: dependencies.documents) { _ in
                 tab = .recommendations
             }
         }
