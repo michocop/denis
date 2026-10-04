@@ -2,7 +2,8 @@
 // so the whole sequence can be tested without a Supabase project.
 
 import { InvoiceDocument, renderInvoicePdf, sha256Hex } from "../_shared/invoice_pdf.ts";
-import { html, Mail, SendMail } from "../_shared/email.ts";
+import { Mail, SendMail } from "../_shared/email.ts";
+import { renderLetter } from "../_shared/email_template.ts";
 
 export interface Recipients {
   number: string;
@@ -70,22 +71,20 @@ async function mail(invoiceId: string, pdf: Uint8Array, deps: Deps) {
 
 export function signedMail(r: Recipients, to: string[], pdf: Uint8Array): Mail {
   const what = r.kind === "credit_note" ? "L'avoir" : "La facture";
-  const greeting = r.apporteur_name ? `Bonjour ${r.apporteur_name},` : "Bonjour,";
-  const lines = [
-    greeting,
-    "",
-    `${what} ${r.number} a été signé${r.kind === "credit_note" ? "" : "e"} par les deux parties. ` +
-      "Vous la trouverez en pièce jointe.",
-    "",
-    "Conservez ce document : il est à garder dix ans, et c'est celui que vous déclarez.",
-    "",
-    "Trinity Énergie",
-  ];
+  const signed = r.kind === "credit_note" ? "signé" : "signée";
+  const letter = renderLetter({
+    greeting: r.apporteur_name ? `Bonjour ${r.apporteur_name},` : "Bonjour,",
+    heading: `${what} ${r.number} est ${signed}`,
+    paragraphs: [
+      `${what} ${r.number} a été ${signed} par les deux parties. Vous la trouverez en pièce jointe.`,
+      "Conservez ce document : il est à garder dix ans, et c'est celui que vous déclarez.",
+    ],
+  });
   return {
     to,
-    subject: `${what} ${r.number} est signé${r.kind === "credit_note" ? "" : "e"}`,
-    text: lines.join("\n"),
-    html: lines.map((l) => (l ? `<p>${html(l)}</p>` : "")).join(""),
+    subject: `${what} ${r.number} est ${signed}`,
+    text: letter.text,
+    html: letter.html,
     attachments: [{ filename: `${r.number}.pdf`, content: pdf }],
   };
 }

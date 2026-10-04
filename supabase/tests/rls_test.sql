@@ -2502,5 +2502,107 @@ begin
 end $$;
 
 reset role;
+-- a second admin, to see who is told what
+insert into auth.users (id, email) values ('88888888-8888-8888-8888-888888888888', 'claire@trinity-energie.test');
+insert into profiles (id, role, status, first_name, last_name, email)
+values ('88888888-8888-8888-8888-888888888888', 'admin', 'active', 'Claire', 'Admin',
+        'claire@trinity-energie.test');
+insert into edge_hooks (name, url, secret)
+values ('notify-email', 'https://project.supabase.co/functions/v1/notify-email', 'mail-secret');
+set role authenticated;
+
+\echo ''
+\echo '=== 48. The company hears about what needs it ====================='
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_claire uuid := '88888888-8888-8888-8888-888888888888';
+  v_reco   uuid;
+  v_inv    invoices%rowtype;
+  v_req    net.sent_requests%rowtype;
+  v_before bigint;
+begin
+  select coalesce(max(id), 0) into v_before from net.sent_requests;
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id, consent_confirmed_at)
+  values ('Alerte', 'Admin', v_johann, now()) returning id into v_reco;
+
+  perform login(v_pierre);
+  perform assert(exists (select 1 from notification_feed
+                          where kind = 'lead_created' and recommendation_id = v_reco
+                            and body like 'Alerte Admin, recommandé par Johann%'),
+    'a new lead is announced to the company, with who sent it');
+  perform login(v_claire);
+  perform assert(exists (select 1 from notifications
+                          where kind = 'lead_created' and payload ->> 'recommendation_id' = v_reco::text),
+    'to every admin while nobody follows it yet');
+  perform login(v_johann);
+  perform assert(not exists (select 1 from notifications
+                              where kind = 'lead_created' and payload ->> 'recommendation_id' = v_reco::text),
+    'and not to the apporteur who sent it');
+
+  select * into v_req from net.sent_requests
+   where id > v_before and url like '%notify-email' order by id limit 1;
+  perform assert(v_req.headers ->> 'x-hook-secret' = 'mail-secret',
+    'it goes out by email as well as push');
+
+  -- once someone follows the lead, only they are told
+  perform login(v_pierre);
+  perform reassign_recommendation(v_reco, v_pierre);
+  perform test_reco_at_reward(v_johann, v_pierre, 70, 'Suivi');
+  update recommendations set assigned_admin_id = v_pierre
+   where filleul_first_name = 'Suivi' and parrain_id = v_johann;
+  select * into v_inv from issue_invoice(
+    (select id from recommendations where filleul_first_name = 'Suivi' and parrain_id = v_johann));
+  perform login(v_johann);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform login(v_pierre);
+  perform assert(exists (select 1 from notification_feed
+                          where kind = 'invoice_signed_by_apporteur' and invoice_id = v_inv.id),
+    'the admin following a lead is told its invoice is waiting for the company''s signature');
+  perform login(v_claire);
+  perform assert(not exists (select 1 from notifications
+                              where kind = 'invoice_signed_by_apporteur'
+                                and payload ->> 'invoice_id' = v_inv.id::text),
+    'and only them, not every admin');
+end $$;
+
+reset role;
+set role service_role;
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_n      int;
+  v_mail   jsonb;
+begin
+  -- a reminder whose time has come
+  select id into v_reco from recommendations where filleul_first_name = 'Alerte';
+  insert into reminders (recommendation_id, created_by, label, due_at)
+  values (v_reco, v_pierre, 'Relancer Alerte Admin', now() - interval '1 minute');
+  select dispatch_due_reminders() into v_n;
+  perform assert(v_n >= 1, 'a reminder that is due is dispatched by the server');
+  perform assert(exists (select 1 from notifications
+                          where profile_id = v_pierre and kind = 'reminder_due'
+                            and payload ->> 'label' = 'Relancer Alerte Admin'),
+    'to whoever set it, wherever they are signed in');
+  perform assert(dispatch_due_reminders() = 0, 'and only once');
+
+  v_mail := notification_email((select id from notifications
+                                 where profile_id = v_pierre and kind = 'reminder_due' limit 1));
+  perform assert(v_mail ->> 'to' = 'pierre-louis@trinity-energie.test'
+                 and v_mail ->> 'title' = 'Relance',
+    'the email says the same thing as the push, to the right address');
+
+  update profiles set email_notifications = false where id = v_pierre;
+  perform assert(notification_email((select id from notifications
+                                      where profile_id = v_pierre and kind = 'reminder_due' limit 1)) is null,
+    'and nothing is emailed to someone who turned email off');
+  update profiles set email_notifications = true where id = v_pierre;
+end $$;
+
+reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

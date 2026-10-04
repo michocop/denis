@@ -24,6 +24,15 @@ public final class ProfileViewModel {
     /// out: the login no longer exists, and staying on the tabs left the person
     /// looking at an account that was gone until they next relaunched.
     @MainActor
+    public func setEmailNotifications(_ on: Bool) async {
+        guard var updated = profile else { return }
+        updated.emailNotifications = on
+        profile = updated            // the switch follows the finger at once
+        do { profile = try await repository.save(updated) }
+        catch { errorMessage = error.localizedDescription; await load() }
+    }
+
+    @MainActor
     public func save(_ updated: Profile) async throws {
         profile = try await repository.save(updated)
     }
@@ -111,6 +120,24 @@ public struct ProfileView: View {
                     SecondaryActionButton("Confidentialité", systemImage: "lock") {
                         shownDocument = LegalDocumentKey(id: "confidentialite")
                     }
+                    if let profile = model.profile {
+                        Toggle(isOn: Binding(
+                            get: { profile.emailNotifications ?? true },
+                            set: { on in Task { await model.setEmailNotifications(on) } })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Notifications par e-mail")
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.Palette.textPrimary)
+                                Text("Factures à signer, paiements, relances.")
+                                    .font(Theme.Typography.caption)
+                                    .foregroundStyle(Theme.Palette.textSecondary)
+                            }
+                        }
+                        .tint(Theme.Palette.brandFill)
+                        .padding(Theme.Spacing.l)
+                        .cardSurface()
+                    }
+
                     SecondaryActionButton("Se déconnecter",
                                           systemImage: "rectangle.portrait.and.arrow.right",
                                           action: onSignOut)

@@ -399,7 +399,8 @@ public struct SupabaseProfileRepository: ProfileRepository {
             "siret": value(profile.siret.map { $0.filter(\.isNumber) }),
             "address": value(profile.address),
             "postal_code": value(profile.postalCode),
-            "city": value(profile.city)
+            "city": value(profile.city),
+            "email_notifications": AnyEncodable(profile.emailNotifications ?? true)
         ], match: [URLQueryItem(name: "id", value: "eq.\(profile.id.uuidString)")])
         return rows.first ?? profile
     }

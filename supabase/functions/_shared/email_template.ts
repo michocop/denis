@@ -1,0 +1,44 @@
+// The look of every email: the website's night navy, its one blue, the
+// TRINITY ÉNERGIE wordmark. Table layout and inline styles, because that is
+// what mail clients render; a plain-text part goes with every HTML one.
+
+import { html } from "./email.ts";
+
+export interface Letter {
+  /** First line, e.g. "Bonjour Johann,". */
+  greeting: string;
+  /** Short heading in the brand's display weight. */
+  heading: string;
+  /** Paragraphs, plain text. */
+  paragraphs: string[];
+}
+
+export function renderLetter(letter: Letter): { html: string; text: string } {
+  const text = [letter.greeting, "", letter.heading, "", ...letter.paragraphs.flatMap((p) => [p, ""]),
+    "Trinity Énergie — courtier en électricité et gaz", "https://trinity-energie.fr"].join("\n");
+
+  const body = letter.paragraphs
+    .map((p) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2b3550">${html(p)}</p>`)
+    .join("");
+
+  const page = `<!doctype html>
+<html lang="fr"><body style="margin:0;padding:0;background:#eef2fb">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2fb;padding:24px 0">
+<tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;font-family:Manrope,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<tr><td style="background:#03081A;background-image:linear-gradient(160deg,#0A1F4A,#03081A);padding:22px 28px">
+<span style="font-family:Sora,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-weight:600;font-size:13px;letter-spacing:3px;color:#F5F7FC">&#9651; TRINITY ÉNERGIE</span>
+</td></tr>
+<tr><td style="padding:28px">
+<p style="margin:0 0 6px;font-size:15px;color:#2b3550">${html(letter.greeting)}</p>
+<h1 style="margin:0 0 18px;font-family:Sora,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-weight:600;font-size:22px;line-height:1.3;color:#03081A">${html(letter.heading)}</h1>
+${body}
+<p style="margin:22px 0 0"><span style="display:inline-block;background:#1F5FFF;color:#ffffff;border-radius:999px;padding:12px 22px;font-weight:600;font-size:15px">Ouvrez l'application Trinity Énergie</span></p>
+</td></tr>
+<tr><td style="padding:18px 28px;border-top:1px solid #e3e8f4;font-size:12px;color:#7a86a3">
+Trinity Énergie — courtier en électricité et gaz · <a href="https://trinity-energie.fr" style="color:#1F5FFF;text-decoration:none">trinity-energie.fr</a><br>
+Vous recevez cet e-mail parce que vous utilisez l'application Trinity Énergie. Vous pouvez désactiver ces e-mails dans votre profil.
+</td></tr>
+</table></td></tr></table></body></html>`;
+  return { html: page, text };
+}

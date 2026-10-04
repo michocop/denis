@@ -16,6 +16,10 @@ public struct Profile: Identifiable, Hashable, Codable, Sendable {
     public var address: String?
     public var postalCode: String?
     public var vatLiable: Bool
+    /// Invoices to sign, payments, reminders by email as well as push. Optional
+    /// so a profile from a server that predates the column still decodes; on
+    /// when absent, which is the server's default.
+    public var emailNotifications: Bool?
     /// Self-billing is only lawful with a prior mandate, so the app has to know
     /// whether this apporteur has signed one.
     public var billingMandateSignedAt: Date?

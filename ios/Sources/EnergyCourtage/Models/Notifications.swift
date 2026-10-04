@@ -35,6 +35,11 @@ public struct AppNotification: Identifiable, Hashable, Codable, Sendable {
         case "message_received": return "bubble.left"
         case "invoice_ready":    return "doc.text"
         case "payment_sent":     return "banknote"
+        case "reminder_due":     return "alarm"
+        case "lead_created":     return "person.badge.plus"
+        case "member_pending":   return "person.crop.circle.badge.questionmark"
+        case "invoice_signed_by_apporteur": return "signature"
+        case "document_added":   return "paperclip"
         default:                 return "bell"
         }
     }
