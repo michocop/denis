@@ -141,6 +141,7 @@ SDK = {
     "NSLock", "PDFDocument", "WritableKeyPath",
     "CTFontManagerRegisterFontsForURL", "LinearGradient", "Path", "RadialGradient",
     "StrokeStyle", "UIFontMetrics", "UINavigationBarAppearance",
+    "NSNull", "Result", "URLComponents",
     "RelativeDateTimeFormatter", "Decimal", "UNAuthorizationOptions", "UNNotificationSound", "ToolbarContentBuilder", "ToolbarContent", "UIApplication",
     "PropertyListSerialization", "MainActor",
 }

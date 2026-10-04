@@ -116,6 +116,10 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         return try await reload(recommendationID)
     }
 
+    public func recommendation(id: UUID) async throws -> Recommendation? {
+        try? await reload(id)
+    }
+
     private func reload(_ id: UUID) async throws -> Recommendation {
         let pipeline = try await loadPipeline()
         let rows: [FeedRow] = try await client.get("recommendation_feed", query: [

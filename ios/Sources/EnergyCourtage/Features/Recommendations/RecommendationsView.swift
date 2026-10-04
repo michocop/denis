@@ -83,6 +83,18 @@ public struct RecommendationsView: View {
                 .zIndex(1)
             }
         }
+        // a notification about one recommendation opens that recommendation
+        .onChange(of: PushCenter.shared.route, initial: true) { _, route in
+            guard case .recommendation(let id)? = route else { return }
+            PushCenter.shared.route = nil
+            Task {
+                if let reco = model.recommendations.first(where: { $0.id == id }) {
+                    sheet = .detail(reco)
+                } else if let reco = try? await dependencies.recommendations.recommendation(id: id) {
+                    sheet = .detail(reco)
+                }
+            }
+        }
         .sheet(item: $sheet) { presented in
             switch presented {
             case .notes(let reco, let body):

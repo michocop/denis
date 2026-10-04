@@ -225,12 +225,28 @@ public actor SupabaseClient: SupabaseTransport {
 
     /// Always reports success to the caller: whether an address has an account
     /// is not something an unauthenticated request should be able to learn.
-    public func requestPasswordReset(email: String) async {
-        var request = URLRequest(url: makeURL(prefix: authPath, path: "recover"))
+    ///
+    /// `redirectTo` is where the emailed link lands: the app's own scheme, so
+    /// the reset finishes in the app. Without it the link went to the project's
+    /// site URL and the person was left on a web page with nowhere to type.
+    public func requestPasswordReset(email: String, redirectTo: String? = AuthCallback.redirectURL) async {
+        var query: [URLQueryItem] = []
+        if let redirectTo { query.append(URLQueryItem(name: "redirect_to", value: redirectTo)) }
+        var request = URLRequest(url: makeURL(prefix: authPath, path: "recover", query: query))
         request.httpMethod = "POST"
         applyHeaders(to: &request, authenticated: false)
         request.httpBody = try? JSONEncoder().encode(["email": email])
         _ = try? await performRaw(request)
+    }
+
+    /// Sets a new password for the signed-in account -- the end of a reset,
+    /// once the emailed link has signed the person in.
+    public func updatePassword(_ password: String) async throws {
+        var request = URLRequest(url: makeURL(prefix: authPath, path: "user"))
+        request.httpMethod = "PUT"
+        applyHeaders(to: &request)
+        request.httpBody = try JSONEncoder().encode(["password": password])
+        _ = try await performRaw(request)
     }
 
     public func signOut() async {

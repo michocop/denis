@@ -228,6 +228,15 @@ public struct ChatView: View {
             await model.load()
             await model.loadContacts()
         }
+        // a notification about a message opens its conversation
+        .onChange(of: PushCenter.shared.route, initial: true) { _, pushed in
+            guard case .thread(let id)? = pushed else { return }
+            PushCenter.shared.route = nil
+            Task {
+                if !model.threads.contains(where: { $0.id == id }) { await model.load() }
+                route = model.threads.first { $0.id == id }
+            }
+        }
     }
 
     private var list: some View {

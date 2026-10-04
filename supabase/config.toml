@@ -29,8 +29,8 @@ major_version = 15
 enabled = true
 # Set to the app's scheme so password-reset links come back into the app
 # rather than to a web page that does not exist.
-site_url = "energycourtage://"
-additional_redirect_urls = ["energycourtage://reset"]
+site_url = "trinityenergie://auth-callback"
+additional_redirect_urls = ["trinityenergie://auth-callback"]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10

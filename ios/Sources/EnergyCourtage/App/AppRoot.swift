@@ -20,6 +20,9 @@ public final class AppModel {
         /// anyone can sign in with it.
         case awaitingConfirmation(email: String)
         case needsInvite(email: String)
+        /// Arrived from a password-reset link, signed in, and asked for a new
+        /// password before anything else.
+        case choosingPassword
         case pendingApproval(email: String)
         case suspended
         case locked
@@ -31,6 +34,8 @@ public final class AppModel {
     private var client: SupabaseClient?
     private let sessionStore: SessionStore
     private var email: String = ""
+    /// A link that opened the app before the client existed (a cold launch).
+    private var pendingCallback: URL?
 
     public init(sessionStore: SessionStore = SessionStore()) {
         self.sessionStore = sessionStore
@@ -93,6 +98,14 @@ public final class AppModel {
         // again.
         let store = sessionStore
         await client.setRefreshTokenObserver { token in _ = try? store.save(refreshToken: token) }
+
+        // Opened by an emailed link: that link is the session, whatever was
+        // stored before.
+        if let url = pendingCallback {
+            pendingCallback = nil
+            await handle(url: url)
+            return
+        }
 
         guard let refreshToken = sessionStore.refreshToken() else {
             phase = .signedOut(nil)
@@ -167,6 +180,41 @@ public final class AppModel {
         phase = await resolvePhase()
     }
 
+    // MARK: - Emailed links
+
+    /// A password reset, an address confirmation or an invitation coming back
+    /// from the email. The link carries a session; it is taken over, saved,
+    /// and the app goes where the link was for.
+    @MainActor
+    public func handle(url: URL) async {
+        guard let parsed = AuthCallback.parse(url) else { return }
+        guard let client else {
+            pendingCallback = url
+            return
+        }
+        switch parsed {
+        case .failure(let failure):
+            phase = .signedOut(failure.localizedDescription)
+        case .success(let callback):
+            do {
+                await client.setAccessToken(callback.accessToken)
+                let session = try await client.restore(refreshToken: callback.refreshToken)
+                try? sessionStore.save(refreshToken: session.refreshToken)
+                email = session.user.email ?? ""
+                phase = callback.kind == .recovery ? .choosingPassword : await resolvePhase()
+            } catch {
+                phase = .signedOut(AuthCallback.Failure.expired.localizedDescription)
+            }
+        }
+    }
+
+    @MainActor
+    public func setNewPassword(_ password: String) async throws {
+        guard let client else { throw SupabaseError.notConfigured }
+        try await client.updatePassword(password)
+        phase = await resolvePhase()
+    }
+
     @MainActor
     public func backToSignIn() {
         phase = .signedOut(nil)
@@ -191,6 +239,7 @@ public final class AppModel {
             try? await SupabaseNotificationsRepository(client: client).forgetDevices()
         }
         await LocalNotifications.setBadge(0)
+        PushCenter.shared.detach()
         await client?.signOut()
         sessionStore.clear()
         phase = .signedOut(nil)
@@ -285,6 +334,9 @@ public struct AppRootView: View {
             case .locked:
                 LockedView { await model.unlock() }
 
+            case .choosingPassword:
+                NewPasswordView { password in try await model.setNewPassword(password) }
+
             case .awaitingConfirmation(let email):
                 AwaitingConfirmationView(email: email) { model.backToSignIn() }
 
@@ -317,6 +369,7 @@ public struct AppRootView: View {
         }
         // Dark, like trinity-energie.fr: the brand is night navy and one blue.
         .preferredColorScheme(.dark)
+        .onOpenURL { url in Task { await model.handle(url: url) } }
         .tint(Theme.Palette.brand)
         .task { await model.start() }
     }

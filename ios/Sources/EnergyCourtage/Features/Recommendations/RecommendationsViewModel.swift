@@ -26,6 +26,9 @@ public protocol RecommendationsRepository: Sendable {
     func checkDuplicate(phone: String, email: String) async throws -> DuplicateCheck
     func note(recommendationID: UUID) async throws -> String
     func saveNote(recommendationID: UUID, body: String) async throws
+    /// One recommendation, for a notification that names one not on the
+    /// loaded page.
+    func recommendation(id: UUID) async throws -> Recommendation?
 }
 
 /// Deliberately says only *that* a lead is held, never by whom: an apporteur
@@ -85,6 +88,7 @@ public extension RecommendationsRepository {
     func resetPipeline(recommendationID: UUID) async throws {}
     func softDelete(recommendationID: UUID) async throws {}
     func loadAdmins() async throws -> [Profile] { [] }
+    func recommendation(id: UUID) async throws -> Recommendation? { nil }
 }
 
 /// Where the last page stopped. A position in the ordering rather than a row

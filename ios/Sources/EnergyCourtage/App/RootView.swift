@@ -12,6 +12,13 @@ public struct RootView: View {
     @State private var connectivity = Connectivity()
     @State private var legal: LegalViewModel
     @State private var requiredDocument: LegalDocumentKey?
+    /// An invoice opened from a notification, over whatever tab is showing.
+    @State private var openedInvoice: OpenedInvoice?
+    private var push = PushCenter.shared
+
+    private struct OpenedInvoice: Identifiable {
+        let id: UUID
+    }
 
     private let dependencies: Dependencies
     private let role: UserRole
@@ -99,7 +106,33 @@ public struct RootView: View {
             // first screen, before the app has done anything, is the one
             // people decline.
             await LocalNotifications.requestPermission()
+            guard !isDemo else { return }
+            await push.attach(dependencies.notifications)
             PushRegistration.registerIfAvailable()
+        }
+        // A tapped notification -- on the lock screen or in the list -- opens
+        // what it is about instead of whatever tab was last showing.
+        .onChange(of: push.route, initial: true) { _, route in
+            guard let route else { return }
+            switch route {
+            case .invoice(let id):
+                push.route = nil
+                showsNotifications = false
+                openedInvoice = OpenedInvoice(id: id)
+            case .thread:
+                showsNotifications = false
+                tab = .chat           // ChatView opens the thread and clears the route
+            case .recommendation:
+                showsNotifications = false
+                tab = .recommendations
+            }
+        }
+        .sheet(item: $openedInvoice) { opened in
+            NavigationStack {
+                InvoiceView(model: InvoiceViewModel(invoiceID: opened.id,
+                                                    repository: dependencies.invoices),
+                            signerName: signerName, isAdmin: role.isAdmin)
+            }
         }
         .task(id: connectivity.reconnections) {
             // Re-read on every reconnection as well as at launch, so coming

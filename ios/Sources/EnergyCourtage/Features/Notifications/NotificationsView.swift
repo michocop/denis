@@ -65,9 +65,20 @@ public struct NotificationsView: View {
                     empty
                 } else {
                     List(model.items) { item in
-                        row(item)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparatorTint(Theme.Palette.hairline)
+                        // The model carried what each notification is about,
+                        // "to open when tapped", and nothing was tappable.
+                        Button {
+                            if let route = NotificationRoute(threadID: item.threadId,
+                                                             recommendationID: item.recommendationId,
+                                                             invoiceID: item.invoiceId) {
+                                PushCenter.shared.open(route)
+                            }
+                        } label: {
+                            row(item)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparatorTint(Theme.Palette.hairline)
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)

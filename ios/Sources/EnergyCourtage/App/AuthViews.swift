@@ -299,3 +299,74 @@ public struct LockedView: View {
         .task { await unlock() }
     }
 }
+
+/// The end of a password reset: the emailed link has signed the person in,
+/// and this is where they choose the new password. Before it existed the
+/// reset could be requested but never finished.
+public struct NewPasswordView: View {
+    @State private var password = ""
+    @State private var confirmation = ""
+    @State private var errorMessage: String?
+    @State private var isWorking = false
+
+    private let save: (String) async throws -> Void
+
+    public init(save: @escaping (String) async throws -> Void) {
+        self.save = save
+    }
+
+    private var problem: String? {
+        if password.count < 8 { return "8 caractères minimum." }
+        if confirmation != password { return "Les deux mots de passe ne correspondent pas." }
+        return nil
+    }
+
+    public var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+                TrinityWordmark()
+                    .padding(.top, Theme.Spacing.xl)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Choisissez un")
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text("nouveau mot de passe.")
+                        .brandGradient()
+                }
+                .font(Theme.Typography.display(30, .semibold, relativeTo: .largeTitle))
+                .padding(.top, 24)
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                    LabelledField("Nouveau mot de passe") {
+                        SecureField("8 caractères minimum", text: $password)
+                            .textContentType(.newPassword)
+                    }
+                    LabelledField("Confirmation") {
+                        SecureField("Le même, une seconde fois", text: $confirmation)
+                            .textContentType(.newPassword)
+                    }
+                    if let message = errorMessage ?? (confirmation.isEmpty ? nil : problem) {
+                        Text(message)
+                            .font(Theme.Typography.secondary)
+                            .foregroundStyle(Theme.Palette.destructive)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    PrimaryActionButton(isWorking ? "Enregistrement…" : "Enregistrer") {
+                        Task {
+                            isWorking = true
+                            defer { isWorking = false }
+                            do { try await save(password) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
+                    }
+                    .disabled(problem != nil || isWorking)
+                    .opacity(problem != nil ? 0.6 : 1)
+                }
+                .padding(Theme.Spacing.cardPadding)
+                .cardSurface()
+            }
+            .padding(Theme.Spacing.gutter)
+        }
+        .background(BrandBackground())
+    }
+}
