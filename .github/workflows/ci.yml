@@ -35,6 +35,18 @@ jobs:
           PGPASSWORD: postgres
         run: scripts/db_test.sh -h localhost -p 5432 -U postgres
 
+  functions:
+    name: Edge functions (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # Only *_test.ts files and what they import are checked and run; the
+      # functions' entry points need a Supabase project and are not started.
+      - run: deno test --allow-read --allow-env --allow-net supabase/functions
+
   swift-static-check:
     name: Swift static check
     runs-on: ubuntu-latest

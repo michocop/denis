@@ -1081,7 +1081,7 @@ end $$;
 
 
 \echo ''
-\echo '=== 23. The invoice PDF is written once and kept =================='
+\echo '=== 23. The invoice PDF is written once, by the server, and kept ='
 set role authenticated;
 do $$
 declare
@@ -1090,87 +1090,100 @@ declare
   v_pierre uuid := '33333333-3333-3333-3333-333333333333';
   v_sealed uuid;
   v_draft  uuid;
-  v_path   text;
 begin
-  -- as the admin, because the fixtures are read through RLS like anything else
   perform login(v_pierre);
   select id into v_sealed from invoices where number = 'FA-2026-0003';
   select id into v_draft from invoices where status not in ('signed','paid') limit 1;
 
-  -- a document nobody has agreed to must not be retained for ten years
-  perform login(v_johann);
-  perform assert_denied(v_johann,
-    format('select record_invoice_pdf(%L, %L, %L)', v_draft, 'x.pdf', repeat('a', 64)),
-    'an unsigned invoice cannot be given a retained document');
-
-  perform assert_denied(v_marie,
-    format('select record_invoice_pdf(%L, %L, %L)', v_sealed, 'x.pdf', repeat('a', 64)),
-    'a stranger to the invoice cannot record its document');
-
-  -- The server cannot check the bytes it is handed, so the ten-year copy is
-  -- the issuer's to keep: otherwise the apporteur could file a doctored one.
-  perform assert_denied(v_johann,
-    format('select record_invoice_pdf(%L, %L, %L)', v_sealed, v_sealed || '.pdf', repeat('a', 64)),
-    'the apporteur does not record the retained document');
+  -- Nobody signed in records or uploads the ten-year copy any more: not the
+  -- apporteur, who could file a doctored one, and not the company's phone,
+  -- which only did it if someone happened to open the invoice.
   perform assert_denied(v_pierre,
-    format('select record_invoice_pdf(%L, %L, %L)', v_sealed, 'elsewhere.pdf', repeat('a', 64)),
-    'and it is filed under the invoice''s own name, nowhere else');
+    format('select retain_invoice_pdf(%L, %L, %L)', v_sealed, v_sealed || '.pdf', repeat('a', 64)),
+    'not even the company records the retained document from the app');
+  perform assert_denied(v_johann,
+    format('select retain_invoice_pdf(%L, %L, %L)', v_sealed, v_sealed || '.pdf', repeat('a', 64)),
+    'nor the apporteur');
+  perform assert_denied(v_pierre,
+    format('insert into storage.objects (bucket_id, name) values (%L, %L)',
+           'invoices', v_sealed || '.pdf'),
+    'and nobody signed in uploads into the invoices bucket');
+  perform assert_denied(v_johann,
+    format('insert into storage.objects (bucket_id, name) values (%L, %L)',
+           'invoices', v_sealed || '.pdf'),
+    'the apporteur least of all');
+  perform assert(not has_function_privilege('authenticated',
+                   'public.retain_invoice_pdf(uuid,text,text)', 'execute'),
+    'the function that records it is the server''s alone');
+end $$;
 
-  perform login(v_pierre);
-  select record_invoice_pdf(v_sealed, v_sealed || '.pdf', repeat('a', 64)) into v_path;
-  perform assert(v_path = v_sealed || '.pdf', 'the company records the file');
+-- What the invoice-pdf function does, on the service role. Supabase grants
+-- that role every table in public; the local stand-in has to be told.
+reset role;
+grant all on all tables in schema public to service_role;
+set role service_role;
+do $$
+declare
+  v_sealed uuid;
+  v_draft  uuid;
+  v_path   text;
+begin
+  select id into v_sealed from invoices where number = 'FA-2026-0003';
+  select id into v_draft from invoices where status not in ('signed','paid') limit 1;
+
+  begin
+    perform retain_invoice_pdf(v_draft, v_draft || '.pdf', repeat('a', 64));
+    perform assert(false, 'an unsigned invoice cannot be given a retained document');
+  exception when sqlstate '42501' then
+    perform assert(true, 'an unsigned invoice cannot be given a retained document');
+  end;
+  begin
+    perform retain_invoice_pdf(v_sealed, 'elsewhere.pdf', repeat('a', 64));
+    perform assert(false, 'it is filed under the invoice''s own name, nowhere else');
+  exception when sqlstate '22023' then
+    perform assert(true, 'it is filed under the invoice''s own name, nowhere else');
+  end;
+
+  select retain_invoice_pdf(v_sealed, v_sealed || '.pdf', repeat('a', 64)) into v_path;
+  perform assert(v_path = v_sealed || '.pdf', 'the server records the file');
   perform assert((select pdf_sha256 from invoices where id = v_sealed) = repeat('a', 64),
     'and its digest, so a later download can be checked against it');
 
-  -- two devices opening the same invoice both upload; the loser must be handed
-  -- the winner's file rather than an error or a second stored document
-  select record_invoice_pdf(v_sealed, 'other.pdf', repeat('b', 64)) into v_path;
-  perform assert(v_path = v_sealed || '.pdf',
-    'a second attempt returns the file already kept, and does not replace it');
+  select retain_invoice_pdf(v_sealed, v_sealed || '.pdf', repeat('b', 64)) into v_path;
   perform assert((select pdf_sha256 from invoices where id = v_sealed) = repeat('a', 64),
-    'the digest of the retained document is unchanged');
+    'a second run returns the file already kept, and does not replace it');
+end $$;
+reset role;
+-- the bytes themselves, as the function's storage client writes them
+insert into storage.objects (bucket_id, name)
+select 'invoices', id || '.pdf' from invoices where number = 'FA-2026-0003';
+set role authenticated;
 
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_sealed uuid;
+begin
+  perform login(v_pierre);
+  select id into v_sealed from invoices where number = 'FA-2026-0003';
   perform assert_denied(v_pierre,
     format('update invoices set pdf_path = %L where id = %L', 'forged.pdf', v_sealed),
-    'nor can the path be overwritten directly');
+    'the path cannot be overwritten directly');
   perform assert_denied(v_pierre,
     format('update invoices set amount_ht = 1 where id = %L', v_sealed),
     'and the figures on a sealed invoice are still frozen');
 
-  -- the bucket policies decide who may read and write the bytes themselves
-  perform assert_denied(v_marie,
-    format('insert into storage.objects (bucket_id, name) values (%L, %L)',
-           'invoices', v_sealed || '.pdf'),
-    'a stranger cannot upload a document under someone else''s invoice');
-  perform assert_denied(v_pierre,
-    format('insert into storage.objects (bucket_id, name) values (%L, %L)',
-           'invoices', v_draft || '.pdf'),
-    'nor can anyone upload one for an invoice that is not signed');
-  perform assert_denied(v_johann,
-    format('insert into storage.objects (bucket_id, name) values (%L, %L)',
-           'invoices', v_sealed || '.pdf'),
-    'and the apporteur cannot upload the retained copy of their own invoice');
-
   perform login(v_pierre);
-  insert into storage.objects (bucket_id, name) values ('invoices', v_sealed || '.pdf');
-  perform assert(
-    (select count(*) from storage.objects where name = v_sealed || '.pdf') = 1,
-    'the company uploads it');
-
+  perform assert((select count(*) from storage.objects where name = v_sealed || '.pdf') = 1,
+    'the company can read the retained file');
   perform login(v_johann);
-  perform assert(
-    (select count(*) from storage.objects where name = v_sealed || '.pdf') = 1,
-    'and the apporteur can read it');
-
+  perform assert((select count(*) from storage.objects where name = v_sealed || '.pdf') = 1,
+    'and so can the apporteur');
   perform login(v_marie);
-  perform assert(
-    (select count(*) from storage.objects where name = v_sealed || '.pdf') = 0,
+  perform assert((select count(*) from storage.objects where name = v_sealed || '.pdf') = 0,
     'while another apporteur cannot see that it exists');
-
-  perform login(v_johann);
-  perform assert(
-    (select i.pdf_path from invoices i where i.id = v_sealed) is not null,
-    'and the invoice points at it, so nothing re-renders a second document');
 end $$;
 
 
@@ -2357,6 +2370,62 @@ begin
   perform assert(v_sig.user_agent = 'TrinityEnergie/1 CFNetwork',
     'and so is the user agent');
   perform set_config('request.headers', '', true);
+end $$;
+
+reset role;
+-- the invoice-pdf function, as deployed
+insert into edge_hooks (name, url, secret)
+values ('invoice-pdf', 'https://project.supabase.co/functions/v1/invoice-pdf', 'pdf-secret');
+set role authenticated;
+
+\echo ''
+\echo '=== 46. Sealing an invoice asks the server to keep its PDF ========'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_inv    invoices%rowtype;
+  v_before bigint;
+  v_req    net.sent_requests%rowtype;
+begin
+  v_reco := test_reco_at_reward(v_johann, v_pierre, 90, 'Retention');
+  select * into v_inv from issue_invoice(v_reco);
+  select coalesce(max(id), 0) into v_before from net.sent_requests;
+
+  perform login(v_johann);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert(not exists (select 1 from net.sent_requests
+                              where id > v_before and body ->> 'invoice_id' = v_inv.id::text),
+    'one signature does not ask for the document yet');
+
+  perform login(v_pierre);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  select * into v_req from net.sent_requests
+   where id > v_before and body ->> 'invoice_id' = v_inv.id::text;
+  perform assert(v_req.url = 'https://project.supabase.co/functions/v1/invoice-pdf',
+    'the second seals it, and the server is asked to render and keep the PDF at once');
+  perform assert(v_req.headers ->> 'x-hook-secret' = 'pdf-secret',
+    'with the shared secret, so a stranger who finds the URL cannot trigger it');
+
+  perform assert_denied(v_pierre, 'select secret from edge_hooks',
+    'and no signed-in user can read that secret');
+end $$;
+
+reset role;
+set role service_role;
+do $$
+declare v_n int;
+begin
+  -- whatever the trigger's call missed, the sweep asks for again
+  perform assert(exists (select 1 from invoices_missing_pdf(100)),
+    'a sealed invoice without its PDF is on the sweep''s list');
+  select request_missing_invoice_pdfs() into v_n;
+  perform assert(v_n > 0, 'and the sweep asks the server for it again');
+  perform assert(
+    (invoice_mail_recipients((select id from invoices where number = 'FA-2026-0001')) ->> 'apporteur_email')
+      = 'johann@example.test',
+    'the signed PDF is addressed to the apporteur');
 end $$;
 
 reset role;
