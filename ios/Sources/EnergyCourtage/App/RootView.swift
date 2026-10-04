@@ -195,59 +195,81 @@ public struct SignInView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-            Spacer()
-            Text("Connexion")
-                .font(Theme.Typography.screenTitle)
-                .foregroundStyle(Theme.Palette.textPrimary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+                TrinityWordmark()
+                    .padding(.top, Theme.Spacing.xl)
 
-            LabelledField("Email") {
-                TextField("adresse@exemple.fr", text: $email)
-                    .keyboardType(.emailAddress)
-                    .textContentType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            }
-            LabelledField("Mot de passe") {
-                SecureField("••••••••", text: $password)
-                    .textContentType(.password)
-            }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(Theme.Typography.secondary)
-                    .foregroundStyle(Theme.Palette.destructive)
-            }
-
-            PrimaryActionButton(isWorking ? "Connexion…" : "Se connecter") {
-                Task {
-                    isWorking = true
-                    defer { isWorking = false }
-                    do {
-                        try await signIn(email, password)
-                        errorMessage = nil
-                    } catch {
-                        errorMessage = error.localizedDescription
-                    }
+                // the site's headline: white, then the blue gradient
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Votre espace")
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text("apporteur d'affaires.")
+                        .brandGradient()
                 }
-            }
-            .disabled(email.isEmpty || password.isEmpty || isWorking)
+                .font(Theme.Typography.display(34, .semibold, relativeTo: .largeTitle))
+                .padding(.top, 36)
 
-            HStack {
-                Button("Mot de passe oublié ?", action: onForgotPassword)
-                Spacer()
-                Button("J'ai un code d'invitation", action: onCreateAccount)
-            }
-            .font(Theme.Typography.secondary)
-            .foregroundStyle(Theme.Palette.brand)
+                Text("Suivez vos recommandations, signez vos factures et recevez vos commissions.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Text("L'accès est réservé aux apporteurs invités par Trinity Énergie.")
-                .font(Theme.Typography.secondary)
-                .foregroundStyle(Theme.Palette.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                    LabelledField("Email") {
+                        TextField("adresse@exemple.fr", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                    LabelledField("Mot de passe") {
+                        SecureField("••••••••", text: $password)
+                            .textContentType(.password)
+                    }
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(Theme.Typography.secondary)
+                            .foregroundStyle(Theme.Palette.destructive)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    PrimaryActionButton(isWorking ? "Connexion…" : "Se connecter") {
+                        Task {
+                            isWorking = true
+                            defer { isWorking = false }
+                            do {
+                                try await signIn(email, password)
+                                errorMessage = nil
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(email.isEmpty || password.isEmpty || isWorking)
+                    .opacity(email.isEmpty || password.isEmpty ? 0.6 : 1)
+
+                    Button("Mot de passe oublié ?", action: onForgotPassword)
+                        .font(Theme.Typography.secondary.weight(.semibold))
+                        .foregroundStyle(Theme.Palette.brand)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(Theme.Spacing.cardPadding)
+                .cardSurface()
+
+                SecondaryActionButton("J'ai un code d'invitation", systemImage: "ticket",
+                                      action: onCreateAccount)
+
+                Text("L'accès est réservé aux apporteurs invités par Trinity Énergie.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(Theme.Spacing.gutter)
         }
-        .padding(Theme.Spacing.gutter)
-        .background(Theme.Palette.canvas)
+        .scrollDismissesKeyboard(.interactively)
+        .background(BrandBackground())
     }
 }

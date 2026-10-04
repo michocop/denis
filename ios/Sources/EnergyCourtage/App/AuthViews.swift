@@ -83,7 +83,7 @@ public struct SignUpView: View {
                 }
                 .padding(Theme.Spacing.gutter)
             }
-            .background(Theme.Palette.canvas)
+            .background(BrandBackground())
             .navigationTitle(asksForCredentials ? "Créer un compte" : "Code d'invitation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -144,7 +144,7 @@ public struct AwaitingConfirmationView: View {
             Spacer()
         }
         .padding(Theme.Spacing.xl)
-        .background(Theme.Palette.canvas)
+        .background(BrandBackground())
     }
 }
 
@@ -184,7 +184,7 @@ public struct PendingApprovalView: View {
             Spacer()
         }
         .padding(Theme.Spacing.xl)
-        .background(Theme.Palette.canvas)
+        .background(BrandBackground())
     }
 }
 
@@ -213,7 +213,7 @@ public struct SuspendedView: View {
             Spacer()
         }
         .padding(Theme.Spacing.xl)
-        .background(Theme.Palette.canvas)
+        .background(BrandBackground())
     }
 }
 
@@ -264,7 +264,7 @@ public struct ForgotPasswordView: View {
                 Spacer()
             }
             .padding(Theme.Spacing.gutter)
-            .background(Theme.Palette.canvas)
+            .background(BrandBackground())
             .navigationTitle("Mot de passe oublié")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -295,7 +295,7 @@ public struct LockedView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.Palette.canvas)
+        .background(BrandBackground())
         .task { await unlock() }
     }
 }

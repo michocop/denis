@@ -84,7 +84,7 @@ public struct MembersView: View {
 
     public var body: some View {
         ZStack {
-            Theme.Palette.canvas.ignoresSafeArea()
+            BrandBackground()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
@@ -332,7 +332,7 @@ struct InviteSheet: View {
                 }
                 .padding(Theme.Spacing.gutter)
             }
-            .background(Theme.Palette.canvas)
+            .background(BrandBackground())
             .navigationTitle("Inviter")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

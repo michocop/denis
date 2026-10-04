@@ -110,7 +110,7 @@ public struct InvoiceView: View {
 
     public var body: some View {
         ZStack {
-            Theme.Palette.canvas.ignoresSafeArea()
+            BrandBackground()
 
             ScrollView {
                 VStack(spacing: Theme.Spacing.l) {

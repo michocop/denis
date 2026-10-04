@@ -13,7 +13,8 @@ let package = Package(
         .library(name: "EnergyCourtage", targets: ["EnergyCourtage"])
     ],
     targets: [
-        .target(name: "EnergyCourtage"),
+        // the brand faces, Sora and Manrope (SIL Open Font License)
+        .target(name: "EnergyCourtage", resources: [.copy("Resources/Fonts")]),
         .testTarget(name: "EnergyCourtageTests", dependencies: ["EnergyCourtage"])
     ]
 )

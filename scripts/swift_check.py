@@ -139,6 +139,8 @@ SDK = {
     "UNNotificationRequest", "UNTimeIntervalNotificationTrigger", "Notification",
     "NotificationCenter", "Bundle", "Data", "Timer",
     "NSLock", "PDFDocument", "WritableKeyPath",
+    "CTFontManagerRegisterFontsForURL", "LinearGradient", "Path", "RadialGradient",
+    "StrokeStyle", "UIFontMetrics", "UINavigationBarAppearance",
     "RelativeDateTimeFormatter", "Decimal", "UNAuthorizationOptions", "UNNotificationSound", "ToolbarContentBuilder", "ToolbarContent", "UIApplication",
     "PropertyListSerialization", "MainActor",
 }

@@ -1,5 +1,8 @@
 import SwiftUI
 import Observation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Owns the session and decides what the app shows.
 ///
@@ -236,14 +239,45 @@ public struct AppRootView: View {
     @State private var showsSignUp = false
     @State private var showsForgotPassword = false
 
-    public init() {}
+    public init() {
+        Theme.registerFonts()
+        Self.styleSystemBars()
+    }
+
+    /// Navigation titles are drawn by UIKit, not by Theme, so they are told
+    /// about the brand faces here: Sora, like every other title in the app.
+    private static func styleSystemBars() {
+        #if canImport(UIKit)
+        let ink = UIColor(Theme.Palette.textPrimary)
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        if let inline = UIFont(name: "Sora", size: 17) {
+            appearance.titleTextAttributes = [
+                .font: UIFontMetrics(forTextStyle: .headline).scaledFont(
+                    for: inline.withWeight(.semibold)),
+                .foregroundColor: ink]
+        }
+        if let large = UIFont(name: "Sora", size: 32) {
+            appearance.largeTitleTextAttributes = [
+                .font: UIFontMetrics(forTextStyle: .largeTitle).scaledFont(
+                    for: large.withWeight(.semibold)),
+                .foregroundColor: ink]
+        }
+        UINavigationBar.appearance().standardAppearance = appearance
+        UINavigationBar.appearance().scrollEdgeAppearance = appearance
+        #endif
+    }
 
     public var body: some View {
         Group {
             switch model.phase {
             case .launching:
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Theme.Palette.canvas)
+                VStack(spacing: Theme.Spacing.xl) {
+                    TrinityLogo(size: 56)
+                    ProgressView().tint(Theme.Palette.brand)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(BrandBackground())
 
             case .signedOut(let message):
                 signedOut(message)
@@ -281,6 +315,9 @@ public struct AppRootView: View {
                 }
             }
         }
+        // Dark, like trinity-energie.fr: the brand is night navy and one blue.
+        .preferredColorScheme(.dark)
+        .tint(Theme.Palette.brand)
         .task { await model.start() }
     }
 

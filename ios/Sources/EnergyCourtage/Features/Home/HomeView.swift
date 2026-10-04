@@ -38,19 +38,27 @@ public struct HomeView: View {
 
     public var body: some View {
         ZStack {
-            Theme.Palette.canvas.ignoresSafeArea()
+            BrandBackground()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(greeting)
-                            .font(Theme.Typography.screenTitle)
-                            .foregroundStyle(Theme.Palette.textPrimary)
+                    TrinityWordmark(logoSize: 20)
+
+                    // the site's headline: white, then the blue gradient
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 0) {
+                            Text("Bonjour, ")
+                                .foregroundStyle(Theme.Palette.textPrimary)
+                            Text(model.profile?.firstName ?? "")
+                                .brandGradient()
+                        }
+                        .font(Theme.Typography.screenTitle)
                         Text("Voici où en sont vos recommandations.")
                             .font(Theme.Typography.secondary)
                             .foregroundStyle(Theme.Palette.textSecondary)
                     }
-                    .padding(.top, Theme.Spacing.s)
+                    .padding(.top, Theme.Spacing.m)
+                    .accessibilityElement(children: .combine)
 
                     // The mandate gate is surfaced here rather than at invoicing
                     // time: without it no invoice can be issued at all, so the
@@ -93,11 +101,6 @@ public struct HomeView: View {
         .task { await model.load() }
     }
 
-    private var greeting: String {
-        guard let firstName = model.profile?.firstName else { return "Bonjour" }
-        return "Bonjour, \(firstName)"
-    }
-
     static func euros(_ amount: Decimal) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
@@ -116,7 +119,7 @@ struct StatTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
             Text(value)
-                .font(.system(size: 28, weight: .semibold))
+                .font(Theme.Typography.display(28, .semibold, relativeTo: .title))
                 .foregroundStyle(tint)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
@@ -151,8 +154,12 @@ struct MandateNotice: View {
         }
         .padding(Theme.Spacing.l)
         .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .fill(Theme.Palette.rewardSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .stroke(Theme.Palette.rewardText.opacity(0.25), lineWidth: 1)
         )
     }
 }

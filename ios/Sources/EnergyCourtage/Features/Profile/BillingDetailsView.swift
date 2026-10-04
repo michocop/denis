@@ -78,7 +78,7 @@ public struct BillingDetailsView: View {
                 }
                 .padding(Theme.Spacing.gutter)
             }
-            .background(Theme.Palette.canvas)
+            .background(BrandBackground())
             .navigationTitle("Informations de facturation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

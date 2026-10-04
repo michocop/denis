@@ -41,6 +41,11 @@
     <true/>
   </dict>
 
+  <!-- Dark, like trinity-energie.fr. Set here as well as in SwiftUI so the
+       launch screen and system sheets match before the first view draws. -->
+  <key>UIUserInterfaceStyle</key>
+  <string>Dark</string>
+
   <key>UISupportedInterfaceOrientations</key>
   <array>
     <string>UIInterfaceOrientationPortrait</string>

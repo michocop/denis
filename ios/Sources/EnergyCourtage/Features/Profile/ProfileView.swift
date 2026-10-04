@@ -64,7 +64,7 @@ public struct ProfileView: View {
         // source app has.
         NavigationStack {
         ZStack {
-            Theme.Palette.canvas.ignoresSafeArea()
+            BrandBackground()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
@@ -185,10 +185,10 @@ public struct ProfileView: View {
     private func identity(_ profile: Profile) -> some View {
         HStack(spacing: Theme.Spacing.l) {
             Text(profile.initials)
-                .font(.system(size: 22, weight: .semibold))
+                .font(Theme.Typography.display(22, .semibold, relativeTo: .title2))
                 .foregroundStyle(Theme.Palette.textPrimary)
                 .frame(width: 64, height: 64)
-                .background(Circle().fill(Color(hex: 0x9EEBD3)))
+                .background(Circle().fill(Theme.Palette.avatar))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(profile.fullName)

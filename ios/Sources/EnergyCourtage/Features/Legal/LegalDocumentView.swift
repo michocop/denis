@@ -102,7 +102,7 @@ public struct LegalDocumentView: View {
     public var body: some View {
         NavigationStack {
             ZStack {
-                Theme.Palette.canvas.ignoresSafeArea()
+                BrandBackground()
 
                 if let document {
                     VStack(spacing: 0) {

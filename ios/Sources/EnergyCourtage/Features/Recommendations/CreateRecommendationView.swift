@@ -76,7 +76,7 @@ public struct CreateRecommendationView: View {
                 }
                 .padding(Theme.Spacing.gutter)
             }
-            .background(Theme.Palette.canvas)
+            .background(BrandBackground())
             .navigationTitle("Nouvelle recommandation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

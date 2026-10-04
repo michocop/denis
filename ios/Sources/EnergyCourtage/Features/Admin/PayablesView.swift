@@ -77,7 +77,7 @@ public struct PayablesView: View {
 
     public var body: some View {
         ZStack(alignment: .bottom) {
-            Theme.Palette.canvas.ignoresSafeArea()
+            BrandBackground()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {

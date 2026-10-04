@@ -123,7 +123,7 @@ public struct ThreadDetailView: View {
 
             composer
         }
-        .background(Theme.Palette.canvas)
+        .background(BrandBackground())
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }

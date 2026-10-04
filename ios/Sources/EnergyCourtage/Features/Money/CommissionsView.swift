@@ -133,7 +133,7 @@ public struct CommissionsView: View {
             }
             .padding(Theme.Spacing.gutter)
         }
-        .background(Theme.Palette.canvas)
+        .background(BrandBackground())
         .navigationTitle("Mes gains")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }

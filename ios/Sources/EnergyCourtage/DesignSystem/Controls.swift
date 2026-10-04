@@ -2,8 +2,8 @@ import SwiftUI
 
 // MARK: - Segmented control
 
-/// The `Actives | Archivées` picker: a white pill sliding over a grey track,
-/// with the selected label in brand blue rather than black.
+/// The `Actives | Archivées` picker: the brand-blue pill sliding over a glass
+/// track, as the site draws its selected state.
 public struct SegmentedPicker<Value: Hashable>: View {
 
     /// A named type rather than a tuple: `ForEach` needs an identity, and
@@ -36,28 +36,26 @@ public struct SegmentedPicker<Value: Hashable>: View {
                     withAnimation(.snappy(duration: 0.22)) { selection = option.value }
                 } label: {
                     Text(option.title)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(isSelected ? Theme.Palette.brand : Theme.Palette.textPrimary)
+                        .font(Theme.Typography.label.weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.white : Theme.Palette.textSecondary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 11)
                         .background {
                             if isSelected {
-                                RoundedRectangle(cornerRadius: Theme.Radius.segmentPill,
-                                                 style: .continuous)
-                                    .fill(Theme.Palette.surface)
-                                    .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
+                                Capsule()
+                                    .fill(Theme.Palette.brandFill)
+                                    .shadow(color: Theme.Palette.brandFill.opacity(0.5),
+                                            radius: 10, y: 4)
                                     .matchedGeometryEffect(id: "pill", in: pill)
                             }
                         }
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.segmented, style: .continuous)
-                .fill(Theme.Palette.track)
-        )
+        .brandGlass(in: Capsule())
     }
 }
 
@@ -112,8 +110,12 @@ public struct StatusBanner: View {
             .padding(.horizontal, Theme.Spacing.m)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Theme.Palette.successSoft)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Theme.Palette.success.opacity(0.25), lineWidth: 1)
             )
     }
 }
@@ -144,7 +146,7 @@ public struct RefreshBanner: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, Theme.Spacing.l)
                 .padding(.vertical, 12)
-                .background(Capsule().fill(Theme.Palette.brand))
+                .background(Capsule().fill(Theme.Palette.brandFill))
             }
             .buttonStyle(.plain)
         }
@@ -156,6 +158,18 @@ public struct RefreshBanner: View {
 }
 
 // MARK: - Buttons
+
+/// A press that sinks a little and dims, so a tap is felt before the work
+/// behind it finishes.
+public struct PressableStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
 
 public struct SecondaryActionButton: View {
     private let title: String
@@ -172,14 +186,13 @@ public struct SecondaryActionButton: View {
                 if let systemImage { Image(systemName: systemImage) }
                 Text(title)
             }
-            .font(Theme.Typography.body)
-            .foregroundStyle(Theme.Palette.brand)
+            .font(Theme.Typography.body.weight(.semibold))
+            .foregroundStyle(Theme.Palette.textPrimary)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
-                    .stroke(Theme.Palette.hairline, lineWidth: 1)
-            )
+            .padding(.vertical, 15)
+            .contentShape(Capsule())
+            // the site's ghost button, as Liquid Glass where iOS has it
+            .brandGlass(in: Capsule(), interactive: true)
         }
         .buttonStyle(.plain)
     }
@@ -198,13 +211,20 @@ public struct PrimaryActionButton: View {
                 .font(Theme.Typography.body.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
-                        .fill(Theme.Palette.brand)
+                .padding(.vertical, 16)
+                // the site's primary: a blue pill, a line of light along its
+                // top edge, and a blue glow underneath
+                .background(Capsule().fill(Theme.Palette.brandFill))
+                .overlay(
+                    Capsule().strokeBorder(
+                        LinearGradient(colors: [Color.white.opacity(0.32), .clear],
+                                       startPoint: .top, endPoint: .center),
+                        lineWidth: 1)
                 )
+                .shadow(color: Theme.Palette.brandFill.opacity(0.55), radius: 16, y: 10)
+                .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableStyle())
     }
 }
 
@@ -218,16 +238,15 @@ public struct TertiaryActionButton: View {
     public var body: some View {
         Button(action: action) {
             Text(title)
-                .font(Theme.Typography.body)
+                .font(Theme.Typography.body.weight(.medium))
                 .foregroundStyle(Theme.Palette.brand)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
-                        .fill(Theme.Palette.track)
-                )
+                .background(Capsule().fill(Theme.Palette.track))
+                .overlay(Capsule().stroke(Theme.Palette.hairline, lineWidth: 1))
+                .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableStyle())
     }
 }
 
@@ -325,13 +344,21 @@ public struct LabelledField<Content: View>: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            // the site's form: a small muted label over a dark field
             Text(label)
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Palette.textPrimary)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .padding(.leading, 4)
             content
                 .font(Theme.Typography.body)
+                .foregroundStyle(Theme.Palette.textPrimary)
+                .tint(Theme.Palette.brand)
                 .padding(.horizontal, Theme.Spacing.l)
-                .padding(.vertical, 14)
+                .padding(.vertical, 15)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
                         .stroke(Theme.Palette.hairline, lineWidth: 1)

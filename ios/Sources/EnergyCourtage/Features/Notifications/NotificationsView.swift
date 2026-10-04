@@ -59,14 +59,14 @@ public struct NotificationsView: View {
     public var body: some View {
         NavigationStack {
             ZStack {
-                Theme.Palette.canvas.ignoresSafeArea()
+                BrandBackground()
 
                 if model.items.isEmpty {
                     empty
                 } else {
                     List(model.items) { item in
                         row(item)
-                            .listRowBackground(Theme.Palette.canvas)
+                            .listRowBackground(Color.clear)
                             .listRowSeparatorTint(Theme.Palette.hairline)
                     }
                     .listStyle(.plain)

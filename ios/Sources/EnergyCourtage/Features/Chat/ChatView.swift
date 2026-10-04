@@ -168,7 +168,7 @@ public struct ChatView: View {
     public var body: some View {
         NavigationStack {
             ZStack {
-                Theme.Palette.canvas.ignoresSafeArea()
+                BrandBackground()
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
                     Text("Chat")
@@ -236,7 +236,7 @@ public struct ChatView: View {
                 .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
                 .listRowSeparatorTint(Theme.Palette.hairline)
-                .listRowBackground(Theme.Palette.canvas)
+                .listRowBackground(Color.clear)
                 .swipeActions(edge: .leading) {
                     Button {
                         Task { await model.setPinned(!thread.pinned, on: thread) }
@@ -276,7 +276,7 @@ public struct ChatView: View {
     private var ticketComposer: some View {
         NavigationStack {
             ZStack {
-                Theme.Palette.canvas.ignoresSafeArea()
+                BrandBackground()
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
                     LabelledField("Sujet") {
                         TextField("Problème de virement", text: $ticketSubject)
@@ -393,7 +393,7 @@ struct ThreadRow: View {
                 .font(Theme.Typography.body.weight(.semibold))
                 .foregroundStyle(Theme.Palette.textPrimary)
                 .frame(width: 56, height: 56)
-                .background(Circle().fill(Color(hex: 0x9EEBD3)))
+                .background(Circle().fill(Theme.Palette.avatar))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {

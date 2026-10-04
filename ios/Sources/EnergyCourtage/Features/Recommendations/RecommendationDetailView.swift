@@ -134,7 +134,7 @@ public struct RecommendationDetailView: View {
                 }
                 .padding(Theme.Spacing.gutter)
             }
-            .background(Theme.Palette.canvas)
+            .background(BrandBackground())
             .navigationTitle(recommendation.filleulName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -269,7 +269,7 @@ public struct PersonalNotesView: View {
                 Spacer()
             }
             .padding(Theme.Spacing.gutter)
-            .background(Theme.Palette.canvas)
+            .background(BrandBackground())
             .navigationTitle(Strings.Reco.personalNotes)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
