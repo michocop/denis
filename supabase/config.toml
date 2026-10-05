@@ -7,7 +7,7 @@
 # project_id is the ref of the linked project. It is not a secret — it is the
 # subdomain of the project's public URL.
 
-project_id = "ldfqgbjkenoloqbqdevw"
+project_id = "mfnauyfkhwjsxapqdtiu"
 
 [api]
 enabled = true
