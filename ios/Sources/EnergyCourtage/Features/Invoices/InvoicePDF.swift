@@ -88,21 +88,24 @@ public enum InvoicePDF {
                 blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
+    /// One colour and greys, the way a document from an accountant looks:
+    /// white paper, navy for what matters, grey for the rest, hairlines for
+    /// structure. The mark's blue appears in the mark and nowhere else -- no
+    /// tinted tiles, no coloured pills -- so the page prints as well in black
+    /// and white as it reads on screen.
     private enum Ink {
+        /// Titles, figures, names, and the rules that carry weight.
         static let navy = color(0x0A1F4A)
-        static let brand = color(0x1F5FFF)
+        /// The inner triangle of the mark.
         static let mark = color(0x3C8BFF)
-        static let ice = color(0xC3D7FF)
-        static let text = color(0x0E1630)
+        static let text = color(0x1C2333)
         static let grey = color(0x5B6478)
+        /// Small capitals: labels and section headings.
+        static let label = color(0x6B7385)
         static let faint = color(0x8A93A6)
-        static let tint = color(0xF3F6FC)
-        static let tintBlue = color(0xEAF1FF)
-        static let border = color(0xDDE4F0)
-        static let green = color(0x0E9F6E)
-        static let greenTint = color(0xE3F6EE)
-        static let amber = color(0xB7791F)
-        static let amberTint = color(0xFBF1DE)
+        static let rule = color(0xE3E7EF)
+        /// The rule over a signature still awaited.
+        static let pending = color(0xD5DAE3)
     }
 
     /// Manrope and Sora at a given weight: the app's bundled faces are
@@ -132,6 +135,10 @@ public enum InvoicePDF {
         func bold(_ s: CGFloat) -> UIFont { size(s).bold }
         func display(_ s: CGFloat) -> UIFont { size(s).display }
     }
+
+    /// The tracking of small capitals. Any wider and the text layer splits
+    /// words ("AT TESTATION"), which a search of the filed copy would miss.
+    private static let capsKern: CGFloat = 0.2
 
     private static func attrs(_ font: UIFont, _ color: UIColor, kern: CGFloat = 0) -> [NSAttributedString.Key: Any] {
         // no ligatures: an "ff" drawn as one glyph reads back as nothing, and
@@ -172,10 +179,14 @@ public enum InvoicePDF {
         return lines
     }
 
-    private static func box(_ rect: CGRect, radius: CGFloat, fill: UIColor?, stroke: UIColor? = nil) {
-        let path = UIBezierPath(roundedRect: rect, cornerRadius: min(radius, rect.height / 2))
-        if let fill { fill.setFill(); path.fill() }
-        if let stroke { stroke.setStroke(); path.lineWidth = 0.75; path.stroke() }
+    /// A horizontal rule from `x` to `x + length`.
+    private static func rule(x: CGFloat = margin, y: CGFloat, length: CGFloat = content,
+                             color: UIColor = Ink.rule, width: CGFloat = 0.5) {
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: x, y: y))
+        path.addLine(to: CGPoint(x: x + length, y: y))
+        path.lineWidth = width
+        color.setStroke(); path.stroke()
     }
 
     /// The mark: an open triangle and a solid one inside (the site's SVG, 24×22).
@@ -240,31 +251,29 @@ public enum InvoicePDF {
         mutating func heading(_ label: String) {
             keep(40)
             y += 6
-            let a = attrs(fonts.bold(7.5), Ink.brand, kern: 0.45)
+            let a = attrs(fonts.bold(6.8), Ink.label, kern: capsKern)
             draw(label, x: margin, y: y, a)
             let w = width(label, a)
-            let rule = UIBezierPath()
-            rule.move(to: CGPoint(x: margin + w + 10, y: y + 5))
-            rule.addLine(to: CGPoint(x: pageSize.width - margin, y: y + 5))
-            rule.lineWidth = 0.5
-            Ink.border.setStroke(); rule.stroke()
+            InvoicePDF.rule(x: margin + w + 10, y: y + 4.5, length: content - w - 10)
             y += 16
         }
 
         func footer() {
             let line = pageSize.height - footerTop
-            let rule = UIBezierPath()
-            rule.move(to: CGPoint(x: margin, y: line))
-            rule.addLine(to: CGPoint(x: pageSize.width - margin, y: line))
-            rule.lineWidth = 0.5
-            Ink.border.setStroke(); rule.stroke()
-            logo(at: CGPoint(x: margin, y: line + 8), size: 9, line: Ink.navy)
-            let label = "\(doc.isCreditNote ? "Avoir" : "Facture") \(doc.number) · Trinity Énergie"
-            draw(label, x: margin + 14, y: line + 7, attrs(fonts.bold(7.2), Ink.grey))
-            drawRight("Page \(page) / \(totalPages)", right: pageSize.width - margin, y: line + 7,
-                      attrs(fonts.bold(7.2), Ink.grey))
-            draw("Empreinte SHA-256 du document signé : \(grouped(doc.documentSha256))",
-                 x: margin, y: line + 22, attrs(fonts.body(6.4), Ink.faint))
+            rule(y: line)
+            let a = attrs(fonts.body(7.2), Ink.grey)
+            draw("\(doc.isCreditNote ? "Avoir" : "Facture") \(doc.number) · Trinity Énergie",
+                 x: margin, y: line + 8, a)
+            drawRight("Page \(page) / \(totalPages)", right: pageSize.width - margin, y: line + 8, a)
+            // The digest apart from its label, in groups of eight that can be
+            // read out and compared. Not letter-spaced: tracking made the
+            // text layer read "f be79519", and a filed copy has to be
+            // searchable for its own fingerprint.
+            let label = "Empreinte SHA-256 du document signé : "
+            let labelAttrs = attrs(fonts.body(6.6), Ink.faint)
+            draw(label, x: margin, y: line + 22, labelAttrs)
+            draw(grouped(doc.documentSha256), x: margin + width(label, labelAttrs), y: line + 22,
+                 attrs(fonts.bold(6.6), Ink.grey))
         }
     }
 
@@ -279,7 +288,6 @@ public enum InvoicePDF {
             header(&L)
             keyFacts(&L)
             parties(&L)
-            if let mention = doc.selfBillingMention { callout(&L, mention) }
             lineItems(&L)
             totals(&L)
             mentions(&L)
@@ -303,54 +311,59 @@ public enum InvoicePDF {
         return format
     }
 
+    /// The mark and the name on the left; on the right what the document is,
+    /// its number, and that it is self-billed -- a mention the law requires,
+    /// so it sits where the eye looks first.
     private static func header(_ L: inout Layout) {
         let doc = L.doc, f = L.fonts
-        let band: CGFloat = 100
-        Ink.navy.setFill()
-        UIRectFill(CGRect(x: 0, y: 0, width: pageSize.width, height: band))
-        let sweep = UIBezierPath()
-        sweep.move(to: CGPoint(x: pageSize.width * 0.55, y: 0))
-        sweep.addLine(to: CGPoint(x: pageSize.width, y: 0))
-        sweep.addLine(to: CGPoint(x: pageSize.width, y: band))
-        sweep.addLine(to: CGPoint(x: pageSize.width * 0.72, y: band))
-        sweep.close()
-        Ink.brand.withAlphaComponent(0.16).setFill(); sweep.fill()
-        Ink.brand.setFill()
-        UIRectFill(CGRect(x: 0, y: band, width: pageSize.width, height: 3))
-
-        logo(at: CGPoint(x: margin, y: 26), size: 26, line: .white)
-        draw("TRINITY ÉNERGIE", x: margin + 36, y: 33, attrs(f.display(10.5), .white, kern: 2.4))
-        draw(doc.isCreditNote ? "Avoir en autofacturation"
-                              : "Autofacturation · établie au nom et pour le compte de l'apporteur",
-             x: margin, y: 63, attrs(f.body(8), Ink.ice))
-
-        drawRight(title(for: doc), right: pageSize.width - margin, y: 26, attrs(f.display(22), .white, kern: 1.5))
-        drawRight("N° \(doc.number)", right: pageSize.width - margin, y: 58, attrs(f.bold(11), Ink.ice))
-        if doc.isCreditNote, let original = doc.correctsNumber {
-            drawRight("Avoir sur la facture n° \(original)", right: pageSize.width - margin, y: 76,
-                      attrs(f.body(8), Ink.ice))
+        let top = L.y, right = pageSize.width - margin
+        logo(at: CGPoint(x: margin, y: top + 1), size: 20, line: Ink.navy)
+        draw("TRINITY ÉNERGIE", x: margin + 29, y: top + 5, attrs(f.display(10), Ink.navy, kern: 2.4))
+        if let c = doc.customer {
+            draw("\(c.address), \(c.postalCode) \(c.city)", x: margin, y: top + 28, attrs(f.body(8), Ink.grey))
         }
-        L.y = band + 3 + 18
+
+        drawRight(title(for: doc), right: right, y: top - 3, attrs(f.display(20), Ink.navy, kern: 1.5))
+        drawRight("N° \(doc.number)", right: right, y: top + 25, attrs(f.bold(10), Ink.navy))
+        var y = top + 39
+        drawRight(doc.isCreditNote ? "Avoir en autofacturation" : "Autofacturation",
+                  right: right, y: y, attrs(f.body(8), Ink.grey))
+        if doc.isCreditNote, let original = doc.correctsNumber {
+            y += 12
+            drawRight("Avoir sur la facture n° \(original)", right: right, y: y, attrs(f.body(8), Ink.grey))
+        }
+        L.y = y + 24
+        rule(y: L.y)
+        L.y += 14
     }
 
-    /// Three tiles: when it was issued, when it is due, how much.
+    /// When it was issued, when it is due, how it is paid, how much: four
+    /// facts in one row, all in the same voice. The amount is not singled out
+    /// here; the totals below are where it carries weight.
     private static func keyFacts(_ L: inout Layout) {
         let doc = L.doc, f = L.fonts
-        let gap: CGFloat = 10, h: CGFloat = 48, w = (content - gap * 2) / 3
-        let tiles: [(String, String, Bool)] = [
-            ("DATE D'ÉMISSION", doc.issuedOn, false),
-            ("ÉCHÉANCE", doc.dueOn ?? "À réception", false),
-            (doc.isCreditNote ? "MONTANT À DÉDUIRE" : "MONTANT TTC",
-             money(doc.amount.ttc, doc.amount.currency), true)
+        let facts: [(String, String)] = [
+            ("DATE D'ÉMISSION", doc.issuedOn),
+            ("ÉCHÉANCE", doc.dueOn ?? "À réception"),
+            ("RÈGLEMENT", doc.paymentMethod),
+            (doc.isCreditNote ? "MONTANT À DÉDUIRE" : "MONTANT TTC", money(doc.amount.ttc, doc.amount.currency))
         ]
-        for (i, tile) in tiles.enumerated() {
-            let x = margin + CGFloat(i) * (w + gap)
-            box(CGRect(x: x, y: L.y, width: w, height: h), radius: 10, fill: tile.2 ? Ink.brand : Ink.tint)
-            draw(tile.0, x: x + 14, y: L.y + 10, attrs(f.bold(6.8), tile.2 ? Ink.ice : Ink.faint, kern: 0.4))
-            draw(tile.1, x: x + 14, y: L.y + 22,
-                 attrs(tile.2 ? f.display(15) : f.bold(12.5), tile.2 ? .white : Ink.text))
+        let column = content / 4
+        let labelAttrs = attrs(f.bold(6.6), Ink.label, kern: capsKern)
+        let valueAttrs = attrs(f.bold(10.5), Ink.navy)
+        for (i, fact) in facts.enumerated() {
+            if i == facts.count - 1 {
+                drawRight(fact.0, right: margin + content, y: L.y, labelAttrs)
+                drawRight(fact.1, right: margin + content, y: L.y + 12, valueAttrs)
+            } else {
+                let x = margin + CGFloat(i) * column
+                draw(fact.0, x: x, y: L.y, labelAttrs)
+                draw(fact.1, x: x, y: L.y + 12, valueAttrs)
+            }
         }
-        L.y += h + 14
+        L.y += 34
+        rule(y: L.y)
+        L.y += 16
     }
 
     private static func supplierLines(_ doc: InvoiceDocument) -> [String] {
@@ -373,128 +386,111 @@ public enum InvoicePDF {
                               c.vatNumber.map { "TVA \($0)" } ?? ""].filter { !$0.isEmpty })
     }
 
-    /// The two parties, as cards side by side.
+    /// The two parties side by side, as columns of text rather than cards.
     private static func parties(_ L: inout Layout) {
         let doc = L.doc, f = L.fonts
-        let gap: CGFloat = 12, w = (content - gap) / 2, pad: CGFloat = 14, leading: CGFloat = 12.4
-        let inner = w - pad * 2
-        let nameAttrs = attrs(f.bold(10.5), Ink.text)
+        let gap: CGFloat = 28, w = (content - gap) / 2, leading: CGFloat = 12.2
+        let nameAttrs = attrs(f.bold(10.5), Ink.navy)
         let lineAttrs = attrs(f.body(8.6), Ink.grey)
         let customer = customerLines(doc)
-        let cards: [(String, String, [String])] = [
+        let columns: [(String, String, [String])] = [
             ("FOURNISSEUR · APPORTEUR", doc.apporteur.name, supplierLines(doc)),
             ("CLIENT", customer.0, customer.1)
         ]
         func measure(_ c: (String, String, [String])) -> CGFloat {
-            pad + 14 + CGFloat(wrap(c.1, nameAttrs, inner).count) * 14
-                + CGFloat(c.2.reduce(0) { $0 + wrap($1, lineAttrs, inner).count }) * leading + pad
+            13 + CGFloat(wrap(c.1, nameAttrs, w).count) * 14
+                + CGFloat(c.2.reduce(0) { $0 + wrap($1, lineAttrs, w).count }) * leading
         }
-        let h = cards.map(measure).max() ?? 0
+        let h = columns.map(measure).max() ?? 0
         L.keep(h)
-        for (i, card) in cards.enumerated() {
+        for (i, column) in columns.enumerated() {
             let x = margin + CGFloat(i) * (w + gap)
-            box(CGRect(x: x, y: L.y, width: w, height: h), radius: 10, fill: .white, stroke: Ink.border)
-            draw(card.0, x: x + pad, y: L.y + pad - 1, attrs(f.bold(6.8), Ink.brand, kern: 0.4))
-            var y = L.y + pad + 14
-            for line in wrap(card.1, nameAttrs, inner) { draw(line, x: x + pad, y: y, nameAttrs); y += 14 }
-            for text in card.2 {
-                for line in wrap(text, lineAttrs, inner) { draw(line, x: x + pad, y: y, lineAttrs); y += leading }
+            draw(column.0, x: x, y: L.y, attrs(f.bold(6.6), Ink.label, kern: capsKern))
+            var y = L.y + 13
+            for line in wrap(column.1, nameAttrs, w) { draw(line, x: x, y: y, nameAttrs); y += 14 }
+            for text in column.2 {
+                for line in wrap(text, lineAttrs, w) { draw(line, x: x, y: y, lineAttrs); y += leading }
             }
         }
-        L.y += h + 12
+        L.y += h + 24
     }
 
-    /// A line of emphasis with a brand bar on its left.
-    private static func callout(_ L: inout Layout, _ text: String) {
-        let a = attrs(L.fonts.bold(8.4), Ink.navy)
-        let leading: CGFloat = 11.8, pad: CGFloat = 10
-        let lines = wrap(text, a, content - 28)
-        let h = CGFloat(lines.count) * leading + pad * 2 - 2
-        L.keep(h)
-        box(CGRect(x: margin, y: L.y, width: content, height: h), radius: 6, fill: Ink.tintBlue)
-        Ink.brand.setFill()
-        UIRectFill(CGRect(x: margin, y: L.y, width: 3, height: h))
-        var y = L.y + pad - 1
-        for line in lines { draw(line, x: margin + 16, y: y, a); y += leading }
-        L.y += h + 12
-    }
-
-    /// Désignation · Qté · Prix unitaire HT · Montant HT.
+    /// Désignation · Qté · Prix unitaire HT · Montant HT, under a navy rule.
     private static func lineItems(_ L: inout Layout) {
         let doc = L.doc, f = L.fonts
-        let qtyX = margin + content - 210, unitX = margin + content - 150, totalX = margin + content - 12
-        let designationWidth = qtyX - margin - 24
-        let headAttrs = attrs(f.bold(7), .white, kern: 0.4)
+        let totalRight = margin + content, unitRight = totalRight - 96, qtyRight = unitRight - 96
+        let designationWidth = qtyRight - margin - 40
+        let headAttrs = attrs(f.bold(6.6), Ink.label, kern: capsKern)
 
         func headerRow(_ L: inout Layout) {
             L.keep(60)
-            box(CGRect(x: margin, y: L.y, width: content, height: 24), radius: 6, fill: Ink.navy)
-            draw("DÉSIGNATION", x: margin + 12, y: L.y + 8, headAttrs)
-            draw("QTÉ", x: qtyX, y: L.y + 8, headAttrs)
-            draw("PRIX UNIT. HT", x: unitX, y: L.y + 8, headAttrs)
-            drawRight("MONTANT HT", right: totalX, y: L.y + 8, headAttrs)
-            L.y += 32
+            draw("DÉSIGNATION", x: margin, y: L.y, headAttrs)
+            drawRight("QTÉ", right: qtyRight, y: L.y, headAttrs)
+            drawRight("PRIX UNIT. HT", right: unitRight, y: L.y, headAttrs)
+            drawRight("MONTANT HT", right: totalRight, y: L.y, headAttrs)
+            rule(y: L.y + 13, color: Ink.navy, width: 0.9)
+            L.y += 22
         }
         headerRow(&L)
 
         let amount = money(doc.amount.ht, doc.amount.currency)
-        let rowAttrs = attrs(f.bold(9.5), Ink.text)
+        let rowAttrs = attrs(f.bold(9.5), Ink.navy)
         let plain = attrs(f.body(9.5), Ink.text)
         for (i, line) in wrap(doc.attestation.prestation, rowAttrs, designationWidth).enumerated() {
             if L.y + 13.5 > L.bottom { L.newPage(); headerRow(&L) }
-            draw(line, x: margin + 12, y: L.y, rowAttrs)
+            draw(line, x: margin, y: L.y, rowAttrs)
             if i == 0 {
-                draw("1", x: qtyX + 4, y: L.y, plain)
-                draw(amount, x: unitX, y: L.y, plain)
-                drawRight(amount, right: totalX, y: L.y, rowAttrs)
+                drawRight("1", right: qtyRight, y: L.y, plain)
+                drawRight(amount, right: unitRight, y: L.y, plain)
+                drawRight(amount, right: totalRight, y: L.y, plain)
             }
             L.y += 13.5
         }
         L.text("Mise en relation avec \(doc.attestation.avec), intervenue le \(doc.attestation.intervenueLe).",
-               font: f.body(8), color: Ink.grey, x: margin + 12, width: designationWidth)
+               font: f.body(8), color: Ink.grey, width: designationWidth)
         L.y += 8
-        let rule = UIBezierPath()
-        rule.move(to: CGPoint(x: margin, y: L.y)); rule.addLine(to: CGPoint(x: margin + content, y: L.y))
-        rule.lineWidth = 0.75
-        Ink.border.setStroke(); rule.stroke()
+        rule(y: L.y)
         L.y += 14
     }
 
-    /// Totals, flush right, ending on a navy band. Payment terms on the left.
+    /// Totals flush right, the last under a navy rule; payment terms on the left.
     private static func totals(_ L: inout Layout) {
         let doc = L.doc, f = L.fonts, cur = doc.amount.currency
-        let w: CGFloat = 228, x = margin + content - w
+        let w: CGFloat = 200, x = margin + content - w, right = margin + content
         let rows = [("Total HT", money(doc.amount.ht, cur)),
                     ("TVA (\((doc.amount.vatRate as NSDecimalNumber).stringValue.replacingOccurrences(of: ".", with: ",")) %)",
                      money(doc.amount.vat, cur))]
         let termAttrs = attrs(f.body(8), Ink.grey)
-        let leftWidth = content - w - 24
+        let leftWidth = content - w - 40
         let terms = ["Règlement : \(doc.paymentMethod)" + (doc.dueOn.map { ", au plus tard le \($0)" } ?? "") + ".",
                      "Fait à \(doc.place), le \(doc.issuedOn)."].flatMap { wrap($0, termAttrs, leftWidth) }
-        L.keep(max(CGFloat(rows.count) * 20 + 40, CGFloat(terms.count) * 11.5 + 18))
+        L.keep(max(CGFloat(rows.count) * 16 + 34, CGFloat(terms.count) * 11.5))
         let top = L.y
 
-        draw("CONDITIONS", x: margin, y: top, attrs(f.bold(6.8), Ink.brand, kern: 0.4))
-        var ty = top + 14
+        var ty = top
         for line in terms { draw(line, x: margin, y: ty, termAttrs); ty += 11.5 }
 
         var y = top
         for (label, value) in rows {
-            draw(label, x: x + 12, y: y + 4, attrs(f.body(9.5), Ink.grey))
-            drawRight(value, right: x + w - 12, y: y + 4, attrs(f.body(9.5), Ink.text))
-            y += 20
+            draw(label, x: x, y: y, attrs(f.body(9), Ink.grey))
+            drawRight(value, right: right, y: y, attrs(f.body(9), Ink.grey))
+            y += 16
         }
-        y += 6
-        box(CGRect(x: x, y: y, width: w, height: 30), radius: 8, fill: Ink.navy)
-        draw(doc.isCreditNote ? "Total TTC à déduire" : "Total TTC", x: x + 12, y: y + 8,
-             attrs(f.bold(10), .white))
-        drawRight(money(doc.amount.ttc, cur), right: x + w - 12, y: y + 6, attrs(f.display(13), .white))
-        L.y = max(y + 30, ty) + 10
+        y += 3
+        rule(x: x, y: y, length: w, color: Ink.navy, width: 1.2)
+        y += 7
+        draw(doc.isCreditNote ? "Total TTC à déduire" : "Total TTC", x: x, y: y + 1, attrs(f.bold(10.5), Ink.navy))
+        drawRight(money(doc.amount.ttc, cur), right: right, y: y - 1, attrs(f.display(13), Ink.navy))
+        L.y = max(y + 22, ty) + 14
     }
 
+    /// The self-billing sentence with the article that allows it, the VAT
+    /// regime and the late-payment terms: plain text under one heading, as an
+    /// accountant would set them, rather than a highlighted box.
     private static func mentions(_ L: inout Layout) {
         let doc = L.doc, f = L.fonts
         L.heading("MENTIONS LÉGALES")
+        if let selfBilling = doc.selfBillingMention { L.text(selfBilling, font: f.body(8), color: Ink.grey) }
         L.text(doc.legalMentions, font: f.body(8), color: Ink.grey)
         if let late = doc.latePaymentMention { L.text(late, font: f.body(8), color: Ink.grey) }
         if !doc.isCreditNote {
@@ -511,42 +507,59 @@ public enum InvoicePDF {
         L.space(4)
     }
 
-    /// One panel per party: who signed, when, and what proves it.
+    /// One column per party under a rule -- navy once signed, pale while
+    /// awaited -- with the state said in words rather than shown as a pill.
     private static func signatures(_ L: inout Layout) {
         let doc = L.doc, f = L.fonts
-        let gap: CGFloat = 12, w = (content - gap) / 2, pad: CGFloat = 14, h: CGFloat = 96
-        L.keep(h + 24)   // the heading stays with its panels
+        let gap: CGFloat = 28, w = (content - gap) / 2, h: CGFloat = 74
+        L.keep(h + 24)   // the heading stays with its columns
         L.heading("SIGNATURES ÉLECTRONIQUES")
+        L.y += 2
         for (i, s) in doc.signatures.prefix(2).enumerated() {
             let x = margin + CGFloat(i) * (w + gap)
-            box(CGRect(x: x, y: L.y, width: w, height: h), radius: 10, fill: s.signed ? .white : Ink.tint,
-                stroke: Ink.border)
-            draw(s.role == "apporteur" ? "L'APPORTEUR" : "L'ENTREPRISE", x: x + pad, y: L.y + pad - 1,
-                 attrs(f.bold(6.8), Ink.faint, kern: 0.4))
+            rule(x: x, y: L.y, length: w, color: s.signed ? Ink.navy : Ink.pending, width: 1.2)
+            draw(s.role == "apporteur" ? "L'APPORTEUR" : "L'ENTREPRISE", x: x, y: L.y + 8,
+                 attrs(f.bold(6.6), Ink.label, kern: capsKern))
+            draw(s.name, x: x, y: L.y + 20, attrs(f.bold(10.5), Ink.navy))
 
-            let pill = s.signed ? "Signé" : "En attente"
-            let pillAttrs = attrs(f.bold(7.5), s.signed ? Ink.green : Ink.amber)
-            let pw = width(pill, pillAttrs) + 22
-            let pillRect = CGRect(x: x + w - pad - pw, y: L.y + pad - 3, width: pw, height: 16)
-            box(pillRect, radius: 8, fill: s.signed ? Ink.greenTint : Ink.amberTint)
-            (s.signed ? Ink.green : Ink.amber).setFill()
-            UIBezierPath(ovalIn: CGRect(x: pillRect.minX + 6.6, y: pillRect.midY - 2.4, width: 4.8, height: 4.8)).fill()
-            draw(pill, x: pillRect.minX + 15, y: pillRect.minY + 3, pillAttrs)
-
-            draw(s.name, x: x + pad, y: L.y + pad + 16, attrs(f.bold(11), Ink.text))
-            let evidence: [String] = s.signed
-                ? [s.signedAt.map { "Le \(parisDateTime.string(from: $0)) (heure de Paris)" }
-                    ?? "Signé électroniquement",
-                   s.smsVerified == true ? "Code SMS vérifié · \(s.smsPhone ?? "")" : "Session authentifiée",
-                   "Signature électronique · art. 1367 C. civ."]
-                : ["Signature attendue"]
-            for (j, line) in evidence.enumerated() {
-                let sms = j == 1 && s.smsVerified == true
-                draw(line, x: x + pad, y: L.y + pad + 38 + CGFloat(j) * 12.5,
-                     attrs(f.body(8), sms ? Ink.green : Ink.grey))
+            let statusY = L.y + 38
+            if s.signed {
+                tick(at: CGPoint(x: x, y: statusY + 1.5), color: Ink.navy)
+                draw(s.signedAt.map { "Signé électroniquement le \(parisDateTime.string(from: $0))" }
+                        ?? "Signé électroniquement",
+                     x: x + 11, y: statusY, attrs(f.bold(8), Ink.navy))
+                let evidence = [s.smsVerified == true ? "Code SMS vérifié · \(s.smsPhone ?? "")"
+                                                      : "Session authentifiée",
+                                "Heure de Paris · art. 1367 du Code civil"]
+                for (j, line) in evidence.enumerated() {
+                    draw(line, x: x + 11, y: statusY + 12 + CGFloat(j) * 11, attrs(f.body(7.8), Ink.grey))
+                }
+            } else {
+                ring(at: CGPoint(x: x, y: statusY + 1.5), color: Ink.faint)
+                draw("En attente de signature", x: x + 11, y: statusY, attrs(f.body(8), Ink.grey))
             }
         }
-        L.y += h + 10
+        L.y += h
+    }
+
+    /// A check mark drawn rather than typed: the brand faces have no ✓, and a
+    /// glyph borrowed from another font would differ from the server's copy.
+    private static func tick(at origin: CGPoint, color: UIColor) {
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: origin.x, y: origin.y + 3.4))
+        path.addLine(to: CGPoint(x: origin.x + 2.4, y: origin.y + 5.8))
+        path.addLine(to: CGPoint(x: origin.x + 6.6, y: origin.y + 0.6))
+        path.lineWidth = 1.1
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        color.setStroke(); path.stroke()
+    }
+
+    /// An empty circle: a signature still to come.
+    private static func ring(at origin: CGPoint, color: UIColor) {
+        let path = UIBezierPath(ovalIn: CGRect(x: origin.x + 0.5, y: origin.y, width: 6, height: 6))
+        path.lineWidth = 0.8
+        color.setStroke(); path.stroke()
     }
 
     /// "18.09.2026 à 12:00", in Paris time, where the parties are.

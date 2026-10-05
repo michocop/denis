@@ -349,15 +349,18 @@ actor DemoInvoiceStore {
 public struct PreviewInvoiceRepository: InvoiceRepository {
     public init() {}
 
+    static let sampleDigest = "6b3788b6c0f4de8ada808ece4ce874fe03115720fbe79519337ce86ea382d5d8"
+
     public func document(invoiceID: UUID) async throws -> InvoiceDocument {
         let apporteurSigned = await DemoInvoiceStore.shared.isSigned("apporteur")
         let entrepriseSigned = await DemoInvoiceStore.shared.isSigned("entreprise")
         return InvoiceDocument(
             number: "FA-2026-0001",
-            documentSha256: String(repeating: "a", count: 64),
+            // a real digest's shape: a row of "a"s read as a broken document
+            documentSha256: PreviewInvoiceRepository.sampleDigest,
             kind: "invoice",
             issuer: .init(name: "Pierre-Louis Tettamanti", company: "Trinity Énergie",
-                          city: "AIX-EN-PEVELE", siret: nil),
+                          city: "Aix-en-Pévèle", siret: nil),
             customer: .init(legalName: "Trinity Énergie", legalForm: "SAS",
                             shareCapital: "10 000 €", siren: "000000000", rcsCity: "Lille",
                             vatNumber: nil, address: "1 rue de la Gare",
@@ -375,7 +378,7 @@ public struct PreviewInvoiceRepository: InvoiceRepository {
                           currency: "EUR"),
             legalMentions: "TVA non applicable – Régime d'exonération de TVA (Article 293B du Code général des impôts)",
             paymentMethod: "Virement bancaire",
-            place: "AIX-EN-PEVELE",
+            place: "Aix-en-Pévèle",
             issuedOn: "17.09.2026",
             dueOn: "17.10.2026",
             selfBillingMention: "Autofacturation — facture établie par le client au nom et pour le compte du fournisseur (art. 289, I-2 du CGI).",

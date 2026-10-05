@@ -44,8 +44,8 @@ final class InvoicePDFTests: XCTestCase {
             "Je soussigné(e) Johann Lefeuvre atteste",
             "SIGNATURES ÉLECTRONIQUES", "L'APPORTEUR", "L'ENTREPRISE",
             "Page 1 / 1",
-            "Empreinte SHA-256 du document signé : "
-                + Array(repeating: String(repeating: "a", count: 8), count: 8).joined(separator: " ")
+            "Empreinte SHA-256 du document signé : 6b3788b6 c0f4de8a da808ece 4ce874fe "
+                + "03115720 fbe79519 337ce86e a382d5d8"
         ] {
             XCTAssertTrue(text.contains(expected), "the PDF says “\(expected)”")
         }
