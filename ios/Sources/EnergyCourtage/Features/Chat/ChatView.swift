@@ -37,10 +37,18 @@ public final class ChatViewModel {
         self.admin = admin
     }
 
+    /// A ticket is never a group, so "Groupes" has nothing to show there.
+    public var availableFilters: [Filter] {
+        tab == .tickets ? Filter.allCases.filter { $0 != .groups } : Filter.allCases
+    }
+
     public var visibleThreads: [ChatThread] {
         threads.filter { thread in
             let matchesTab = tab == .tickets ? thread.kind == .ticket : thread.kind != .ticket
             let matchesFilter: Bool
+            // "Groupes" chosen on Discussions, then Tickets opened, used to
+            // leave the ticket list empty: no ticket is a group.
+            let filter = availableFilters.contains(self.filter) ? self.filter : .all
             switch filter {
             case .all:      matchesFilter = !thread.archived
             case .unread:   matchesFilter = thread.unreadCount > 0 && !thread.archived
@@ -181,7 +189,8 @@ public struct ChatView: View {
                     ])
 
                     HStack(spacing: Theme.Spacing.m) {
-                        SearchField("Rechercher une discussion", text: $model.query)
+                        SearchField(model.tab == .tickets ? "Rechercher un ticket" : "Rechercher une discussion",
+                                    text: $model.query)
                         Button { compose() } label: {
                             Image(systemName: "square.and.pencil")
                                 .font(.system(size: 20))
@@ -227,6 +236,10 @@ public struct ChatView: View {
         .task {
             await model.load()
             await model.loadContacts()
+        }
+        // the selected chip has to be one that the tab shows
+        .onChange(of: model.tab) { _, _ in
+            if !model.availableFilters.contains(model.filter) { model.filter = .all }
         }
         // a notification about a message opens its conversation
         .onChange(of: PushCenter.shared.route, initial: true) { _, pushed in
@@ -354,7 +367,7 @@ public struct ChatView: View {
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.m) {
-                ForEach(ChatViewModel.Filter.allCases) { filter in
+                ForEach(model.availableFilters) { filter in
                     let isSelected = model.filter == filter
                     Button { model.filter = filter } label: {
                         Text(filter.rawValue)
