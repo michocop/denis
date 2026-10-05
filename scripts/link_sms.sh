@@ -23,6 +23,15 @@ if [ -z "$REF" ]; then
 fi
 
 cd "$(dirname "$0")/.."
+# supabase/config.toml signs the auth-email hook with env(SEND_EMAIL_HOOK_SECRET),
+# and the CLI refuses every command while it is unset. The value lives in
+# supabase/.env (git-ignored), which the CLI reads by itself, so every command
+# -- these scripts or a hand-typed one -- uses the one the hook was given.
+if ! grep -qs '^SEND_EMAIL_HOOK_SECRET=' supabase/.env; then
+  printf 'SEND_EMAIL_HOOK_SECRET=v1,whsec_%s\n' "$(openssl rand -base64 32)" >> supabase/.env
+  chmod 600 supabase/.env
+fi
+export SEND_EMAIL_HOOK_SECRET="$(sed -n 's/^SEND_EMAIL_HOOK_SECRET=//p' supabase/.env)"
 DT="$PWD/.devtools"
 
 # ------------------------------------------------------------ 1. the CLI

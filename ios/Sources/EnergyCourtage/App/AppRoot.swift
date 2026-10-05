@@ -445,7 +445,8 @@ public struct AppRootView: View {
                     try await model.signIn(email: email, password: password)
                 },
                 onCreateAccount: { showsSignUp = true },
-                onForgotPassword: { showsForgotPassword = true }
+                onForgotPassword: { showsForgotPassword = true },
+                onDemo: { asAdmin in model.startDemo(asAdmin: asAdmin) }
             )
             if let message {
                 Text(message)

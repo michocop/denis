@@ -38,6 +38,21 @@ final class DocumentsTests: XCTestCase {
         XCTAssertEqual(PDFDocument(data: upload.data)?.pageCount, 2)
     }
 
+    /// A scan arrives at the camera's resolution; what is uploaded is a
+    /// fraction of it, and still a page per scan.
+    func testAScanIsCompressedToAFewHundredKilobytesAPage() throws {
+        let noisy = UIGraphicsImageRenderer(size: CGSize(width: 3024, height: 4032), format: {
+            let f = UIGraphicsImageRendererFormat(); f.scale = 1; return f }()).image { context in
+            for i in 0..<400 {   // text-like detail, so the JPEG has something to keep
+                UIColor(white: CGFloat(i % 7) / 7, alpha: 1).setFill()
+                context.fill(CGRect(x: (i * 37) % 3000, y: (i * 53) % 4000, width: 180, height: 14))
+            }
+        }
+        let upload = try XCTUnwrap(DocumentSources.upload(fromScannedPages: [noisy, noisy]))
+        XCTAssertEqual(PDFDocument(data: upload.data)?.pageCount, 2)
+        XCTAssertLessThan(upload.data.count, 1_500_000, "two full-resolution pages fit in well under 1.5 MB")
+    }
+
     func testAFileOverTenMegabytesIsRefusedBeforeItIsSent() async {
         let repository = PreviewDocumentsRepository()
         let huge = DocumentUpload(data: Data(count: DocumentUpload.maxBytes + 1),

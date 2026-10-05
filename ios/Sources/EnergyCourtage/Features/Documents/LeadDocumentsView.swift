@@ -24,7 +24,7 @@ enum DocumentSources {
         let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
         }
-        guard let jpeg = resized.jpegData(compressionQuality: 0.8) else { return nil }
+        guard let jpeg = resized.jpegData(compressionQuality: 0.75) else { return nil }
         return DocumentUpload(data: jpeg, filename: "\(name).jpg", mimeType: "image/jpeg")
         #else
         return nil
@@ -47,6 +47,23 @@ enum DocumentSources {
         throw DocumentError.unsupported
     }
 
+    #if canImport(UIKit)
+    /// The image at most `longestSide` pixels long, re-encoded as JPEG, so that
+    /// drawing it into a PDF embeds the compressed bytes.
+    static func compressed(_ image: UIImage, longestSide: CGFloat, quality: CGFloat) -> UIImage? {
+        let longest = max(image.size.width, image.size.height)
+        let scale = min(1, longestSide / max(longest, 1))
+        let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return resized.jpegData(compressionQuality: quality).flatMap(UIImage.init(data:))
+    }
+    #endif
+
     /// Scanned pages, one A4 page each, as a single PDF: what an accountant
     /// expects to receive, rather than a handful of loose photos.
     static func upload(fromScannedPages pages: [Any]) -> DocumentUpload? {
@@ -54,8 +71,12 @@ enum DocumentSources {
         let images = pages.compactMap { $0 as? UIImage }
         guard !images.isEmpty else { return nil }
         let a4 = CGRect(x: 0, y: 0, width: 595.2, height: 841.8)
+        // A scan comes at the camera's full resolution, several megabytes a page
+        // once in a PDF. 1700 px on the long side is 200 dpi on A4 -- every
+        // figure on a bill stays legible -- and JPEG keeps each page small.
+        let pagesToDraw = images.map { compressed($0, longestSide: 1700, quality: 0.7) ?? $0 }
         let data = UIGraphicsPDFRenderer(bounds: a4).pdfData { context in
-            for image in images {
+            for image in pagesToDraw {
                 context.beginPage()
                 let scale = min(a4.width / image.size.width, a4.height / image.size.height)
                 let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)

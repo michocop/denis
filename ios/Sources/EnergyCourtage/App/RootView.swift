@@ -263,16 +263,22 @@ public struct SignInView: View {
     @State private var errorMessage: String?
     @State private var isWorking = false
 
+    @State private var choosesDemo = false
+
     private let signIn: (String, String) async throws -> Void
     private let onCreateAccount: () -> Void
     private let onForgotPassword: () -> Void
+    /// Opens the app on sample data, as an apporteur (false) or as the company.
+    private let onDemo: ((Bool) -> Void)?
 
     public init(signIn: @escaping (String, String) async throws -> Void,
                 onCreateAccount: @escaping () -> Void,
-                onForgotPassword: @escaping () -> Void) {
+                onForgotPassword: @escaping () -> Void,
+                onDemo: ((Bool) -> Void)? = nil) {
         self.signIn = signIn
         self.onCreateAccount = onCreateAccount
         self.onForgotPassword = onForgotPassword
+        self.onDemo = onDemo
     }
 
     public var body: some View {
@@ -352,6 +358,26 @@ public struct SignInView: View {
                     .foregroundStyle(Theme.Palette.textSecondary)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
+
+                // Sign-up is closed, so without this nobody uninvited -- a
+                // prospect being shown the app, Apple's reviewers -- could
+                // see anything. Sample data only, said so on every screen.
+                if onDemo != nil {
+                    Button { choosesDemo = true } label: {
+                        Label("Découvrir l'application (démo)", systemImage: "sparkles")
+                            .font(Theme.Typography.label)
+                            .foregroundStyle(Theme.Palette.brand)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .confirmationDialog("Découvrir avec des données de démonstration",
+                                        isPresented: $choosesDemo, titleVisibility: .visible) {
+                        Button("Vue apporteur") { onDemo?(false) }
+                        Button("Vue entreprise") { onDemo?(true) }
+                        Button("Annuler", role: .cancel) {}
+                    } message: {
+                        Text("Aucune donnée réelle : les noms, montants et documents sont fictifs.")
+                    }
+                }
             }
             .padding(Theme.Spacing.gutter)
         }

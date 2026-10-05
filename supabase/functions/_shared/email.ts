@@ -1,9 +1,10 @@
-// Transactional email through Resend (https://resend.com), EU region.
+// Transactional email, through Brevo -- the account that already sends the SMS
+// codes, 300 emails a day on its free plan -- or through Resend when a Resend
+// key is set instead.
 //
-// Optional by design: with no RESEND_API_KEY the caller learns the mail was
-// not sent and carries on, which is the state a project is in before an email
-// provider is set up. Supabase's own SMTP is for auth mail at a handful an
-// hour, not for invoices.
+// Optional by design: with no key, or no verified sender in MAIL_FROM, the
+// caller learns the mail was not sent and carries on, which is the state a
+// project is in before an email provider is set up.
 
 export interface Attachment {
   filename: string;
@@ -55,6 +56,46 @@ export function resendSender(
     }
     return "sent";
   };
+}
+
+/** "Trinity Énergie <factures@x.fr>" -> its name and address. */
+export function parseFrom(from: string): { name?: string; email: string } {
+  const m = from.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  return m ? { name: m[1] || undefined, email: m[2] } : { email: from.trim() };
+}
+
+export function brevoSender(
+  apiKey = Deno.env.get("BREVO_API_KEY"),
+  from = Deno.env.get("MAIL_FROM"),
+  fetcher: typeof fetch = fetch,
+): SendMail {
+  return async (mail) => {
+    // the sender has to be one Brevo has verified, so there is no default
+    if (!apiKey || !from) return "not_configured";
+    const response = await fetcher("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "content-type": "application/json", "accept": "application/json" },
+      body: JSON.stringify({
+        sender: parseFrom(from),
+        to: mail.to.map((email) => ({ email })),
+        subject: mail.subject,
+        htmlContent: mail.html,
+        textContent: mail.text,
+        ...(mail.attachments?.length
+          ? { attachment: mail.attachments.map((a) => ({ name: a.filename, content: base64(a.content) })) }
+          : {}),
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`email provider refused the message: ${response.status} ${await response.text()}`);
+    }
+    return "sent";
+  };
+}
+
+/** The provider this project has: Resend if its key is set, Brevo otherwise. */
+export function mailSender(): SendMail {
+  return Deno.env.get("RESEND_API_KEY") ? resendSender() : brevoSender();
 }
 
 /** Escapes text for the small HTML bodies these mails carry. */

@@ -21,10 +21,9 @@ options:
 configFiles:
   Debug: Config.xcconfig
   Release: Config.xcconfig
-settings:
-  base:
-    SUPABASE_URL: ""
-    SUPABASE_ANON_KEY: ""
+# No SUPABASE_URL / SUPABASE_ANON_KEY under `settings:` here: project build
+# settings override the config file above, and empty defaults there shipped an
+# archive pointing at nothing. Unset, they expand to empty all the same.
 packages:
   EnergyCourtage:
     path: .
@@ -52,5 +51,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"      # iPhone; the source app is phone-only
-        CURRENT_PROJECT_VERSION: "1"
-        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"   # scripts/release.sh stamps each upload
+        MARKETING_VERSION: "1.0"
+        DEVELOPMENT_TEAM: 36T6NXA5JU
+        CODE_SIGN_STYLE: Automatic
