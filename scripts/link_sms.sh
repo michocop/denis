@@ -55,9 +55,9 @@ has_table() {
 if ! has_table; then
   echo
   echo "The database has no edge_hooks table yet: the schema has not been pushed."
-  read -r -p "Push all migrations now (supabase db push)? [y/N] " push
-  if [ "$push" = "y" ] || [ "$push" = "Y" ]; then
-    "$SB" db push --linked
+  read -r -p "Push all migrations now (supabase db push)? [Y/n] " push </dev/tty
+  if [ "$push" != "n" ] && [ "$push" != "N" ]; then
+    "$SB" db push --linked --yes
   else
     echo "Push the migrations first, then run this again." >&2
     exit 1
@@ -67,7 +67,7 @@ fi
 # ----------------------------------------------------- 3. the Brevo key
 echo
 echo "Brevo API key: brevo.com → SMTP & API → API Keys → Generate a new API key."
-read -r -s -p "Paste it here (hidden): " BREVO_KEY
+read -r -s -p "Paste it here (hidden): " BREVO_KEY </dev/tty
 echo
 case "$BREVO_KEY" in
   xkeysib-*) ;;
@@ -103,7 +103,7 @@ echo "==> Pointing the database at it"
 
 # ------------------------------------------------ 7. a test SMS
 echo
-read -r -p "Send a test SMS? Number in international form (+33612345678), or Enter to skip: " TO
+read -r -p "Send a test SMS? Number in international form (+33612345678), or Enter to skip: " TO </dev/tty
 if [ -n "$TO" ]; then
   curl -sS -X POST "https://$REF.supabase.co/functions/v1/send-sms" \
     -H "content-type: application/json" -H "x-hook-secret: $HOOK_SECRET" \
