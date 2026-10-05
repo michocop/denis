@@ -279,9 +279,12 @@ public enum InvoicePDF {
         layout.text("SIGNATURES", font: heading)
         layout.space(4)
         for signature in doc.signatures {
-            let state = signature.signed
+            var state = signature.signed
                 ? "signé électroniquement\(signature.signedAt.map { " le " + Self.date.string(from: $0) } ?? "")"
                 : "en attente"
+            if signature.signed, signature.smsVerified == true {
+                state += ", code SMS vérifié\(signature.smsPhone.map { " (\($0))" } ?? "")"
+            }
             layout.text("\(signature.label) — \(signature.name) — \(state)", font: body)
             layout.space(2)
         }

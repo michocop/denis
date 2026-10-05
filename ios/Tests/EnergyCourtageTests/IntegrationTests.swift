@@ -476,6 +476,9 @@ final class IntegrationTests: XCTestCase {
         XCTAssertGreaterThan(pdf.count, 1000)
         let text = (PDFDocument(data: pdf)?.string ?? "")
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        XCTAssertFalse(text.contains("code SMS"), "no signature here was confirmed by SMS")
+        XCTAssertEqual(document.signatures.map(\.smsVerified), [false, false],
+                       "and the document says so for each")
         for expected in ["FACTURE N° \(document.number)", "12 rue des Lilas", "SIREN",
                          "Autofacturation", "Échéance", "500,00 €",
                          "Johann Lefeuvre — signé électroniquement",
@@ -490,6 +493,34 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(note.correctsNumber, document.number)
         let corrected = try await company.issue(recommendationID: created.id)
         XCTAssertNotEqual(corrected, invoiceID, "a credited invoice can be reissued")
+    }
+
+    /// The SMS calls reach the right functions with the right parameters, and
+    /// what comes back decodes. This server has no send-sms function, which is
+    /// a project before SMS is set up: signing needs no code, and asking for
+    /// one to verify a number says why it cannot be sent.
+    func testSmsStatusAndCodesTalkToTheServer() async throws {
+        let sms = SupabaseSmsRepository(client: await signedIn(as: Self.johann))
+
+        let status = try await sms.status()
+        XCTAssertFalse(status.smsRequired, "no send-sms hook on this server")
+
+        let answer = try await sms.confirm(.verifyPhone, code: "123456", invoiceID: nil)
+        XCTAssertFalse(answer.ok, "a code nobody asked for is not accepted")
+        XCTAssertEqual(answer.reason, "expired")
+        XCTAssertTrue(answer.needsNewCode)
+
+        do {
+            _ = try await sms.requestCode(.verifyPhone, invoiceID: nil, phone: "+33612345678")
+            XCTFail("no code can be sent before SMS is set up")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("SMS"), error.localizedDescription)
+        }
+
+        do {
+            _ = try await sms.requestCode(.signInvoice, invoiceID: UUID(), phone: nil)
+            XCTFail("a code for somebody else's invoice is refused")
+        } catch {}
     }
 
     /// The client sends a PATCH like any other; the database is what refuses it.

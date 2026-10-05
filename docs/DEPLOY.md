@@ -285,3 +285,47 @@ connect a sender under **Project Settings → Authentication → SMTP**:
 Only two are reachable in this app — **Confirm signup** and **Reset password**
 — because sign-up is invitation-based and the invitation code is read out by
 an admin rather than emailed.
+
+## 9. SMS codes (Brevo)
+
+Once this is set up, an apporteur signs an invoice only with a six-digit code
+sent by SMS to a mobile number they verified in the app (Profil → Vérifier mon
+mobile). The signature records that it was confirmed, and to which masked
+number, and the PDF prints it. Until the `send-sms` hook below exists, signing
+works without a code, so the order of these steps does not matter.
+
+Brevo is the provider: about €0.045 per SMS to France, bought in packs (from
+100 SMS) that do not expire, with no subscription.
+
+1. Create an account at brevo.com and buy SMS credits
+   (**Campaigns → SMS → Buy credits**, or the credits page in the account menu).
+2. Create an API key: **SMTP & API → API Keys → Generate a new API key**.
+3. Deploy the function and give it the key:
+
+```sh
+supabase functions deploy send-sms --no-verify-jwt
+supabase secrets set \
+  SEND_SMS_HOOK_SECRET="$(openssl rand -hex 32)" \
+  BREVO_API_KEY=xkeysib-... \
+  SMS_SENDER=Trinity
+```
+
+   `SMS_SENDER` is the name shown as the sender: letters and digits only, 11 at
+   most. French operators accept an alphanumeric sender for transactional SMS.
+
+4. Point the database at it, with the same secret, in the SQL editor:
+
+```sql
+insert into edge_hooks (name, url, secret) values
+  ('send-sms', 'https://<project-ref>.supabase.co/functions/v1/send-sms', '<SEND_SMS_HOOK_SECRET>');
+```
+
+From that moment signatures need a code. To turn it off again:
+`update edge_hooks set enabled = false where name = 'send-sms';`
+
+What the database enforces: a code expires after 10 minutes, allows 5 tries,
+works once, and is bound to one person, one purpose and (for a signature) one
+invoice. It is stored only as a hash. A person can ask for one code every 30
+seconds and six an hour. Changing the phone number in the profile removes the
+verification. Failed sends show in **Edge Functions → send-sms → Logs** (the
+number is masked there, and the code never appears).

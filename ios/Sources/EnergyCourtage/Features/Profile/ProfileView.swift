@@ -74,6 +74,8 @@ public struct ProfileView: View {
     @State private var showsBillingDetails = false
     @State private var exportURL: URL?
     @State private var isExporting = false
+    @State private var smsStatus: SmsStatus?
+    @State private var verifiesPhone = false
     private let dependencies: Dependencies
     private let onSignOut: () -> Void
 
@@ -126,6 +128,7 @@ public struct ProfileView: View {
                                 consoleRow("Mes gains", icon: "eurosign.circle")
                             }
                             billing(profile)
+                            if let smsStatus, smsStatus.smsRequired { mobileCard(smsStatus) }
                         }
                     }
 
@@ -201,7 +204,26 @@ public struct ProfileView: View {
                 .padding(.bottom, Theme.Spacing.xl)
             }
         }
-        .task { await model.load() }
+        .task {
+            await model.load()
+            smsStatus = try? await dependencies.sms.status()
+        }
+        .sheet(isPresented: $verifiesPhone) {
+            NavigationStack {
+                PhoneVerificationView(
+                    repository: dependencies.sms,
+                    initialPhone: model.profile?.phone ?? "",
+                    demoHint: dependencies.sms is PreviewSmsRepository
+                        ? "Démo : le code est \(PreviewSmsRepository.demoCode)." : nil
+                ) {
+                    verifiesPhone = false
+                    Task {
+                        smsStatus = try? await dependencies.sms.status()
+                        await model.load()
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $showsBillingDetails) {
             if let profile = model.profile {
                 BillingDetailsView(profile: profile) { try await model.save($0) }
@@ -226,6 +248,37 @@ public struct ProfileView: View {
             Text("Vos recommandations et vos factures sont conservées pour des raisons légales, mais votre compte et vos données personnelles seront supprimés.")
         }
         }
+    }
+
+    /// The number signatures are confirmed on. Changing the phone in the
+    /// billing details takes the verification away, so this is where it is
+    /// given back.
+    private func mobileCard(_ status: SmsStatus) -> some View {
+        Button { verifiesPhone = true } label: {
+            HStack(spacing: Theme.Spacing.m) {
+                Image(systemName: status.phoneVerified ? "checkmark.shield.fill" : "exclamationmark.shield")
+                    .font(.system(size: 21))
+                    .foregroundStyle(status.phoneVerified ? Theme.Palette.success : Theme.Palette.rewardText)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(status.phoneVerified ? "Mobile vérifié" : "Vérifier mon mobile")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text(status.phoneVerified
+                         ? "\(status.maskedPhone ?? "") · reçoit les codes de signature"
+                         : "Nécessaire pour signer vos factures")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.textSecondary)
+            }
+            .padding(Theme.Spacing.l)
+            .cardSurface()
+        }
+        .buttonStyle(PressableStyle())
     }
 
     private func consoleRow(_ title: String, icon: String) -> some View {

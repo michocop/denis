@@ -2,7 +2,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { PDFDict, PDFDocument, PDFName } from "npm:pdf-lib@1.17.1";
 import { Deps, retainInvoice } from "./handler.ts";
-import { InvoiceDocument, renderInvoicePdf, sha256Hex } from "../_shared/invoice_pdf.ts";
+import { InvoiceDocument, renderInvoicePdf, sha256Hex, signatureLine } from "../_shared/invoice_pdf.ts";
 import { Mail } from "../_shared/email.ts";
 
 export const sample: InvoiceDocument & { pdf_path?: string | null } = {
@@ -139,4 +139,18 @@ Deno.test("a long label flows onto a second page instead of off the first", asyn
   const long = { ...sample, attestation: { ...sample.attestation, prestation: "Apport d'affaires détaillé. ".repeat(160) } };
   const pdf = await PDFDocument.load(await renderInvoicePdf(long));
   assert(pdf.getPageCount() > 1);
+});
+
+Deno.test("a signature confirmed by SMS says so on the document, with the masked number", async () => {
+  const line = signatureLine({ role: "apporteur", name: "Johann Lefeuvre", signed: true,
+    signed_at: "2026-09-18T10:00:00Z", sms_verified: true, sms_phone: "+33 6 •• •• •• 78" });
+  assert(line.startsWith("Signature de l'apporteur — Johann Lefeuvre — signé électroniquement le "));
+  assert(line.endsWith(", code SMS vérifié (+33 6 •• •• •• 78)"));
+  assertEquals(signatureLine({ role: "entreprise", name: "P", signed: false, sms_verified: false }),
+    "Signature de l'entreprise — P — en attente");
+
+  const doc = structuredClone(sample);
+  doc.signatures[0] = { ...doc.signatures[0], sms_verified: true, sms_phone: "+33 6 •• •• •• 78" };
+  const pdf = await renderInvoicePdf(doc);
+  assert(pdf.length > 1000, "and the masked number renders in the embedded font");
 });

@@ -1,6 +1,20 @@
 import SwiftUI
 import Observation
 
+/// Where an apporteur's signature stands between "Signer" and the signature:
+/// a number to prove first, or a code on its way to it.
+public enum SigningStep: Identifiable, Equatable {
+    case verifyPhone
+    case enterCode(maskedPhone: String)
+
+    public var id: String {
+        switch self {
+        case .verifyPhone: "verify"
+        case .enterCode: "code"
+        }
+    }
+}
+
 @Observable
 public final class InvoiceViewModel {
     public private(set) var document: InvoiceDocument?
@@ -15,12 +29,18 @@ public final class InvoiceViewModel {
     /// screen stops offering to issue a second one.
     public private(set) var creditNoteIssued = false
 
+    /// Set while the apporteur proves their number or types the code.
+    public var signingStep: SigningStep?
+
     private let invoiceID: UUID
     private let repository: InvoiceRepository
+    public let sms: SmsRepository
 
-    public init(invoiceID: UUID, repository: InvoiceRepository) {
+    public init(invoiceID: UUID, repository: InvoiceRepository,
+                sms: SmsRepository = PreviewSmsRepository()) {
         self.invoiceID = invoiceID
         self.repository = repository
+        self.sms = sms
     }
 
     /// Fetches the retained document, or produces and keeps it the first time.
@@ -67,6 +87,72 @@ public final class InvoiceViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// "Signer", confirmed. The company signs from an admin's own session; the
+    /// apporteur's signature -- the one self-billing rests on -- also takes a
+    /// code sent by SMS to their verified mobile, once the company has SMS set
+    /// up. The server enforces this; here it only decides what comes next.
+    @MainActor
+    public func startSigning(asCompany: Bool) async {
+        errorMessage = nil
+        guard !asCompany else { return await sign() }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let status = try await sms.status()
+            if !status.smsRequired {
+                isWorking = false
+                return await sign()
+            }
+            if !status.phoneVerified {
+                signingStep = .verifyPhone
+                return
+            }
+            try await sendSigningCode()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Sends the code bound to this invoice. If the server needs none after
+    /// all, the signature goes ahead.
+    @MainActor
+    public func sendSigningCode() async throws {
+        let challenge = try await sms.requestCode(.signInvoice, invoiceID: invoiceID, phone: nil)
+        if challenge.required {
+            signingStep = .enterCode(maskedPhone: challenge.maskedPhone ?? "votre mobile")
+        } else {
+            signingStep = nil
+            isWorking = false
+            await sign()
+        }
+    }
+
+    /// The number has just been proven: on to the code for this invoice.
+    @MainActor
+    public func phoneVerified() async {
+        signingStep = nil
+        do { try await sendSigningCode() }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    @MainActor
+    public func resendSigningCode() async throws -> SmsChallenge {
+        try await sms.requestCode(.signInvoice, invoiceID: invoiceID, phone: nil)
+    }
+
+    @MainActor
+    public func confirmSigningCode(_ code: String) async throws -> SmsConfirmation {
+        try await sms.confirm(.signInvoice, code: code, invoiceID: invoiceID)
+    }
+
+    /// The code was right: the server holds it for this invoice, and the
+    /// signature uses it up.
+    @MainActor
+    public func codeConfirmed() async {
+        signingStep = nil
+        await sign()
     }
 
     /// Signs the digest the server issued with the document. The server checks
@@ -141,6 +227,45 @@ public struct InvoiceView: View {
         .task {
             await model.load()
             if model.document?.isFullySigned == true { await model.preparePDF() }
+        }
+        .sheet(item: $model.signingStep) { step in
+            NavigationStack { signingSheet(step) }
+                .presentationDetents([.large])
+                .interactiveDismissDisabled(model.isWorking)
+        }
+    }
+
+    // MARK: - The code by SMS
+
+    private var demoHint: String? {
+        model.sms is PreviewSmsRepository ? "Démo : le code est \(PreviewSmsRepository.demoCode)." : nil
+    }
+
+    @ViewBuilder
+    private func signingSheet(_ step: SigningStep) -> some View {
+        switch step {
+        case .verifyPhone:
+            PhoneVerificationView(repository: model.sms, demoHint: demoHint) {
+                Task { await model.phoneVerified() }
+            }
+        case .enterCode(let maskedPhone):
+            ScrollView {
+                SmsCodeView(
+                    title: "Signer la facture",
+                    explanation: "Ce code confirme que c'est bien vous qui signez \(model.document?.number ?? "cette facture").",
+                    maskedPhone: maskedPhone,
+                    demoHint: demoHint,
+                    resend: { try await model.resendSigningCode() },
+                    confirm: { try await model.confirmSigningCode($0) },
+                    onConfirmed: { Task { await model.codeConfirmed() } })
+                .padding(Theme.Spacing.gutter)
+            }
+            .background(BrandBackground())
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { model.signingStep = nil }
+                }
+            }
         }
     }
 
@@ -376,9 +501,16 @@ public struct InvoiceView: View {
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.Palette.textPrimary)
                     Spacer()
-                    Text(signature.signed ? "signé" : "en attente")
-                        .font(Theme.Typography.secondary)
-                        .foregroundStyle(Theme.Palette.textSecondary)
+                    if signature.signed, signature.smsVerified == true {
+                        Label("signé · SMS", systemImage: "checkmark.shield")
+                            .font(Theme.Typography.secondary)
+                            .foregroundStyle(Theme.Palette.textSecondary)
+                            .accessibilityLabel("signé, confirmé par SMS")
+                    } else {
+                        Text(signature.signed ? "signé" : "en attente")
+                            .font(Theme.Typography.secondary)
+                            .foregroundStyle(Theme.Palette.textSecondary)
+                    }
                 }
                 .accessibilityElement(children: .combine)
             }
@@ -394,6 +526,12 @@ public struct InvoiceView: View {
                     confirmsSigning = true
                 }
                 .disabled(model.isWorking)
+                if let message = model.errorMessage {
+                    Text(message)
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.destructive)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else if !doc.isFullySigned {
                 // The button stayed on screen after signing, and tapping it
                 // again only produced an error from the server.
@@ -408,7 +546,7 @@ public struct InvoiceView: View {
         .cardSurface()
         .confirmationDialog("Signer la facture \(doc.number) ?",
                             isPresented: $confirmsSigning, titleVisibility: .visible) {
-            Button("Signer") { Task { await model.sign() } }
+            Button("Signer") { Task { await model.startSigning(asCompany: isAdmin) } }
             Button("Annuler", role: .cancel) {}
         } message: {
             Text("Votre signature électronique vaut accord sur ce document, pour un montant de \(doc.amount.ttc) \(doc.amount.currency) TTC. Elle ne pourra pas être retirée.")

@@ -2708,5 +2708,212 @@ begin
 end $$;
 
 reset role;
+-- the send-sms function, as deployed: SMS is now part of signing
+insert into edge_hooks (name, url, secret)
+values ('send-sms', 'https://project.supabase.co/functions/v1/send-sms', 'sms-secret');
+
+-- the plaintext of the last code sent: only the SMS carries it
+create or replace function test_last_sms_code() returns text language sql as $$
+  select substring(body ->> 'text' from '([0-9]{6})') from net.sent_requests
+   where url like '%/send-sms' order by id desc limit 1;
+$$;
+-- codes asked for in an earlier block are older than the half-minute wait
+create or replace function test_age_sms_codes() returns void
+language sql security definer as $$
+  update sms_codes set created_at = created_at - interval '1 minute';
+$$;
+grant execute on function test_age_sms_codes() to authenticated;
+set role authenticated;
+
+\echo ''
+\echo '=== 50. A signature takes a code sent to a verified mobile ========'
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid;
+  v_inv    invoices%rowtype;
+  v_r      jsonb;
+  v_code   text;
+  v_req    net.sent_requests%rowtype;
+begin
+  perform assert(normalise_mobile('06 12 34 56 78') = '+33612345678'
+                 and normalise_mobile('0033 7.12.34.56.78') = '+33712345678'
+                 and normalise_mobile('+44 7700 900123') = '+447700900123',
+    'a mobile number is understood however it is typed');
+  perform assert(normalise_mobile('01 23 45 67 89') is null and normalise_mobile('hello') is null,
+    'and a landline or nonsense is not a mobile');
+  perform assert(mask_phone('+33612345678') = '+33 6 •• •• •• 78',
+    'a number is shown masked, recognisable to its owner only');
+
+  v_reco := test_reco_at_reward(v_johann, v_pierre, 70, 'Sms');
+  select * into v_inv from issue_invoice(v_reco);
+
+  perform login(v_johann);
+  v_r := my_sms_status();
+  perform assert((v_r ->> 'sms_required')::boolean and not (v_r ->> 'phone_verified')::boolean,
+    'once SMS is set up, the app knows a signature needs a verified mobile');
+  perform assert_denied(v_johann,
+    format('update profiles set phone_verified_at = now() where id = %L', v_johann),
+    'nobody can mark their own number verified');
+  perform assert_denied(v_johann,
+    format('select request_sms_code(''sign_invoice'', %L)', v_inv.id),
+    'no signing code goes to a number that has not been proven');
+  perform assert_denied(v_johann,
+    format('select sign_invoice(%L, %L)', v_inv.id, v_inv.document_sha256),
+    'and without one the apporteur cannot sign');
+  perform assert_denied(v_johann,
+    'select request_sms_code(''verify_phone'', null, ''01 23 45 67 89'')',
+    'a code is only sent to a mobile');
+
+  perform login(v_johann);
+  v_r := request_sms_code('verify_phone', null, '06 12 34 56 78');
+  perform assert(v_r ->> 'masked_phone' = '+33 6 •• •• •• 78', 'a code goes to the number typed');
+  select * into v_req from net.sent_requests order by id desc limit 1;
+  perform assert(v_req.url like '%/send-sms' and v_req.body ->> 'to' = '+33612345678'
+                 and v_req.headers ->> 'x-hook-secret' = 'sms-secret',
+    'through the send-sms function, in international form, with the shared secret');
+  v_code := test_last_sms_code();
+
+  v_r := confirm_sms_code('verify_phone', case when v_code = '000000' then '111111' else '000000' end);
+  perform assert(not (v_r ->> 'ok')::boolean and v_r ->> 'reason' = 'wrong'
+                 and (v_r ->> 'attempts_left')::int = 4,
+    'a wrong code is refused, and counted');
+  v_r := confirm_sms_code('verify_phone', v_code);
+  perform assert((v_r ->> 'ok')::boolean, 'the right one proves the number');
+  perform assert((select phone = '+33612345678' and phone_verified_at is not null
+                    from profiles where id = v_johann),
+    'which is now the verified number on the profile');
+  perform assert(confirm_sms_code('verify_phone', v_code) ->> 'reason' = 'expired',
+    'a code works once');
+  perform assert_denied(v_johann, 'select request_sms_code(''verify_phone'', null, ''0612345678'')',
+    'and codes cannot be asked for back to back');
+  perform assert_denied(v_johann, 'select * from sms_codes',
+    'nobody reads the codes table');
+end $$;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_inv    invoices%rowtype;
+  v_r      jsonb;
+  v_code   text;
+  i        int;
+begin
+  perform test_age_sms_codes();
+  perform login(v_johann);
+  select * into v_inv from invoices i
+   where i.apporteur_id = v_johann and i.status in ('draft', 'awaiting_signatures')
+     and exists (select 1 from recommendations r where r.id = i.recommendation_id
+                  and r.filleul_first_name = 'Sms');
+
+  perform login(v_johann);
+  v_r := request_sms_code('sign_invoice', v_inv.id);
+  perform assert((v_r ->> 'required')::boolean and v_r ->> 'masked_phone' = '+33 6 •• •• •• 78',
+    'a signing code goes to the verified number');
+  perform assert((select body ->> 'text' from net.sent_requests order by id desc limit 1)
+                   like '%' || v_inv.number || '%',
+    'and names the invoice it signs');
+  v_code := test_last_sms_code();
+
+  for i in 1..5 loop
+    v_r := confirm_sms_code('sign_invoice', '99999' || i::text, v_inv.id);
+  end loop;
+  perform assert(v_r ->> 'reason' = 'locked', 'five wrong codes lock it');
+  perform assert(not (confirm_sms_code('sign_invoice', v_code, v_inv.id) ->> 'ok')::boolean,
+    'after which even the right code is refused');
+  perform assert_denied(v_johann,
+    format('select sign_invoice(%L, %L)', v_inv.id, v_inv.document_sha256),
+    'and the invoice stays unsigned');
+end $$;
+
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_inv    invoices%rowtype;
+  v_sig    invoice_signatures%rowtype;
+  v_code   text;
+  v_doc    jsonb;
+begin
+  perform test_age_sms_codes();
+  perform login(v_johann);
+  select * into v_inv from invoices i
+   where i.apporteur_id = v_johann and i.status in ('draft', 'awaiting_signatures')
+     and exists (select 1 from recommendations r where r.id = i.recommendation_id
+                  and r.filleul_first_name = 'Sms');
+
+  perform login(v_johann);
+  perform request_sms_code('sign_invoice', v_inv.id);
+  v_code := test_last_sms_code();
+  perform assert(not (confirm_sms_code('sign_invoice', v_code, gen_random_uuid()) ->> 'ok')::boolean,
+    'a code is bound to its invoice');
+  perform login(v_marie);
+  perform assert(not (confirm_sms_code('sign_invoice', v_code, v_inv.id) ->> 'ok')::boolean,
+    'and to its owner');
+
+  perform login(v_johann);
+  perform assert((confirm_sms_code('sign_invoice', ' ' || v_code || ' ', v_inv.id) ->> 'ok')::boolean,
+    'the right code, pasted with spaces, confirms the signature');
+  select * into v_sig from sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert(v_sig.otp_verified and v_sig.otp_phone = '+33 6 •• •• •• 78',
+    'the signature keeps that it was confirmed by SMS, and to which number');
+
+  perform login(v_pierre);
+  select * into v_sig from sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert(not v_sig.otp_verified, 'the company signs from its own session, without a code');
+  v_doc := invoice_document(v_inv.id);
+  perform assert((v_doc -> 'signatures' -> 0 ->> 'sms_verified')::boolean
+                 and v_doc -> 'signatures' -> 0 ->> 'sms_phone' = '+33 6 •• •• •• 78'
+                 and not (v_doc -> 'signatures' -> 1 ->> 'sms_verified')::boolean,
+    'and the document says which signature was confirmed by SMS');
+
+  perform login(v_johann);
+  update profiles set phone = '07 00 00 00 01' where id = v_johann;
+  perform assert((select phone_verified_at is null from profiles where id = v_johann),
+    'changing the number takes the verification away');
+  perform assert(not (my_sms_status() ->> 'phone_verified')::boolean,
+    'and the app asks for it again');
+end $$;
+
+reset role;
+do $$
+begin
+  perform assert(not exists (select 1 from sms_codes where code_hash !~ '^[0-9a-f]{64}$'),
+    'a code is kept only as a hash, never as itself');
+  insert into sms_codes (profile_id, purpose, phone, code_hash, expires_at, created_at)
+  select '11111111-1111-1111-1111-111111111111', 'verify_phone', '+33700000001', 'x',
+         now(), now() - interval '5 minutes'
+    from generate_series(1, 6);
+end $$;
+set role authenticated;
+do $$
+begin
+  perform assert_denied('11111111-1111-1111-1111-111111111111',
+    'select request_sms_code(''verify_phone'', null, ''0700000001'')',
+    'six codes in an hour is the most anyone is sent');
+end $$;
+
+reset role;
+delete from edge_hooks where name = 'send-sms';
+set role authenticated;
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_inv    invoices%rowtype;
+  v_sig    invoice_signatures%rowtype;
+begin
+  perform login(v_pierre);
+  select * into v_inv from issue_invoice(test_reco_at_reward(v_johann, v_pierre, 60, 'SansSms'));
+  perform login(v_johann);
+  perform assert(not (request_sms_code('sign_invoice', v_inv.id) ->> 'required')::boolean,
+    'until SMS is set up, no code is asked for');
+  select * into v_sig from sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert(not v_sig.otp_verified, 'and signing works as before');
+end $$;
+
+reset role;
 \echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

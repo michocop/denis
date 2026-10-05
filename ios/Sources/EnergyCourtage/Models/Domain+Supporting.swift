@@ -170,6 +170,9 @@ public struct InvoiceDocument: Hashable, Codable, Sendable {
         public var name: String
         public var signed: Bool
         public var signedAt: Date?
+        /// Confirmed with a code sent by SMS, to the number masked here.
+        public var smsVerified: Bool?
+        public var smsPhone: String?
 
         public var id: String { role }
         public var label: String {

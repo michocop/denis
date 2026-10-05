@@ -68,7 +68,8 @@ public final class AppModel {
                 admin: PreviewAdminRepository(),
                 commissions: PreviewCommissionsRepository(),
                 notifications: PreviewNotificationsRepository(),
-                legal: PreviewLegalRepository()
+                legal: PreviewLegalRepository(),
+                sms: PreviewSmsRepository(required: true)
             ),
             asAdmin ? .admin : .apporteur,
             asAdmin ? "Pierre-Louis Tettamanti" : "Johann Lefeuvre",
@@ -293,7 +294,8 @@ public final class AppModel {
                         notifications: SupabaseNotificationsRepository(client: client),
                         legal: SupabaseLegalRepository(client: client),
                         changeMonitor: PollingChangeMonitor(client: client),
-                        documents: SupabaseDocumentsRepository(client: client)
+                        documents: SupabaseDocumentsRepository(client: client),
+                        sms: SupabaseSmsRepository(client: client)
                     ),
                     account.role ?? .apporteur,
                     account.fullName ?? "",

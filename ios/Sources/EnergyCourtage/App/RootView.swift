@@ -130,7 +130,8 @@ public struct RootView: View {
         .sheet(item: $openedInvoice) { opened in
             NavigationStack {
                 InvoiceView(model: InvoiceViewModel(invoiceID: opened.id,
-                                                    repository: dependencies.invoices),
+                                                    repository: dependencies.invoices,
+                                                    sms: dependencies.sms),
                             signerName: signerName, isAdmin: role.isAdmin)
             }
         }

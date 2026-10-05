@@ -108,7 +108,8 @@ public struct RecommendationsView: View {
             case .invoice(let invoiceID):
                 InvoiceView(
                     model: InvoiceViewModel(invoiceID: invoiceID,
-                                            repository: dependencies.invoices),
+                                            repository: dependencies.invoices,
+                                            sms: dependencies.sms),
                     signerName: signerName,
                     isAdmin: model.role.isAdmin
                 )

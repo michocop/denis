@@ -62,7 +62,10 @@ export interface InvoiceDocument {
   late_payment_mention?: string | null;
   tax_notice?: string | null;
   status: string;
-  signatures: { role: string; name: string; signed: boolean; signed_at?: string | null }[];
+  signatures: {
+    role: string; name: string; signed: boolean; signed_at?: string | null;
+    sms_verified?: boolean; sms_phone?: string | null;
+  }[];
 }
 
 /** A4 at 72 dpi. */
@@ -324,15 +327,19 @@ export async function buildInvoicePdf(doc: InvoiceDocument, options: RenderOptio
   L.keep(70);
   L.text("SIGNATURES", { font: fonts.bold, size: 8.5 });
   L.space(4);
-  for (const s of doc.signatures) {
-    const who = s.role === "apporteur" ? "Signature de l'apporteur" : "Signature de l'entreprise";
-    const state = s.signed
-      ? `signé électroniquement${s.signed_at ? ` le ${frenchDate(s.signed_at)}` : ""}`
-      : "en attente";
-    L.text(`${who} — ${s.name} — ${state}`);
-  }
+  for (const s of doc.signatures) L.text(signatureLine(s));
 
   return pdf;
+}
+
+/** One line per party: who, and how they signed -- with what proves it. */
+export function signatureLine(s: InvoiceDocument["signatures"][number]): string {
+  const who = s.role === "apporteur" ? "Signature de l'apporteur" : "Signature de l'entreprise";
+  const state = s.signed
+    ? `signé électroniquement${s.signed_at ? ` le ${frenchDate(s.signed_at)}` : ""}`
+      + (s.sms_verified ? `, code SMS vérifié${s.sms_phone ? ` (${s.sms_phone})` : ""}` : "")
+    : "en attente";
+  return `${who} — ${s.name} — ${state}`;
 }
 
 export async function renderInvoicePdf(doc: InvoiceDocument, options: RenderOptions = {}): Promise<Uint8Array> {
