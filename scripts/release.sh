@@ -28,12 +28,22 @@ grep -q '^SUPABASE_URL = https' Config.xcconfig && grep -q '^SUPABASE_ANON_KEY =
   exit 1
 }
 
-XCODEGEN="$(command -v xcodegen || find .build/tools /Users/"$USER"/denis/ios/.build/tools -type f -name xcodegen -perm -u+x 2>/dev/null | head -1)"
-"$XCODEGEN" generate --quiet
 
+# the tests run on the package itself: the generated project's scheme has none
+rm -rf EnergyCourtage.xcodeproj
 echo "==> Unit tests"
-xcodebuild test -scheme EnergyCourtage -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -derivedDataPath "$DD-tests" -quiet 2>&1 | grep -E "error:|Executed .* tests" | tail -2
+if ! xcodebuild test -scheme EnergyCourtage -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+     -derivedDataPath "$DD-tests" > "$OUT/last-tests.log" 2>&1; then
+  grep -E "error:|failed" "$OUT/last-tests.log" | head -10
+  echo "Tests fail: nothing was uploaded. Log: $OUT/last-tests.log" >&2
+  exit 1
+fi
+grep -E "Executed [0-9]+ tests, with" "$OUT/last-tests.log" | tail -1
+
+XCODEGEN="$(command -v xcodegen || { find .build/tools "/Users/$USER/denis/ios/.build/tools" \
+            -type f -name xcodegen -perm -u+x 2>/dev/null || true; } | head -1)"
+[ -n "$XCODEGEN" ] || { echo "XcodeGen not found: brew install xcodegen" >&2; exit 1; }
+"$XCODEGEN" generate --quiet
 
 echo "==> Archive $BUILD"
 xcodebuild archive -project EnergyCourtage.xcodeproj -scheme EnergyCourtageApp \
