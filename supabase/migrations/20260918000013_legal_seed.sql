@@ -10,6 +10,10 @@
 -- which will fail loudly if anything was missed.
 
 
+-- stamp_legal_document() hashes each text with digest(), which on Supabase
+-- lives in the extensions schema; the migration session does not search it.
+set search_path = public, extensions;
+
 insert into legal_documents (key, version, title, body, sha256, active)
 values ('mandat_facturation', '2026-09-1', 'Mandat de facturation', '**Entre les soussignés :**
 
