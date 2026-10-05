@@ -56,9 +56,17 @@ enabled = false
 enabled = true
 # Invoice PDFs. A generous ceiling would let one upload fill the free tier's
 # 1 GB; an A4 attestation is a few tens of kilobytes.
-file_size_limit = "5MiB"
+file_size_limit = "10MiB"
 
 [functions.send-push]
 # The caller is the database, not a signed-in user, so there is no JWT to
 # verify. The function checks PUSH_HOOK_SECRET instead.
 verify_jwt = false
+
+# Auth's own emails (invitation, password reset) go through the auth-email
+# function, in the brand's letterhead, via Brevo -- not Supabase's shared SMTP,
+# which only reaches the project's team. scripts/deploy.sh sets the secret.
+[auth.hook.send_email]
+enabled = true
+uri = "https://mfnauyfkhwjsxapqdtiu.supabase.co/functions/v1/auth-email"
+secrets = "env(SEND_EMAIL_HOOK_SECRET)"

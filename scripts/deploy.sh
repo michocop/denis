@@ -19,13 +19,23 @@
 #
 # Keys for outside services are never asked for here. Paste them in the
 # dashboard (Edge Functions → Secrets) or with `supabase secrets set`:
-#   BREVO_API_KEY      SMS codes            (brevo.com → SMTP & API → API Keys)
-#   RESEND_API_KEY     emails               (resend.com → API Keys)
-#   MAIL_FROM          the sender, e.g. "Trinity Énergie <factures@trinity-energie.fr>"
+#   BREVO_API_KEY      SMS codes and emails (brevo.com → SMTP & API → API Keys)
+#   MAIL_FROM          the sender, verified in Brevo (Senders), e.g.
+#                      "Trinity Énergie <pierrelouis@trinity-energie.fr>"
+#   RESEND_API_KEY     optional: emails through Resend instead of Brevo
 #   APNS_*             push notifications   (Apple Developer account)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# supabase/config.toml signs the auth-email hook with env(SEND_EMAIL_HOOK_SECRET),
+# and the CLI refuses every command while it is unset. The value lives in
+# supabase/.env (git-ignored), which the CLI reads by itself, so every command
+# -- these scripts or a hand-typed one -- uses the one the hook was given.
+if ! grep -qs '^SEND_EMAIL_HOOK_SECRET=' supabase/.env; then
+  printf 'SEND_EMAIL_HOOK_SECRET=v1,whsec_%s\n' "$(openssl rand -base64 32)" >> supabase/.env
+  chmod 600 supabase/.env
+fi
+export SEND_EMAIL_HOOK_SECRET="$(sed -n 's/^SEND_EMAIL_HOOK_SECRET=//p' supabase/.env)"
 DT="$PWD/.devtools"
 YES=""
 AUTH=1
@@ -120,6 +130,7 @@ deploy notify-email --no-verify-jwt
 deploy gdpr-purge   --no-verify-jwt
 deploy send-sms     --no-verify-jwt
 deploy send-invite                    # called by a signed-in admin: the JWT is checked
+deploy auth-email   --no-verify-jwt   # Supabase Auth's send-email hook, signed
 
 # ------------------------------------------------------- 4. the hooks
 say "Hooks between the database and the functions"
@@ -156,16 +167,22 @@ ok "shared secrets stored"
 say "Auth settings (supabase/config.toml)"
 if [ "$AUTH" = 0 ]; then
   todo "skipped (--no-auth)"
-elif ask "Apply them (sign-up closed, redirect to the app)? The CLI shows the changes first."; then
-  "$SB" config push --project-ref "$REF" ${YES:+--yes} </dev/tty || todo "config push failed: set them by hand, docs/DEPLOY.md §3"
+elif ask "Apply them (sign-up closed, redirect to the app, auth emails through Brevo)?"; then
+  # the auth-email hook's secret, given to both sides
+  "$SB" secrets set --project-ref "$REF" --env-file <(printf 'SEND_EMAIL_HOOK_SECRET=%s\n' "$SEND_EMAIL_HOOK_SECRET") </dev/null >/dev/null
+  if [ -n "$YES" ]; then
+    "$SB" config push --project-ref "$REF" --yes </dev/null | grep -E "updated|up to date|message" || true
+  else
+    "$SB" config push --project-ref "$REF" </dev/tty || todo "config push failed: set them by hand, docs/DEPLOY.md §3"
+  fi
 fi
 
 # ---------------------------------------------------------- 6. report
 say "Still needs a key from you"
 missing=0
-for key in BREVO_API_KEY RESEND_API_KEY MAIL_FROM; do
-  if has_secret "$key"; then ok "$key"; else todo "$key"; missing=1; fi
-done
+if has_secret BREVO_API_KEY; then ok "BREVO_API_KEY (SMS and email)"; else todo "BREVO_API_KEY"; missing=1; fi
+if has_secret MAIL_FROM; then ok "MAIL_FROM"; else
+  todo "MAIL_FROM: a sender verified in Brevo, e.g. \"Trinity Énergie <pierrelouis@trinity-energie.fr>\""; missing=1; fi
 if has_secret APNS_KEY_ID; then deploy send-push --no-verify-jwt
 else todo "push notifications: APNS_* keys (Apple Developer account), then re-run"; fi
 [ "$missing" = 0 ] || echo "    Paste missing keys in the dashboard: Edge Functions → Secrets, then re-run."

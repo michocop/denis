@@ -329,3 +329,40 @@ invoice. It is stored only as a hash. A person can ask for one code every 30
 seconds and six an hour. Changing the phone number in the profile removes the
 verification. Failed sends show in **Edge Functions → send-sms → Logs** (the
 number is masked there, and the code never appears).
+
+## 10. Emails (Brevo)
+
+Every email goes through the same Brevo account as the SMS (free plan: 300 a
+day), with the same API key:
+
+- invoice PDFs and notifications, from the `invoice-pdf` and `notify-email`
+  functions;
+- Auth's own emails (invitations, password resets), through the `auth-email`
+  function, which Supabase calls as its "send email" hook. Supabase's shared
+  SMTP is not used: it only reaches the project's own team.
+
+The sender is the `MAIL_FROM` secret, `Trinity Énergie <pierrelouis@trinity-energie.fr>`.
+Brevo only sends from a verified sender: **Brevo → Senders → Add sender**, then
+the code Brevo emails to that address. For the best deliverability, also
+authenticate the domain (**Senders → Domains → trinity-energie.fr**, three DNS
+records at the domain's registrar).
+
+`scripts/deploy.sh` deploys the function and keeps the hook's signing secret in
+`supabase/.env` (git-ignored) and on both sides.
+
+## 11. Backups
+
+`scripts/backup.sh --install` (done on the developer's Mac) backs the project up
+every night at 02:30: each table as JSON through the Supabase API, the
+`invoices` and `documents` files, in one AES-256 archive kept 30 days in iCloud
+Drive → "Trinity Énergie — sauvegardes". No database password is stored; the
+archive passphrase is in the Keychain:
+
+```sh
+security find-generic-password -s trinity-energie-backup -w
+```
+
+Copy it into the company's password manager. Restore with
+`scripts/restore.sh <archive> [--into <database-url>]`. The nightly run is also
+activity on the project, so the free plan never pauses it. On the Pro plan,
+Supabase's own daily backups come on top.

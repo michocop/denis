@@ -11,11 +11,21 @@ export interface Letter {
   heading: string;
   /** Paragraphs, plain text. */
   paragraphs: string[];
+  /** A real button, for mail that leads somewhere (an invitation, a reset). */
+  action?: { label: string; url: string };
+  /** Replaces the notification footer, for account mail nobody can turn off. */
+  footerNote?: string;
 }
 
 export function renderLetter(letter: Letter): { html: string; text: string } {
   const text = [letter.greeting, "", letter.heading, "", ...letter.paragraphs.flatMap((p) => [p, ""]),
+    ...(letter.action ? [`${letter.action.label} : ${letter.action.url}`, ""] : []),
     "Trinity Énergie — courtier en électricité et gaz", "https://trinity-energie.fr"].join("\n");
+  const button = letter.action
+    ? `<a href="${html(letter.action.url)}" style="display:inline-block;background:#1F5FFF;color:#ffffff;border-radius:999px;padding:13px 24px;font-weight:600;font-size:15px;text-decoration:none">${html(letter.action.label)}</a>`
+    : `<span style="display:inline-block;background:#1F5FFF;color:#ffffff;border-radius:999px;padding:12px 22px;font-weight:600;font-size:15px">Ouvrez l'application Trinity Énergie</span>`;
+  const footer = html(letter.footerNote ??
+    "Vous recevez cet e-mail parce que vous utilisez l'application Trinity Énergie. Vous pouvez désactiver ces e-mails dans votre profil.");
 
   const body = letter.paragraphs
     .map((p) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#2b3550">${html(p)}</p>`)
@@ -33,11 +43,11 @@ export function renderLetter(letter: Letter): { html: string; text: string } {
 <p style="margin:0 0 6px;font-size:15px;color:#2b3550">${html(letter.greeting)}</p>
 <h1 style="margin:0 0 18px;font-family:Sora,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-weight:600;font-size:22px;line-height:1.3;color:#03081A">${html(letter.heading)}</h1>
 ${body}
-<p style="margin:22px 0 0"><span style="display:inline-block;background:#1F5FFF;color:#ffffff;border-radius:999px;padding:12px 22px;font-weight:600;font-size:15px">Ouvrez l'application Trinity Énergie</span></p>
+<p style="margin:22px 0 0">${button}</p>
 </td></tr>
 <tr><td style="padding:18px 28px;border-top:1px solid #e3e8f4;font-size:12px;color:#7a86a3">
 Trinity Énergie — courtier en électricité et gaz · <a href="https://trinity-energie.fr" style="color:#1F5FFF;text-decoration:none">trinity-energie.fr</a><br>
-Vous recevez cet e-mail parce que vous utilisez l'application Trinity Énergie. Vous pouvez désactiver ces e-mails dans votre profil.
+${footer}
 </td></tr>
 </table></td></tr></table></body></html>`;
   return { html: page, text };

@@ -16,7 +16,7 @@
 // secret below is what keeps a stranger who finds the URL out.
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { resendSender } from "../_shared/email.ts";
+import { mailSender } from "../_shared/email.ts";
 import { Deps, retainInvoice } from "./handler.ts";
 
 const BUCKET = "invoices";
@@ -59,7 +59,7 @@ function deps(): Deps {
       if (error) throw error;
       return data;
     },
-    sendMail: resendSender(),
+    sendMail: mailSender(),
   };
 }
 

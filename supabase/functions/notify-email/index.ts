@@ -11,7 +11,7 @@
 //     ('notify-email', 'https://<ref>.supabase.co/functions/v1/notify-email', '<same secret>');
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { resendSender } from "../_shared/email.ts";
+import { mailSender } from "../_shared/email.ts";
 import { sendNotificationEmail } from "./handler.ts";
 
 Deno.serve(async (request) => {
@@ -37,7 +37,7 @@ Deno.serve(async (request) => {
         if (error) throw error;
         return data;
       },
-      sendMail: resendSender(),
+      sendMail: mailSender(),
     }));
   } catch (error) {
     console.error(`notification ${id}:`, error);
