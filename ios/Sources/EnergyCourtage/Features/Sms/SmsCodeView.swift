@@ -208,8 +208,8 @@ public struct SmsCodeView: View {
         .animation(.smooth(duration: 0.3), value: phase)
         .animation(.smooth(duration: 0.3), value: resent)
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
-        .sensoryFeedback(.error, trigger: shakes)
-        .sensoryFeedback(.success, trigger: phase == .accepted)
+        .feedback(.error, trigger: shakes)
+        .feedback(.success, trigger: phase == .accepted) { _, accepted in accepted }
     }
 
     @MainActor

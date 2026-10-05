@@ -132,9 +132,14 @@ public final class AppModel {
         }
     }
 
+    /// Successful Face ID unlocks, counted so the root view can answer each
+    /// with a vibration.
+    public private(set) var unlocks = 0
+
     @MainActor
     public func unlock() async {
         guard await BiometricGate.authenticate() else { return }
+        unlocks += 1
         phase = await resolvePhase()
     }
 
@@ -312,10 +317,21 @@ public final class AppModel {
     }
 }
 
+public extension AppModel.Phase {
+    var isLaunching: Bool {
+        if case .launching = self { return true }
+        return false
+    }
+}
+
 public struct AppRootView: View {
     @State private var model = AppModel()
     @State private var showsSignUp = false
     @State private var showsForgotPassword = false
+    /// The opening covers everything until it has played and the session is
+    /// known. A cold launch only: coming back from the background keeps this
+    /// view, so it does not play again.
+    @State private var showsIntro = true
 
     public init() {
         Theme.registerFonts()
@@ -347,15 +363,34 @@ public struct AppRootView: View {
     }
 
     public var body: some View {
+        ZStack {
+            screens
+                .environment(\.contentRevealed, !showsIntro)
+
+            if showsIntro {
+                LaunchIntroView(isSessionKnown: !model.phase.isLaunching) {
+                    withAnimation(.easeOut(duration: 0.35)) { showsIntro = false }
+                }
+                // leaves by growing slightly as it fades: through the mark
+                .transition(.opacity.combined(with: .scale(scale: 1.08)))
+                .zIndex(1)
+            }
+        }
+        // Dark, like trinity-energie.fr: the brand is night navy and one blue.
+        .preferredColorScheme(.dark)
+        .onOpenURL { url in Task { await model.handle(url: url) } }
+        .tint(Theme.Palette.brand)
+        .feedback(.success, trigger: model.unlocks)
+        .task { await model.start() }
+    }
+
+    @ViewBuilder
+    private var screens: some View {
         Group {
             switch model.phase {
             case .launching:
-                VStack(spacing: Theme.Spacing.xl) {
-                    TrinityLogo(size: 56)
-                    ProgressView().tint(Theme.Palette.brand)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(BrandBackground())
+                // under the opening, which stays until this phase is over
+                BrandBackground()
 
             case .signedOut(let message):
                 signedOut(message)
@@ -401,11 +436,6 @@ public struct AppRootView: View {
                 }
             }
         }
-        // Dark, like trinity-energie.fr: the brand is night navy and one blue.
-        .preferredColorScheme(.dark)
-        .onOpenURL { url in Task { await model.handle(url: url) } }
-        .tint(Theme.Palette.brand)
-        .task { await model.start() }
     }
 
     private func signedOut(_ message: String?) -> some View {

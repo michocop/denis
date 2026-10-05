@@ -58,6 +58,7 @@ public struct HomeView: View {
                         accessory
                     }
                     .padding(.top, Theme.Spacing.s)
+                    .staggeredAppear(index: 0)
 
                     // the site's headline: white, then the blue gradient
                     VStack(alignment: .leading, spacing: 4) {
@@ -74,6 +75,7 @@ public struct HomeView: View {
                     }
                     .padding(.top, Theme.Spacing.m)
                     .accessibilityElement(children: .combine)
+                    .staggeredAppear(index: 1, when: appeared)
 
                     // The mandate gate is surfaced here rather than at invoicing
                     // time: without it no invoice can be issued at all, so the
@@ -81,6 +83,7 @@ public struct HomeView: View {
                     if let profile = model.profile, !profile.canBeInvoiced,
                        profile.role == .apporteur {
                         MandateNotice(onOpen: onOpenMandate)
+                            .staggeredAppear(index: 2, when: appeared)
                     }
 
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: Theme.Spacing.m),
@@ -89,20 +92,23 @@ public struct HomeView: View {
                         StatTile(label: "Recommandations actives",
                                  value: "\(model.stats.activeCount)",
                                  tint: Theme.Palette.brand, icon: "bolt.fill")
+                            .staggeredAppear(index: 3, when: appeared)
                         StatTile(label: "Taux de conversion",
                                  value: String(format: "%.0f %%", model.stats.conversionRate),
                                  tint: Theme.Palette.brand, icon: "chart.line.uptrend.xyaxis")
+                            .staggeredAppear(index: 4, when: appeared)
                         StatTile(label: "En attente",
                                  value: Self.euros(model.stats.pendingTotal),
                                  tint: Theme.Palette.ice, icon: "hourglass")
+                            .staggeredAppear(index: 5, when: appeared)
                         StatTile(label: "Gagné",
                                  value: Self.euros(model.stats.earnedTotal),
                                  tint: Theme.Palette.successText, icon: "checkmark.seal.fill")
+                            .staggeredAppear(index: 6, when: appeared)
                     }
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 14)
 
                     PrimaryActionButton("Nouvelle recommandation", action: onNewRecommendation)
+                        .staggeredAppear(index: 7, when: appeared)
 
                     if let message = model.errorMessage {
                         Text(message)
@@ -117,7 +123,8 @@ public struct HomeView: View {
         }
         .task(id: refreshToken) {
             await model.load()
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) { appeared = true }
+            // each part rises in on its own step of the cascade
+            appeared = true
         }
     }
 

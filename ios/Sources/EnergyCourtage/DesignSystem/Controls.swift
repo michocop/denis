@@ -56,6 +56,7 @@ public struct SegmentedPicker<Value: Hashable>: View {
         }
         .padding(4)
         .brandGlass(in: Capsule())
+        .feedback(.selection, trigger: selection)
     }
 }
 
@@ -160,14 +161,20 @@ public struct RefreshBanner: View {
 // MARK: - Buttons
 
 /// A press that sinks a little and dims, so a tap is felt before the work
-/// behind it finishes.
+/// behind it finishes -- and, given `feedback`, felt in the hand as well, at
+/// the moment the finger comes down.
 public struct PressableStyle: ButtonStyle {
-    public init() {}
+    private let feedback: Feedback?
+    public init(feedback: Feedback? = nil) { self.feedback = feedback }
+
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.85 : 1)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+            .sensoryFeedback(trigger: configuration.isPressed) { _, pressed in
+                pressed ? feedback?.sensory : nil
+            }
     }
 }
 
@@ -224,7 +231,7 @@ public struct PrimaryActionButton: View {
                 .shadow(color: Theme.Palette.brandFill.opacity(0.55), radius: 16, y: 10)
                 .contentShape(Capsule())
         }
-        .buttonStyle(PressableStyle())
+        .buttonStyle(PressableStyle(feedback: .tap))
     }
 }
 

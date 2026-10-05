@@ -7,6 +7,11 @@ public struct RecommendationsView: View {
     @State private var presentedComment: PresentedComment?
     @State private var sheet: Sheet?
     @State private var admins: [Profile] = []
+    /// Deals closed as won, and heavy actions carried out (closed as lost,
+    /// deleted, erased), counted for their vibrations: the action sheet that
+    /// started them is gone by the time they finish.
+    @State private var dealsWon = 0
+    @State private var heavyActions = 0
 
     private let dependencies: Dependencies
     private let signerName: String
@@ -155,6 +160,14 @@ public struct RecommendationsView: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: model.hasStaleData)
+        .feedback(.selection, trigger: model.expandedID)
+        .feedback(.success, trigger: model.stageAdvances)
+        .feedback(.success, trigger: dealsWon)
+        .feedback(.warning, trigger: heavyActions)
+        .feedback(.error, trigger: model.state) { _, new in
+            if case .failed = new { return true }
+            return false
+        }
         .task {
             await model.load()
             model.startWatching()
@@ -206,6 +219,14 @@ public struct RecommendationsView: View {
                 return
             }
             await model.load()
+            switch action {
+            case .archiveWon:
+                dealsWon += 1
+            case .archiveLost, .delete, .eraseFilleul:
+                heavyActions += 1
+            default:
+                break
+            }
         } catch {
             await model.report(error)
         }
@@ -224,7 +245,7 @@ public struct RecommendationsView: View {
             if model.isEmpty {
                 EmptyState(filter: model.filter, hasQuery: !model.query.isEmpty)
             } else {
-                ForEach(model.visibleRecommendations) { reco in
+                ForEach(Array(model.visibleRecommendations.enumerated()), id: \.element.id) { index, reco in
                     RecommendationCard(
                         recommendation: reco,
                         pipeline: model.pipeline,
@@ -257,6 +278,7 @@ public struct RecommendationsView: View {
                             }
                         }
                     }
+                    .staggeredAppear(index: index)
                     .task { await model.loadNextPageIfNeeded(currentItem: reco) }
                 }
 
@@ -275,25 +297,25 @@ public struct RecommendationsView: View {
 // Loading, empty and error are built in from the start: they are most of the
 // difference between a demo and something usable, and cost far more to retrofit.
 
+/// The shape of a recommendation card -- avatar, name, subtitle, progress --
+/// so the real one lands where the placeholder was.
 struct SkeletonCard: View {
-    @State private var shimmer = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            RoundedRectangle(cornerRadius: 6).frame(width: 180, height: 22)
-            RoundedRectangle(cornerRadius: 6).frame(width: 240, height: 16)
-            RoundedRectangle(cornerRadius: 6).frame(width: 140, height: 16)
+            HStack(spacing: Theme.Spacing.m) {
+                Circle().frame(width: 42, height: 42)
+                VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                    RoundedRectangle(cornerRadius: 6).frame(width: 160, height: 20)
+                    RoundedRectangle(cornerRadius: 6).frame(width: 120, height: 12)
+                }
+            }
+            RoundedRectangle(cornerRadius: 6).frame(height: 10)
         }
         .foregroundStyle(Theme.Palette.track)
-        .opacity(shimmer ? 0.55 : 1)
+        .shimmering()
         .padding(Theme.Spacing.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                shimmer = true
-            }
-        }
         .accessibilityHidden(true)
     }
 }

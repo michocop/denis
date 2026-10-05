@@ -17,11 +17,20 @@ public struct RootView: View {
     @State private var requiredDocument: LegalDocumentKey?
     /// An invoice opened from a notification, over whatever tab is showing.
     @State private var openedInvoice: OpenedInvoice?
+    /// Recommendations sent from the create sheet, counted for the vibration:
+    /// the sheet is gone by the time it would play there.
+    @State private var created = 0
+    /// Tabs changed by a tap, as opposed to by a notification or a sent
+    /// recommendation, which have their own vibration or none.
+    @State private var tabTaps = 0
     private var push = PushCenter.shared
 
     private struct OpenedInvoice: Identifiable {
         let id: UUID
     }
+
+    /// False while the opening still covers the screen.
+    @Environment(\.contentRevealed) private var revealed
 
     private let dependencies: Dependencies
     private let role: UserRole
@@ -109,10 +118,12 @@ public struct RootView: View {
                               documentKey: key.id, isRequired: true)
         }
         .task { await presentOutstandingDocuments() }
-        .task {
+        .task(id: revealed) {
             // Asked for here rather than at launch: a permission prompt on the
             // first screen, before the app has done anything, is the one
-            // people decline.
+            // people decline. And not over the opening, which it would
+            // otherwise interrupt mid-pulse.
+            guard revealed else { return }
             await LocalNotifications.requestPermission()
             guard !isDemo else { return }
             await push.attach(dependencies.notifications)
@@ -191,7 +202,10 @@ public struct RootView: View {
     }
 
     private var tabs: some View {
-        TabView(selection: $tab) {
+        TabView(selection: Binding(get: { tab }, set: { new in
+            if new != tab { tabTaps += 1 }
+            tab = new
+        })) {
             NavigationStack {
                 // the bell sits in the header row, beside the wordmark
                 HomeView(model: HomeViewModel(profiles: dependencies.profiles),
@@ -229,10 +243,13 @@ public struct RootView: View {
                 .tag(Tab.profile)
         }
         .tint(Theme.Palette.brand)
+        .feedback(.selection, trigger: tabTaps)
+        .feedback(.success, trigger: created)
         .sheet(isPresented: $showsCreate) {
             CreateRecommendationView(recommendations: dependencies.recommendations,
                                      documents: dependencies.documents) { _ in
                 tab = .recommendations
+                created += 1
             }
         }
     }
@@ -263,6 +280,7 @@ public struct SignInView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                 TrinityWordmark()
                     .padding(.top, Theme.Spacing.xl)
+                    .staggeredAppear(index: 0)
 
                 // the site's headline: white, then the blue gradient
                 VStack(alignment: .leading, spacing: 2) {
@@ -273,11 +291,13 @@ public struct SignInView: View {
                 }
                 .font(Theme.Typography.display(34, .semibold, relativeTo: .largeTitle))
                 .padding(.top, 36)
+                .staggeredAppear(index: 1)
 
                 Text("Suivez vos recommandations, signez vos factures et recevez vos commissions.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .staggeredAppear(index: 2)
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
                     LabelledField("Email") {
@@ -321,9 +341,11 @@ public struct SignInView: View {
                 }
                 .padding(Theme.Spacing.cardPadding)
                 .cardSurface()
+                .staggeredAppear(index: 3)
 
                 SecondaryActionButton("J'ai reçu une invitation", systemImage: "envelope.open",
                                       action: onCreateAccount)
+                    .staggeredAppear(index: 4)
 
                 Text("L'accès est réservé aux apporteurs invités par Trinity Énergie.")
                     .font(Theme.Typography.caption)
@@ -335,5 +357,6 @@ public struct SignInView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(BrandBackground())
+        .errorFeedback(errorMessage)
     }
 }

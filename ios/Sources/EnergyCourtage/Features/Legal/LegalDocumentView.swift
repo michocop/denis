@@ -27,6 +27,9 @@ public final class LegalViewModel {
     /// had not been published yet.
     public private(set) var hasLoaded = false
     public var isWorking = false
+    /// Documents accepted from this screen, counted so each acceptance that
+    /// went through is answered with a vibration.
+    public private(set) var acceptances = 0
 
     private let repository: LegalRepository
     public init(repository: LegalRepository) { self.repository = repository }
@@ -71,6 +74,7 @@ public final class LegalViewModel {
 
         do {
             try await repository.accept(key: document.key, sha256: rendered)
+            acceptances += 1
             await load()
             errorMessage = nil
         } catch {
@@ -152,6 +156,8 @@ public struct LegalDocumentView: View {
             }
         }
         .interactiveDismissDisabled(isRequired && document?.accepted == false)
+        .feedback(.success, trigger: model.acceptances)
+        .errorFeedback(model.errorMessage)
         .task { await model.load() }
     }
 

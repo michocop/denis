@@ -134,6 +134,9 @@ public final class RecommendationsViewModel {
     public var expandedID: UUID?
     public private(set) var isLoadingMore = false
     public private(set) var hasMorePages = true
+    /// Stages validated from this screen, counted so the view can answer each
+    /// one that went through -- and only those -- with a vibration.
+    public private(set) var stageAdvances = 0
     private var searchTask: Task<Void, Never>?
     private static let pageSize = 20
 
@@ -248,6 +251,7 @@ public final class RecommendationsViewModel {
             if let index = recommendations.firstIndex(where: { $0.id == updated.id }) {
                 recommendations[index] = updated
             }
+            stageAdvances += 1
         } catch {
             state = .failed(error.localizedDescription)
         }

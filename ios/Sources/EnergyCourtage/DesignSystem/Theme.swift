@@ -239,11 +239,25 @@ public extension View {
 public struct TrinityLogo: View {
     private let size: CGFloat
     private let lineColor: Color
+    private let innerColor: Color
+    private let charge: Double
 
-    public init(size: CGFloat = 28, lineColor: Color = Theme.Palette.textPrimary) {
+    /// The site's blue for the inner triangle.
+    public static let innerBlue = Color(hex: 0x3C8BFF)
+
+    /// `charge`, from 0 to 1, lights the inner triangle up and swells it a
+    /// little: the opening's pulse. At 0 the mark is exactly the site's.
+    public init(size: CGFloat = 28, lineColor: Color = Theme.Palette.textPrimary,
+                innerColor: Color = TrinityLogo.innerBlue, charge: Double = 0) {
         self.size = size
         self.lineColor = lineColor
+        self.innerColor = innerColor
+        self.charge = charge
     }
+
+    /// The inner triangle's centroid, as a fraction of the frame: it swells
+    /// from its own centre rather than from the mark's.
+    static let innerCentroid = UnitPoint(x: 0.5, y: (8.75 + 17 + 17) / 3 / 22)
 
     public var body: some View {
         ZStack {
@@ -251,7 +265,9 @@ public struct TrinityLogo: View {
                 .stroke(lineColor, style: StrokeStyle(lineWidth: size * 1.8 / 24,
                                                      lineJoin: .round))
             InnerTriangle()
-                .fill(Color(hex: 0x3C8BFF))
+                .fill(innerColor)
+                .overlay(InnerTriangle().fill(Color(hex: 0x9CC4FF)).opacity(charge))
+                .scaleEffect(1 + 0.14 * charge, anchor: Self.innerCentroid)
         }
         .frame(width: size, height: size * 22 / 24)
         .accessibilityLabel("Trinity Énergie")

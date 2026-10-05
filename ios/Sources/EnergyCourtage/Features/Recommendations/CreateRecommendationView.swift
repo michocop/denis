@@ -98,6 +98,7 @@ public struct CreateRecommendationView: View {
         // to find out.
         .onChange(of: draft.phone) { _, _ in scheduleDuplicateCheck() }
         .onChange(of: draft.email) { _, _ in scheduleDuplicateCheck() }
+        .errorFeedback(errorMessage)
         .onDisappear { duplicateTask?.cancel() }
     }
 

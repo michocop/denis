@@ -278,6 +278,8 @@ public struct ForgotPasswordView: View {
 
 /// Shown over the tabs when a restored session is waiting on Face ID.
 public struct LockedView: View {
+    /// Face ID is asked for once the opening has gone, not over it.
+    @Environment(\.contentRevealed) private var revealed
     private let unlock: () async -> Void
     public init(unlock: @escaping () async -> Void) { self.unlock = unlock }
 
@@ -296,7 +298,10 @@ public struct LockedView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(BrandBackground())
-        .task { await unlock() }
+        .task(id: revealed) {
+            guard revealed else { return }
+            await unlock()
+        }
     }
 }
 

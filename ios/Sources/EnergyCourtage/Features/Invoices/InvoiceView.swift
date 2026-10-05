@@ -30,6 +30,9 @@ public final class InvoiceViewModel {
     /// Set once a credit note has been issued against this invoice, so the
     /// screen stops offering to issue a second one.
     public private(set) var creditNoteIssued = false
+    /// Signatures that went through, counted for their vibration -- except
+    /// one that follows an SMS code, whose screen has just played its own.
+    public private(set) var signatures = 0
 
     /// Set while the apporteur proves their number or types the code.
     public var signingStep: SigningStep?
@@ -171,7 +174,7 @@ public final class InvoiceViewModel {
     @MainActor
     public func codeConfirmed() async {
         signingStep = nil
-        await sign()
+        await sign(announced: false)
     }
 
     /// Signs the digest the server issued with the document. The server checks
@@ -179,6 +182,11 @@ public final class InvoiceViewModel {
     /// ever attach to the document that was served.
     @MainActor
     public func sign() async {
+        await sign(announced: true)
+    }
+
+    @MainActor
+    private func sign(announced: Bool) async {
         guard let digest = document?.documentSha256 else {
             errorMessage = "Cette facture n'a pas encore de document à signer."
             return
@@ -187,6 +195,7 @@ public final class InvoiceViewModel {
         defer { isWorking = false }
         do {
             try await repository.sign(invoiceID: invoiceID, documentSHA256: digest)
+            if announced { signatures += 1 }
             await load()
             // The retained document shows both signatures, so it can only be
             // produced once the second one is in.
@@ -258,6 +267,9 @@ public struct InvoiceView: View {
                 .presentationDetents([.large])
                 .interactiveDismissDisabled(model.isWorking)
         }
+        .feedback(.success, trigger: model.signatures)
+        .feedback(.warning, trigger: model.creditNoteIssued) { _, issued in issued }
+        .errorFeedback(model.errorMessage)
     }
 
     // MARK: - The code by SMS

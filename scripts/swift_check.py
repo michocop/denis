@@ -146,6 +146,7 @@ SDK = {
     "Int64", "UIGraphicsImageRenderer", "UIGraphicsImageRendererFormat", "UIImage", "UTType", "VNDocumentCameraViewController",
     "RelativeDateTimeFormatter", "Decimal", "UNAuthorizationOptions", "UNNotificationSound", "ToolbarContentBuilder", "ToolbarContent", "UIApplication",
     "PropertyListSerialization", "MainActor",
+    "KeyframeTrack", "LinearKeyframe", "SpringKeyframe", "UnitPoint",
 }
 
 # Strings hold French prose, and "TVA (" or "Email :" is not a type.
