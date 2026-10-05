@@ -27,22 +27,25 @@ final class InvoicePDFTests: XCTestCase {
 
         XCTAssertEqual(pages, 1)
         for expected in [
-            "FACTURE N° FA-2026-0001",
-            "Date d'émission : 17.09.2026",
-            "Échéance : 17.10.2026",
+            "FACTURE", "N° FA-2026-0001",
+            "DATE D'ÉMISSION 17.09.2026",
+            "ÉCHÉANCE 17.10.2026",
             // the supplier is the apporteur, with an address
             "FOURNISSEUR", "Johann Lefeuvre", "12 rue des Lilas", "59000 Lille",
             "SIRET 12345678900011",
             // the customer is the company, by its legal identity
             "CLIENT", "Trinity Énergie", "SAS au capital de 10 000 €",
-            "1 rue de la Gare", "59310 Aix-en-Pévèle", "SIREN 000000000 — RCS Lille",
+            "1 rue de la Gare", "59310 Aix-en-Pévèle", "SIREN 000000000 · RCS Lille",
             "Autofacturation",
             "Total HT", "Total TTC", "300,00 €",
             "Article 293B",
             "au plus tard le 17.10.2026",
             "40 €", "L441-10",
-            "Signature de l'apporteur", "Signature de l'entreprise",
-            "empreinte SHA-256 " + String(repeating: "a", count: 64)
+            "Je soussigné(e) Johann Lefeuvre atteste",
+            "SIGNATURES ÉLECTRONIQUES", "L'APPORTEUR", "L'ENTREPRISE",
+            "Page 1 / 1",
+            "Empreinte SHA-256 du document signé : "
+                + Array(repeating: String(repeating: "a", count: 8), count: 8).joined(separator: " ")
         ] {
             XCTAssertTrue(text.contains(expected), "the PDF says “\(expected)”")
         }
@@ -57,11 +60,18 @@ final class InvoicePDFTests: XCTestCase {
                             currency: "EUR")
 
         let (text, _) = try text(of: note)
-        XCTAssertTrue(text.contains("AVOIR N° FA-2026-0007"), "a credit note says it is one")
-        XCTAssertFalse(text.contains("FACTURE N°"), "and not that it is an invoice")
+        XCTAssertTrue(text.contains("AVOIR") && text.contains("N° FA-2026-0007"), "a credit note says it is one")
+        XCTAssertFalse(text.contains("FACTURE"), "and not that it is an invoice")
+        XCTAssertTrue(text.contains("Total TTC à déduire"))
         XCTAssertTrue(text.contains("Avoir sur la facture n° FA-2026-0001"),
                       "naming the invoice it cancels")
         XCTAssertTrue(text.contains("-300,00 €"))
+    }
+
+    func testLargeAmountsAreWrittenTheFrenchWay() {
+        XCTAssertEqual(InvoicePDF.money("12500.00", "EUR"), "12 500,00\u{00A0}€")
+        XCTAssertEqual(InvoicePDF.money("-1234567.50", "EUR"), "-1 234 567,50\u{00A0}€")
+        XCTAssertEqual(InvoicePDF.money("300.00", "EUR"), "300,00\u{00A0}€")
     }
 
     /// A wordy label used to be the thing that ran off the bottom of the page.
@@ -71,8 +81,9 @@ final class InvoicePDFTests: XCTestCase {
 
         let (text, pages) = try text(of: long)
         XCTAssertGreaterThan(pages, 1, "the text continues on a new page")
-        XCTAssertTrue(text.contains("page 2"), "which is numbered")
-        XCTAssertTrue(text.contains("Signature de l'entreprise"),
+        XCTAssertTrue(text.contains("Page 2 / \(pages)"), "which is numbered, out of the total")
+        XCTAssertTrue(text.contains("FACTURE N° FA-2026-0001 — SUITE"), "and says what it continues")
+        XCTAssertTrue(text.contains("L'ENTREPRISE"),
                       "and nothing after the long part is lost")
     }
 
@@ -88,5 +99,14 @@ final class InvoicePDFTests: XCTestCase {
         let (text, _) = try text(of: old)
         XCTAssertTrue(text.contains("CLIENT Trinity Énergie"))
         XCTAssertTrue(text.contains("Total TTC"))
+    }
+
+    /// Writes the sample to PDF_OUT, when set, to look at the page itself.
+    func testWritesTheSampleForInspection() async throws {
+        guard let path = ProcessInfo.processInfo.environment["PDF_OUT"] else { return }
+        var doc = try await sample()
+        doc.signatures[0].smsVerified = true
+        doc.signatures[0].smsPhone = "+33 6 •• •• •• 78"
+        try InvoicePDF.render(doc).write(to: URL(fileURLWithPath: path))
     }
 }

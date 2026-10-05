@@ -147,8 +147,8 @@ final class SmsTests: XCTestCase {
         let pdf = try XCTUnwrap(PDFDocument(data: InvoicePDF.render(document)))
         let text = (0..<pdf.pageCount).compactMap { pdf.page(at: $0)?.string }.joined(separator: "\n")
             .components(separatedBy: .newlines).joined(separator: " ")   // the line wraps
-        XCTAssertTrue(text.contains("code SMS vérifié (+33 6 •• •• •• 78)"), text)
-        XCTAssertEqual(text.components(separatedBy: "code SMS vérifié").count, 2,
+        XCTAssertTrue(text.contains("Code SMS vérifié · +33 6 •• •• •• 78"), text)
+        XCTAssertEqual(text.components(separatedBy: "Code SMS vérifié").count, 2,
                        "only the signature confirmed by SMS says so")
     }
 }

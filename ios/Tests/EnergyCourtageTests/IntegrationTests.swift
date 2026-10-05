@@ -476,13 +476,13 @@ final class IntegrationTests: XCTestCase {
         XCTAssertGreaterThan(pdf.count, 1000)
         let text = (PDFDocument(data: pdf)?.string ?? "")
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        XCTAssertFalse(text.contains("code SMS"), "no signature here was confirmed by SMS")
+        XCTAssertFalse(text.contains("Code SMS"), "no signature here was confirmed by SMS")
         XCTAssertEqual(document.signatures.map(\.smsVerified), [false, false],
                        "and the document says so for each")
-        for expected in ["FACTURE N° \(document.number)", "12 rue des Lilas", "SIREN",
-                         "Autofacturation", "Échéance", "500,00 €",
-                         "Johann Lefeuvre — signé électroniquement",
-                         "Pierre-Louis Tettamanti — signé électroniquement", digest] {
+        for expected in ["FACTURE", "N° \(document.number)", "12 rue des Lilas", "SIREN",
+                         "Autofacturation", "ÉCHÉANCE", "500,00 €",
+                         "Johann Lefeuvre", "Pierre-Louis Tettamanti", "Signé",
+                         InvoicePDF.grouped(digest)] {
             XCTAssertTrue(text.contains(expected), "the signed PDF says “\(expected)”")
         }
 
