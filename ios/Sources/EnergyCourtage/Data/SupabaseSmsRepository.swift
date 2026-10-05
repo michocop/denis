@@ -12,8 +12,10 @@ public struct SupabaseSmsRepository: SmsRepository {
         try await client.rpc("my_sms_status")
     }
 
-    public func requestCode(_ purpose: SmsPurpose, invoiceID: UUID?, phone: String?) async throws -> SmsChallenge {
-        var body: [String: AnyEncodable] = ["p_purpose": AnyEncodable(purpose.rawValue)]
+    public func requestCode(_ purpose: SmsPurpose, invoiceID: UUID?, phone: String?,
+                            resend: Bool) async throws -> SmsChallenge {
+        var body: [String: AnyEncodable] = ["p_purpose": AnyEncodable(purpose.rawValue),
+                                            "p_resend": AnyEncodable(resend)]
         if let invoiceID { body["p_invoice_id"] = AnyEncodable(invoiceID.uuidString) }
         if let phone { body["p_phone"] = AnyEncodable(phone) }
         return try await client.rpc("request_sms_code", body: body)

@@ -59,14 +59,14 @@ begin
     (v_pierre, 'pierre-louis@trinity-energie.test');
 
   insert into profiles (id, role, status, first_name, last_name, email, city,
-                        company_name, billing_mandate_signed_at) values
+                        company_name, billing_mandate_signed_at, address, postal_code) values
     (v_johann, 'apporteur', 'active', 'Johann', 'Lefeuvre', 'johann@example.test', 'Lille',
-     'Lefeuvre Conseil', timestamptz '2026-01-05 10:00'),
+     'Lefeuvre Conseil', timestamptz '2026-01-05 10:00', '12 rue des Lilas', '59000'),
     -- Marie has no mandate on file: she cannot be invoiced (section 8)
     (v_marie,  'apporteur', 'active', 'Marie',  'Durand',   'marie@example.test',  'Lyon',
-     null, null),
+     null, null, '3 place Bellecour', '69002'),
     (v_pierre, 'admin',     'active', 'Pierre-Louis', 'Tettamanti',
-     'pierre-louis@trinity-energie.test', 'AIX-EN-PEVELE', 'Trinity Énergie', null);
+     'pierre-louis@trinity-energie.test', 'AIX-EN-PEVELE', 'Trinity Énergie', null, null, null);
 
   -- the customer on every invoice (section 44)
   insert into billing_settings (legal_name, legal_form, share_capital, siren, rcs_city,
@@ -1713,9 +1713,10 @@ insert into auth.users (id, email) values
   ('66666666-6666-6666-6666-666666666666', 'intrus@example.test'),
   ('77777777-7777-7777-7777-777777777777', 'eva@example.test');
 insert into profiles (id, role, status, first_name, last_name, email, city,
-                      company_name, billing_mandate_signed_at)
+                      company_name, billing_mandate_signed_at, address, postal_code)
 values ('77777777-7777-7777-7777-777777777777', 'apporteur', 'active', 'Eva', 'Garnier',
-        'eva@example.test', 'Arras', 'Garnier Conseil', timestamptz '2026-01-05 10:00');
+        'eva@example.test', 'Arras', 'Garnier Conseil', timestamptz '2026-01-05 10:00',
+        '8 rue Gambetta', '62000');
 
 -- A recommendation of p_parrain's, walked by p_admin to the reward stage with
 -- an agreed commission. Leaves the admin logged in.
@@ -2811,10 +2812,12 @@ begin
   v_r := request_sms_code('sign_invoice', v_inv.id);
   perform assert((v_r ->> 'required')::boolean and v_r ->> 'masked_phone' = '+33 6 •• •• •• 78',
     'a signing code goes to the verified number');
-  perform assert((select body ->> 'text' from net.sent_requests order by id desc limit 1)
-                   like '%' || v_inv.number || '%',
-    'and names the invoice it signs');
   v_code := test_last_sms_code();
+  select count(*) into i from net.sent_requests where url like '%/send-sms';
+  v_r := request_sms_code('sign_invoice', v_inv.id);
+  perform assert((v_r ->> 'reused')::boolean
+                 and (select count(*) from net.sent_requests where url like '%/send-sms') = i,
+    'coming back to the code screen does not send a second SMS while the first is good');
 
   for i in 1..5 loop
     v_r := confirm_sms_code('sign_invoice', '99999' || i::text, v_inv.id);
@@ -2834,6 +2837,7 @@ declare
   v_pierre uuid := '33333333-3333-3333-3333-333333333333';
   v_inv    invoices%rowtype;
   v_sig    invoice_signatures%rowtype;
+  v_second invoices%rowtype;
   v_code   text;
   v_doc    jsonb;
 begin
@@ -2845,13 +2849,11 @@ begin
                   and r.filleul_first_name = 'Sms');
 
   perform login(v_johann);
-  perform request_sms_code('sign_invoice', v_inv.id);
+  perform request_sms_code('sign_invoice', v_inv.id, null, true);
   v_code := test_last_sms_code();
-  perform assert(not (confirm_sms_code('sign_invoice', v_code, gen_random_uuid()) ->> 'ok')::boolean,
-    'a code is bound to its invoice');
   perform login(v_marie);
   perform assert(not (confirm_sms_code('sign_invoice', v_code, v_inv.id) ->> 'ok')::boolean,
-    'and to its owner');
+    'a code is bound to its owner');
 
   perform login(v_johann);
   perform assert((confirm_sms_code('sign_invoice', ' ' || v_code || ' ', v_inv.id) ->> 'ok')::boolean,
@@ -2859,6 +2861,15 @@ begin
   select * into v_sig from sign_invoice(v_inv.id, v_inv.document_sha256);
   perform assert(v_sig.otp_verified and v_sig.otp_phone = '+33 6 •• •• •• 78',
     'the signature keeps that it was confirmed by SMS, and to which number');
+
+  -- a second invoice, in the same ten minutes: no second SMS
+  select * into v_second from issue_invoice(test_reco_at_reward(v_johann, v_pierre, 45, 'Fenetre'));
+  perform login(v_johann);
+  perform assert((request_sms_code('sign_invoice', v_second.id) ->> 'session')::boolean,
+    'a confirmed code covers the next signatures for ten minutes, without another SMS');
+  select * into v_sig from sign_invoice(v_second.id, v_second.document_sha256);
+  perform assert(v_sig.otp_verified and v_sig.otp_phone = '+33 6 •• •• •• 78',
+    'and each of them records it');
 
   perform login(v_pierre);
   select * into v_sig from sign_invoice(v_inv.id, v_inv.document_sha256);
@@ -2893,6 +2904,73 @@ begin
   perform assert_denied('11111111-1111-1111-1111-111111111111',
     'select request_sms_code(''verify_phone'', null, ''0700000001'')',
     'six codes in an hour is the most anyone is sent');
+end $$;
+
+\echo ''
+\echo '=== 51. One SMS where one will do; no invoice without an address ===='
+reset role;
+do $$
+declare v_text text;
+begin
+  -- what a phone receives fits in one SMS: GSM-7 only, at most 160
+  foreach v_text in array array[sms_text('sign_invoice', '123456'), sms_text('verify_phone', '123456')] loop
+    perform assert(length(v_text) <= 160
+                   and v_text ~ '^[A-Za-z0-9 @£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&''()*+,\-./:;<=>?¡ÄÖÑÜ§¿äöñüà]*$',
+      format('"%s" is one SMS', v_text));
+  end loop;
+end $$;
+insert into auth.users (id, email) values ('12121212-1212-1212-1212-121212121212', 'lucas@example.test');
+insert into profiles (id, role, status, first_name, last_name, email, city, address, postal_code,
+                      billing_mandate_signed_at)
+values ('12121212-1212-1212-1212-121212121212', 'apporteur', 'active', 'Lucas', 'Martin',
+        'lucas@example.test', 'Douai', '4 rue de Paris', '59500', timestamptz '2026-01-05 10:00');
+set role authenticated;
+
+do $$
+declare
+  v_eva    uuid := '12121212-1212-1212-1212-121212121212';   -- Lucas
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_inv    invoices%rowtype;
+  v_sig    invoice_signatures%rowtype;
+  v_r      jsonb;
+  v_before bigint;
+  v_text   text;
+begin
+  -- Lucas has never verified a number: his first signature proves it as well
+  select * into v_inv from issue_invoice(test_reco_at_reward(v_eva, v_pierre, 120, 'Premiere'));
+  perform login(v_eva);
+  perform assert_denied(v_eva, format('select request_sms_code(''sign_invoice'', %L)', v_inv.id),
+    'with no proven number, the app has to ask for one');
+  perform login(v_eva);
+  select coalesce(max(id), 0) into v_before from net.sent_requests;
+  v_r := request_sms_code('sign_invoice', v_inv.id, '07 11 22 33 44');
+  perform assert((v_r ->> 'required')::boolean and v_r ->> 'masked_phone' = '+33 7 •• •• •• 44'
+                 and (select count(*) from net.sent_requests where id > v_before) = 1,
+    'the signing code goes to the number she types: one SMS');
+  perform assert((confirm_sms_code('sign_invoice', test_last_sms_code(), v_inv.id) ->> 'ok')::boolean,
+    'and the code she types back');
+  perform assert((select phone = '+33711223344' and phone_verified_at is not null
+                    from profiles where id = v_eva),
+    'proves the number and confirms the signature at once');
+  select * into v_sig from sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert(v_sig.otp_verified and v_sig.otp_phone = '+33 7 •• •• •• 44', 'she has signed');
+
+  -- the address
+  reset role;
+  update profiles set address = null where id = v_eva;
+  set role authenticated;
+  perform login(v_pierre);
+  begin
+    perform issue_invoice(test_reco_at_reward(v_eva, v_pierre, 90, 'SansAdresse'));
+    perform assert(false, 'an apporteur without a billing address cannot be invoiced');
+  exception when others then
+    get stacked diagnostics v_text = pg_exception_hint;
+    perform assert(v_text = 'apporteur_address_missing',
+      'an apporteur without a billing address cannot be invoiced, and the admin is told why');
+  end;
+  reset role;
+  update profiles set address = '4 rue de Paris' where id = v_eva;
+  set role authenticated;
 end $$;
 
 reset role;

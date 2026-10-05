@@ -12,17 +12,18 @@
 \set pierre '33333333-3333-3333-3333-333333333333'
 
 insert into profiles (id, role, status, first_name, last_name, email, phone,
-                      company_name, city, billing_mandate_signed_at)
+                      company_name, city, billing_mandate_signed_at, address, postal_code)
 values
   (:'johann', 'apporteur', 'active', 'Johann', 'Lefeuvre', 'johann@example.test',
-   '+33 6 11 11 11 11', 'Lefeuvre Conseil', 'Lille', now() - interval '6 months'),
+   '+33 6 11 11 11 11', 'Lefeuvre Conseil', 'Lille', now() - interval '6 months',
+   '12 rue des Lilas', '59000'),
   -- Marie has no mandate: the app should show her the notice, and invoicing
   -- her must fail.
   (:'marie', 'apporteur', 'active', 'Marie', 'Durand', 'marie@example.test',
-   '+33 6 22 22 22 22', null, 'Lyon', null),
+   '+33 6 22 22 22 22', null, 'Lyon', null, null, null),
   (:'pierre', 'admin', 'active', 'Pierre-Louis', 'Tettamanti',
    'pierre-louis@trinity-energie.test', '+33 6 33 33 33 33',
-   'Trinity Énergie', 'AIX-EN-PEVELE', null)
+   'Trinity Énergie', 'AIX-EN-PEVELE', null, null, null)
 on conflict (id) do nothing;
 
 -- The customer named on every invoice. Replace with the client's real legal

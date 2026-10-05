@@ -35,23 +35,20 @@ final class SmsTests: XCTestCase {
         XCTAssertEqual(signed, 1)
     }
 
-    /// With SMS set up and no verified number, the number comes first; then
-    /// the code for this invoice; then the signature.
+    /// With SMS set up and no proven number, the number comes first, and the
+    /// one code sent to it both proves it and confirms the signature.
     @MainActor
-    func testWithSmsTheApporteurProvesTheNumberThenTypesTheCode() async throws {
+    func testAFirstSignatureTakesOneSMS() async throws {
         let invoices = RecordingInvoices()
         let sms = PreviewSmsRepository(required: true)
         let model = InvoiceViewModel(invoiceID: UUID(), repository: invoices, sms: sms)
         await model.load()
 
         await model.startSigning(asCompany: false)
-        XCTAssertEqual(model.signingStep, .verifyPhone)
+        XCTAssertEqual(model.signingStep, .enterPhone)
 
-        _ = try await sms.requestCode(.verifyPhone, invoiceID: nil, phone: "06 12 34 56 78")
-        let proven = try await sms.confirm(.verifyPhone, code: PreviewSmsRepository.demoCode, invoiceID: nil)
-        XCTAssertTrue(proven.ok)
-        await model.phoneVerified()
-        XCTAssertEqual(model.signingStep, .enterCode(maskedPhone: "+33 6 •• •• •• 78"))
+        let challenge = try await model.requestSigningCode(phone: "06 12 34 56 78", resend: false)
+        XCTAssertEqual(challenge.maskedPhone, "+33 6 •• •• •• 78")
         var signed = await invoices.signatures
         XCTAssertEqual(signed, 0, "nothing is signed before the code")
 
@@ -65,6 +62,43 @@ final class SmsTests: XCTestCase {
         XCTAssertNil(model.signingStep)
         signed = await invoices.signatures
         XCTAssertEqual(signed, 1)
+        let sent = await sms.sent
+        XCTAssertEqual(sent, 1, "one SMS proved the number and confirmed the signature")
+        let status = try await sms.status()
+        XCTAssertTrue(status.phoneVerified)
+    }
+
+    /// Within ten minutes of a confirmed code, the next signature needs no SMS;
+    /// and reopening the code screen reuses the code already sent.
+    @MainActor
+    func testSignaturesInTheSameTenMinutesShareOneSMS() async throws {
+        let sms = PreviewSmsRepository(required: true, verifiedPhone: "+33612345678")
+        let first = InvoiceViewModel(invoiceID: UUID(), repository: RecordingInvoices(), sms: sms)
+        await first.load()
+        await first.startSigning(asCompany: false)
+        XCTAssertEqual(first.signingStep, .enterCode(maskedPhone: "+33 6 •• •• •• 78"))
+        _ = try await sms.requestCode(.signInvoice, invoiceID: nil, phone: nil)   // the screen, reopened
+        var sent = await sms.sent
+        XCTAssertEqual(sent, 1, "the code still on its way is reused")
+        let confirmed = try await first.confirmSigningCode(PreviewSmsRepository.demoCode)
+        XCTAssertTrue(confirmed.ok)
+        await first.codeConfirmed()
+
+        let secondInvoices = RecordingInvoices()
+        let second = InvoiceViewModel(invoiceID: UUID(), repository: secondInvoices, sms: sms)
+        await second.load()
+        await second.startSigning(asCompany: false)
+        XCTAssertNil(second.signingStep, "no code screen at all")
+        let signed = await secondInvoices.signatures
+        XCTAssertEqual(signed, 1)
+        sent = await sms.sent
+        XCTAssertEqual(sent, 1, "two signatures, one SMS")
+    }
+
+    func testANumberIsShownTheWayItIsWritten() {
+        XCTAssertEqual(MobileNumber.formatted("0612345678"), "06 12 34 56 78")
+        XCTAssertEqual(MobileNumber.formatted("06123"), "06 12 3")
+        XCTAssertEqual(MobileNumber.formatted("+44 7700"), "+44 7700")
     }
 
     @MainActor

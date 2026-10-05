@@ -23,15 +23,23 @@ public struct SmsStatus: Decodable, Equatable, Sendable {
 
 /// A code on its way.
 public struct SmsChallenge: Decodable, Equatable, Sendable {
-    /// False when no code is needed: the action goes ahead without one.
+    /// False when no code is needed: the action goes ahead without one --
+    /// SMS is not set up, or a code confirmed minutes ago still covers it.
     public var required: Bool
     public var maskedPhone: String?
     public var expiresAt: Date?
+    /// A code confirmed in the last ten minutes covers this signature.
+    public var session: Bool?
+    /// The code already sent is still good, so no new SMS went out.
+    public var reused: Bool?
 
-    public init(required: Bool, maskedPhone: String? = nil, expiresAt: Date? = nil) {
+    public init(required: Bool, maskedPhone: String? = nil, expiresAt: Date? = nil,
+                session: Bool? = nil, reused: Bool? = nil) {
         self.required = required
         self.maskedPhone = maskedPhone
         self.expiresAt = expiresAt
+        self.session = session
+        self.reused = reused
     }
 }
 
@@ -60,8 +68,19 @@ public struct SmsConfirmation: Decodable, Equatable, Sendable {
 
 public protocol SmsRepository: Sendable {
     func status() async throws -> SmsStatus
-    func requestCode(_ purpose: SmsPurpose, invoiceID: UUID?, phone: String?) async throws -> SmsChallenge
+    /// Sends a code -- or not: the server reuses one still on its way unless
+    /// `resend` asks for a new one, and skips it inside a signing window.
+    /// For a signature, `phone` sends the code to a number not yet proven;
+    /// the code then proves it and confirms the signature with one SMS.
+    func requestCode(_ purpose: SmsPurpose, invoiceID: UUID?, phone: String?,
+                     resend: Bool) async throws -> SmsChallenge
     func confirm(_ purpose: SmsPurpose, code: String, invoiceID: UUID?) async throws -> SmsConfirmation
+}
+
+public extension SmsRepository {
+    func requestCode(_ purpose: SmsPurpose, invoiceID: UUID?, phone: String?) async throws -> SmsChallenge {
+        try await requestCode(purpose, invoiceID: invoiceID, phone: phone, resend: false)
+    }
 }
 
 /// Mobile numbers as the server understands them (`normalise_mobile`), so the
@@ -88,6 +107,21 @@ public enum MobileNumber {
         return (8...15).contains(digits.count) && !digits.hasPrefix("0") ? v : nil
     }
 
+    /// A French number as it is written, in pairs: "06 12 34 56 78". Anything
+    /// typed with a + is left as typed.
+    public static func formatted(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.hasPrefix("+") else { return raw }
+        let digits = String(trimmed.filter { $0.isASCII && $0.isNumber }.prefix(10))
+        guard digits.hasPrefix("0") else { return digits }
+        var out = ""
+        for (i, ch) in digits.enumerated() {
+            if i > 0 && i % 2 == 0 { out.append(" ") }
+            out.append(ch)
+        }
+        return out
+    }
+
     /// Only the digits of a code, at most six: what a paste or the keyboard's
     /// one-time-code suggestion fills in.
     public static func code(_ raw: String) -> String {
@@ -103,6 +137,11 @@ public actor PreviewSmsRepository: SmsRepository {
     private let required: Bool
     private var verifiedPhone: String?
     private var attempts = 0
+    private var pending: String?
+    private var pendingPurpose: SmsPurpose?
+    private var signingWindowEnds: Date?
+    /// SMS "sent", to show in tests and previews how few there are.
+    public private(set) var sent = 0
 
     public init(required: Bool = false, verifiedPhone: String? = nil) {
         self.required = required
@@ -120,25 +159,43 @@ public actor PreviewSmsRepository: SmsRepository {
                   maskedPhone: verifiedPhone.map(mask))
     }
 
-    public func requestCode(_ purpose: SmsPurpose, invoiceID: UUID?, phone: String?) async throws -> SmsChallenge {
-        attempts = 0
+    public func requestCode(_ purpose: SmsPurpose, invoiceID: UUID?, phone: String?,
+                            resend: Bool) async throws -> SmsChallenge {
+        let number: String
         switch purpose {
         case .signInvoice:
             guard required else { return SmsChallenge(required: false) }
-            guard let verifiedPhone else { throw SmsError.phoneNotVerified }
-            return SmsChallenge(required: true, maskedPhone: mask(verifiedPhone),
-                                expiresAt: .now.addingTimeInterval(600))
+            if let ends = signingWindowEnds, ends > .now, let verifiedPhone {
+                return SmsChallenge(required: false, maskedPhone: mask(verifiedPhone), session: true)
+            }
+            if let phone {
+                guard let typed = MobileNumber.e164(phone) else { throw SmsError.invalidNumber }
+                number = typed
+            } else if let verifiedPhone {
+                number = verifiedPhone
+            } else {
+                throw SmsError.phoneNotVerified
+            }
         case .verifyPhone:
-            guard let number = phone.flatMap(MobileNumber.e164) else { throw SmsError.invalidNumber }
-            pending = number
-            return SmsChallenge(required: true, maskedPhone: mask(number),
-                                expiresAt: .now.addingTimeInterval(600))
+            guard let typed = phone.flatMap(MobileNumber.e164) else { throw SmsError.invalidNumber }
+            number = typed
         }
+        if !resend, pending == number, pendingPurpose == purpose, attempts < 5 {
+            return SmsChallenge(required: true, maskedPhone: mask(number),
+                                expiresAt: .now.addingTimeInterval(600), reused: true)
+        }
+        attempts = 0
+        pending = number
+        pendingPurpose = purpose
+        sent += 1
+        return SmsChallenge(required: true, maskedPhone: mask(number),
+                            expiresAt: .now.addingTimeInterval(600))
     }
 
-    private var pending: String?
-
     public func confirm(_ purpose: SmsPurpose, code: String, invoiceID: UUID?) async throws -> SmsConfirmation {
+        guard pending != nil else {
+            return SmsConfirmation(ok: false, reason: "expired", message: "Ce code a expiré. Demandez-en un nouveau.")
+        }
         guard attempts < 5 else {
             return SmsConfirmation(ok: false, reason: "locked", message: "Trop d'essais. Demandez un nouveau code.")
         }
@@ -148,7 +205,10 @@ public actor PreviewSmsRepository: SmsRepository {
                 ? SmsConfirmation(ok: false, reason: "locked", message: "Trop d'essais. Demandez un nouveau code.")
                 : SmsConfirmation(ok: false, reason: "wrong", message: "Code incorrect.", attemptsLeft: 5 - attempts)
         }
-        if purpose == .verifyPhone, let pending { verifiedPhone = pending }
+        if let pending { verifiedPhone = pending }   // either purpose proves the number
+        if purpose == .signInvoice { signingWindowEnds = .now.addingTimeInterval(600) }
+        pending = nil
+        pendingPurpose = nil
         return SmsConfirmation(ok: true, maskedPhone: verifiedPhone.map(mask))
     }
 }
@@ -159,7 +219,7 @@ public enum SmsError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .phoneNotVerified: "Vérifiez d'abord votre numéro de mobile."
+        case .phoneNotVerified: "Indiquez votre numéro de mobile."
         case .invalidNumber: "Ce numéro de mobile n'est pas valide."
         }
     }

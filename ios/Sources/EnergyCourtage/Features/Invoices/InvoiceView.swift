@@ -2,14 +2,15 @@ import SwiftUI
 import Observation
 
 /// Where an apporteur's signature stands between "Signer" and the signature:
-/// a number to prove first, or a code on its way to it.
+/// a number to give first (its code then proves it and signs, one SMS), or a
+/// code on its way to the number already proven.
 public enum SigningStep: Identifiable, Equatable {
-    case verifyPhone
+    case enterPhone
     case enterCode(maskedPhone: String)
 
     public var id: String {
         switch self {
-        case .verifyPhone: "verify"
+        case .enterPhone: "phone"
         case .enterCode: "code"
         }
     }
@@ -106,7 +107,7 @@ public final class InvoiceViewModel {
                 return await sign()
             }
             if !status.phoneVerified {
-                signingStep = .verifyPhone
+                signingStep = .enterPhone
                 return
             }
             try await sendSigningCode()
@@ -115,8 +116,9 @@ public final class InvoiceViewModel {
         }
     }
 
-    /// Sends the code bound to this invoice. If the server needs none after
-    /// all, the signature goes ahead.
+    /// Sends the signing code to the proven number. No SMS goes out when the
+    /// server needs none: SMS not set up, or a code confirmed in the last ten
+    /// minutes still covers this signature -- which then goes ahead.
     @MainActor
     public func sendSigningCode() async throws {
         let challenge = try await sms.requestCode(.signInvoice, invoiceID: invoiceID, phone: nil)
@@ -129,17 +131,16 @@ public final class InvoiceViewModel {
         }
     }
 
-    /// The number has just been proven: on to the code for this invoice.
+    /// From the number step: the code goes to the number typed, and coming
+    /// back proves it as well as confirming the signature.
     @MainActor
-    public func phoneVerified() async {
-        signingStep = nil
-        do { try await sendSigningCode() }
-        catch { errorMessage = error.localizedDescription }
+    public func requestSigningCode(phone: String?, resend: Bool) async throws -> SmsChallenge {
+        try await sms.requestCode(.signInvoice, invoiceID: invoiceID, phone: phone, resend: resend)
     }
 
     @MainActor
     public func resendSigningCode() async throws -> SmsChallenge {
-        try await sms.requestCode(.signInvoice, invoiceID: invoiceID, phone: nil)
+        try await sms.requestCode(.signInvoice, invoiceID: invoiceID, phone: nil, resend: true)
     }
 
     @MainActor
@@ -244,15 +245,22 @@ public struct InvoiceView: View {
     @ViewBuilder
     private func signingSheet(_ step: SigningStep) -> some View {
         switch step {
-        case .verifyPhone:
-            PhoneVerificationView(repository: model.sms, demoHint: demoHint) {
-                Task { await model.phoneVerified() }
-            }
+        case .enterPhone:
+            PhoneVerificationView(
+                title: "Votre mobile",
+                explanation: "Votre signature se confirme avec un code reçu par SMS. Ce même code validera votre numéro : un seul SMS.",
+                codeTitle: "Signer la facture",
+                codeExplanation: "Ce code confirme votre signature et votre numéro.",
+                demoHint: demoHint,
+                send: { phone, resend in try await model.requestSigningCode(phone: phone, resend: resend) },
+                confirm: { try await model.confirmSigningCode($0) },
+                onConfirmed: { Task { await model.codeConfirmed() } },
+                onCancel: { model.signingStep = nil })
         case .enterCode(let maskedPhone):
             ScrollView {
                 SmsCodeView(
                     title: "Signer la facture",
-                    explanation: "Ce code confirme que c'est bien vous qui signez \(model.document?.number ?? "cette facture").",
+                    explanation: "Ce code confirme que c'est bien vous qui signez \(model.document?.number ?? "cette facture"). Il reste valable 10 minutes pour vos autres signatures.",
                     maskedPhone: maskedPhone,
                     demoHint: demoHint,
                     resend: { try await model.resendSigningCode() },
