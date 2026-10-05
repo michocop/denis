@@ -50,77 +50,90 @@ public struct HomeView: View {
         ZStack {
             BrandBackground()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    HStack {
-                        TrinityWordmark(logoSize: 20)
-                        Spacer()
-                        accessory
-                    }
-                    .padding(.top, Theme.Spacing.s)
-                    .staggeredAppear(index: 0)
+            // One screen, no scrolling: a dashboard is read at a glance, so it
+            // is laid out to the height it is given -- the four tiles share
+            // whatever the header, the notice and the button leave. Figures
+            // are reloaded each time the tab comes back into view, which is
+            // what pulling to refresh used to be for.
+            VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                HStack {
+                    TrinityWordmark(logoSize: 20)
+                    Spacer()
+                    accessory
+                }
+                .padding(.top, Theme.Spacing.s)
+                .staggeredAppear(index: 0)
 
-                    // the site's headline: white, then the blue gradient
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 0) {
-                            Text("Bonjour, ")
-                                .foregroundStyle(Theme.Palette.textPrimary)
-                            Text(model.profile?.firstName ?? "")
-                                .brandGradient()
-                        }
-                        .font(Theme.Typography.screenTitle)
-                        Text("Voici où en sont vos recommandations.")
-                            .font(Theme.Typography.secondary)
-                            .foregroundStyle(Theme.Palette.textSecondary)
+                // the site's headline: white, then the blue gradient
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 0) {
+                        Text("Bonjour, ")
+                            .foregroundStyle(Theme.Palette.textPrimary)
+                        Text(model.profile?.firstName ?? "")
+                            .brandGradient()
                     }
-                    .padding(.top, Theme.Spacing.m)
-                    .accessibilityElement(children: .combine)
-                    .staggeredAppear(index: 1, when: appeared)
+                    .font(Theme.Typography.screenTitle)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    Text("Voici où en sont vos recommandations.")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .accessibilityElement(children: .combine)
+                .staggeredAppear(index: 1, when: appeared)
 
-                    // The mandate gate is surfaced here rather than at invoicing
-                    // time: without it no invoice can be issued at all, so the
-                    // apporteur should learn that before earning anything.
-                    if let profile = model.profile, !profile.canBeInvoiced,
-                       profile.role == .apporteur {
-                        MandateNotice(onOpen: onOpenMandate)
-                            .staggeredAppear(index: 2, when: appeared)
-                    }
+                // The mandate gate is surfaced here rather than at invoicing
+                // time: without it no invoice can be issued at all, so the
+                // apporteur should learn that before earning anything.
+                if let profile = model.profile, !profile.canBeInvoiced,
+                   profile.role == .apporteur {
+                    MandateNotice(onOpen: onOpenMandate)
+                        .staggeredAppear(index: 2, when: appeared)
+                }
 
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: Theme.Spacing.m),
-                                        GridItem(.flexible(), spacing: Theme.Spacing.m)],
-                              spacing: Theme.Spacing.m) {
+                VStack(spacing: Theme.Spacing.m) {
+                    HStack(spacing: Theme.Spacing.m) {
                         StatTile(label: "Recommandations actives",
                                  value: "\(model.stats.activeCount)",
-                                 tint: Theme.Palette.brand, icon: "bolt.fill")
+                                 tint: Theme.Palette.brand, icon: "bolt.fill", fills: true)
                             .staggeredAppear(index: 3, when: appeared)
                         StatTile(label: "Taux de conversion",
                                  value: String(format: "%.0f %%", model.stats.conversionRate),
-                                 tint: Theme.Palette.brand, icon: "chart.line.uptrend.xyaxis")
+                                 tint: Theme.Palette.brand, icon: "chart.line.uptrend.xyaxis", fills: true)
                             .staggeredAppear(index: 4, when: appeared)
+                    }
+                    HStack(spacing: Theme.Spacing.m) {
                         StatTile(label: "En attente",
                                  value: Self.euros(model.stats.pendingTotal),
-                                 tint: Theme.Palette.ice, icon: "hourglass")
+                                 tint: Theme.Palette.ice, icon: "hourglass", fills: true)
                             .staggeredAppear(index: 5, when: appeared)
                         StatTile(label: "Gagné",
                                  value: Self.euros(model.stats.earnedTotal),
-                                 tint: Theme.Palette.successText, icon: "checkmark.seal.fill")
+                                 tint: Theme.Palette.successText, icon: "checkmark.seal.fill", fills: true)
                             .staggeredAppear(index: 6, when: appeared)
                     }
-
-                    PrimaryActionButton("Nouvelle recommandation", action: onNewRecommendation)
-                        .staggeredAppear(index: 7, when: appeared)
-
-                    if let message = model.errorMessage {
-                        Text(message)
-                            .font(Theme.Typography.secondary)
-                            .foregroundStyle(Theme.Palette.destructive)
-                    }
                 }
-                .padding(.horizontal, Theme.Spacing.gutter)
-                .padding(.bottom, Theme.Spacing.xl)
+                .frame(maxHeight: .infinity)
+
+                if let message = model.errorMessage {
+                    Text(message)
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.destructive)
+                        .lineLimit(2)
+                }
+
+                PrimaryActionButton("Nouvelle recommandation", action: onNewRecommendation)
+                    .staggeredAppear(index: 7, when: appeared)
             }
-            .refreshable { await model.load() }
+            .padding(.horizontal, Theme.Spacing.gutter)
+            .padding(.bottom, Theme.Spacing.l)
         }
+        // Past this size the page could not hold on one screen. The rest of
+        // the app follows every setting; here the figures are short enough
+        // to read at this size.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .task(id: refreshToken) {
             await model.load()
             // each part rises in on its own step of the cascade
@@ -138,10 +151,32 @@ struct StatTile: View {
     let value: String
     let tint: Color
     var icon: String? = nil
+    /// Grows to the height it is offered, the figure settling at the bottom:
+    /// Home lays its tiles out to fill the screen. Offered too little -- a
+    /// small iPhone, a large text size -- the tile drops its icon first.
+    var fills = false
 
     var body: some View {
+        Group {
+            if fills {
+                ViewThatFits(in: .vertical) {
+                    content(showsIcon: true)
+                    content(showsIcon: false)
+                }
+            } else {
+                content(showsIcon: true)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: fills ? .infinity : nil, alignment: .topLeading)
+        .padding(Theme.Spacing.l)
+        .cardSurface()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label) : \(value)")
+    }
+
+    private func content(showsIcon: Bool) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            if let icon {
+            if showsIcon, let icon {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(tint)
@@ -152,6 +187,7 @@ struct StatTile: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Palette.textSecondary)
                 .lineLimit(2, reservesSpace: true)
+            if fills { Spacer(minLength: 0) }
             Text(value)
                 .font(Theme.Typography.display(26, .semibold, relativeTo: .title))
                 .foregroundStyle(tint)
@@ -160,11 +196,7 @@ struct StatTile: View {
                 .contentTransition(.numericText())
                 .animation(.snappy, value: value)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Spacing.l)
-        .cardSurface()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label) : \(value)")
+        .frame(maxWidth: .infinity, maxHeight: fills ? .infinity : nil, alignment: .topLeading)
     }
 }
 
@@ -182,29 +214,36 @@ struct MandateNotice: View {
         }
     }
 
+    /// One line and a chevron. The full consequence -- no invoice, no payment
+    /// -- is spelled out in the mandate itself, one tap away; on Home it only
+    /// has to be noticed, not read.
     private func card(showsAction: Bool) -> some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.m) {
-            Image(systemName: "exclamationmark.circle.fill")
+        HStack(spacing: Theme.Spacing.m) {
+            Image(systemName: "signature")
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.Palette.rewardText)
-            VStack(alignment: .leading, spacing: 4) {
+                .frame(width: 34, height: 34)
+                .background(Theme.Palette.rewardText.opacity(0.14), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
                 Text("Mandat de facturation à signer")
-                    .font(Theme.Typography.body.weight(.semibold))
+                    .font(Theme.Typography.label.weight(.semibold))
                     .foregroundStyle(Theme.Palette.textPrimary)
-                Text("Tant qu'il n'est pas signé, aucune facture ne peut être émise en votre nom et vos gains ne peuvent pas être réglés.")
-                    .font(Theme.Typography.secondary)
-                    .foregroundStyle(Theme.Palette.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .multilineTextAlignment(.leading)
-                if showsAction {
-                    Label("Lire et signer", systemImage: "signature")
-                        .font(Theme.Typography.label.weight(.semibold))
-                        .foregroundStyle(Theme.Palette.rewardText)
-                        .padding(.top, 4)
-                }
+                Text("Requis pour recevoir vos gains.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.textSecondary)
             }
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
+            if showsAction {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.rewardText)
+            }
         }
-        .padding(Theme.Spacing.l)
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.vertical, Theme.Spacing.m)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .fill(Theme.Palette.rewardSoft)

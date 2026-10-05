@@ -178,6 +178,18 @@ public struct PressableStyle: ButtonStyle {
     }
 }
 
+/// The size of every action button: shorter than a full-bleed slab, and never
+/// wider than a comfortable reach, centred in whatever holds it. Edge to edge
+/// on a large phone, a button stops reading as a control and starts reading
+/// as a banner.
+private enum ActionButtonMetrics {
+    static let maxWidth: CGFloat = 340
+    static let primaryPadding: CGFloat = 13
+    static let padding: CGFloat = 11
+    static let primaryFont = Theme.Typography.text(16, .semibold, relativeTo: .body)
+    static let font = Theme.Typography.text(15, .semibold, relativeTo: .subheadline)
+}
+
 public struct SecondaryActionButton: View {
     private let title: String
     private let systemImage: String?
@@ -193,15 +205,16 @@ public struct SecondaryActionButton: View {
                 if let systemImage { Image(systemName: systemImage) }
                 Text(title)
             }
-            .font(Theme.Typography.body.weight(.semibold))
+            .font(ActionButtonMetrics.font)
             .foregroundStyle(Theme.Palette.textPrimary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
+            .frame(maxWidth: ActionButtonMetrics.maxWidth)
+            .padding(.vertical, ActionButtonMetrics.padding)
             .contentShape(Capsule())
             // the site's ghost button, as Liquid Glass where iOS has it
             .brandGlass(in: Capsule(), interactive: true)
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -215,23 +228,26 @@ public struct PrimaryActionButton: View {
     public var body: some View {
         Button(action: action) {
             Text(title)
-                .font(Theme.Typography.body.weight(.semibold))
+                .font(ActionButtonMetrics.primaryFont)
                 .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: ActionButtonMetrics.maxWidth)
+                .padding(.vertical, ActionButtonMetrics.primaryPadding)
                 // the site's primary: a blue pill, a line of light along its
-                // top edge, and a blue glow underneath
+                // top edge, and a soft glow underneath
                 .background(Capsule().fill(Theme.Palette.brandFill))
                 .overlay(
                     Capsule().strokeBorder(
-                        LinearGradient(colors: [Color.white.opacity(0.32), .clear],
+                        LinearGradient(colors: [Color.white.opacity(0.28), .clear],
                                        startPoint: .top, endPoint: .center),
                         lineWidth: 1)
                 )
-                .shadow(color: Theme.Palette.brandFill.opacity(0.55), radius: 16, y: 10)
+                .shadow(color: Theme.Palette.brandFill.opacity(0.35), radius: 10, y: 5)
                 .contentShape(Capsule())
         }
         .buttonStyle(PressableStyle(feedback: .tap))
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -245,15 +261,18 @@ public struct TertiaryActionButton: View {
     public var body: some View {
         Button(action: action) {
             Text(title)
-                .font(Theme.Typography.body.weight(.medium))
+                .font(ActionButtonMetrics.font)
                 .foregroundStyle(Theme.Palette.brand)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: ActionButtonMetrics.maxWidth)
+                .padding(.vertical, ActionButtonMetrics.padding)
                 .background(Capsule().fill(Theme.Palette.track))
                 .overlay(Capsule().stroke(Theme.Palette.hairline, lineWidth: 1))
                 .contentShape(Capsule())
         }
         .buttonStyle(PressableStyle())
+        .frame(maxWidth: .infinity)
     }
 }
 
