@@ -128,7 +128,7 @@ SDK = {
     "SecItemCopyMatching", "SecItemDelete", "SecureField", "Sendable", "Set",
     "ShareLink", "Spacer", "State", "String", "SymmetricKey", "TabView", "Task",
     "Text", "TextEditor", "TextField", "TimeZone", "Toggle", "ToolbarItem",
-    "UIBezierPath", "UIColor", "UIFont", "UIGraphicsPDFRenderer",
+    "UIBezierPath", "UIColor", "UIFont", "UIGraphicsPDFRenderer", "UIRectFill",
     "UIGraphicsPDFRendererFormat", "URL", "URLQueryItem", "URLRequest",
     "URLSession", "UUID", "VStack", "ViewBuilder", "XCTFail", "XCTSkipUnless",
     "XCTUnwrap", "ZStack", "NSString", "NSAttributedString", "NSDecimalNumber",
