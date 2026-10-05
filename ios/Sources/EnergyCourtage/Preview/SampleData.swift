@@ -7,7 +7,7 @@ import CryptoKit
 public enum SampleData {
 
     public static let stages: [Stage] = {
-        let banner = "Contrat signé. Disponible dans l'onglet Documents"
+        let banner = "Contrat signé. Retrouvez-le dans les documents de la recommandation."
         return [
             Stage(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
                   key: "a_contacter", label: "À contacter", position: 1),
@@ -531,17 +531,21 @@ public struct PreviewNotificationsRepository: NotificationsRepository {
     public func notifications() async throws -> [AppNotification] {
         let read: Date? = await DemoNotificationStore.shared.isRead() ? .now : nil
         return [
+            // each opens what it is about, as a real one does
             AppNotification(id: UUID(), kind: "reward_earned",
                             title: "Commission acquise",
-                            body: "Thomas Dubois a signé — 300.00 €",
+                            body: "Thomas Dubois a signé — 300,00 €",
+                            recommendationId: UUID(),
                             readAt: read, createdAt: .now.addingTimeInterval(-1800)),
             AppNotification(id: UUID(), kind: "message_received",
                             title: "Pierre-Louis Tettamanti",
                             body: "Je vous réponds tout de suite.",
+                            threadId: UUID(uuidString: "aaaaaaaa-0000-0000-0000-000000000001")!,
                             readAt: read, createdAt: .now.addingTimeInterval(-600)),
             AppNotification(id: UUID(), kind: "invoice_ready",
                             title: "Facture à signer",
-                            body: "Facture FA-2026-0001 — 300.00 EUR",
+                            body: "Facture FA-2026-0001 — 300,00 €",
+                            invoiceId: UUID(),
                             readAt: .now.addingTimeInterval(-86_000),
                             createdAt: .now.addingTimeInterval(-86_400))
         ]

@@ -1,4 +1,5 @@
 import SwiftUI
+import QuickLook
 import Observation
 
 /// Where an apporteur's signature stands between "Signer" and the signature:
@@ -32,6 +33,23 @@ public final class InvoiceViewModel {
 
     /// Set while the apporteur proves their number or types the code.
     public var signingStep: SigningStep?
+    /// The document as a PDF, shown in Quick Look before anyone signs.
+    public var previewURL: URL?
+
+    /// Renders what is about to be signed exactly as it will be filed, so the
+    /// signer reads the page itself and not only the screen's summary of it.
+    @MainActor
+    public func previewPDF() {
+        guard let document else { return }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(document.number) (aperçu).pdf")
+        do {
+            try InvoicePDF.render(document).write(to: url, options: .atomic)
+            previewURL = url
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 
     private let invoiceID: UUID
     private let repository: InvoiceRepository
@@ -203,6 +221,11 @@ public struct InvoiceView: View {
                 VStack(spacing: Theme.Spacing.l) {
                     if let document = model.document {
                         documentCard(document)
+                        if !document.isFullySigned {
+                            SecondaryActionButton("Voir le PDF", systemImage: "doc.richtext") {
+                                model.previewPDF()
+                            }
+                        }
                         signaturePanel(document)
                         if document.isFullySigned { pdfPanel }
                         if isAdmin && document.isFullySigned { correctionPanel }
@@ -229,6 +252,7 @@ public struct InvoiceView: View {
             await model.load()
             if model.document?.isFullySigned == true { await model.preparePDF() }
         }
+        .quickLookPreview($model.previewURL)
         .sheet(item: $model.signingStep) { step in
             NavigationStack { signingSheet(step) }
                 .presentationDetents([.large])
@@ -373,109 +397,232 @@ public struct InvoiceView: View {
 
     private func documentCard(_ doc: InvoiceDocument) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-            // The customer is the company by its legal identity; the admin's
-            // own name is only shown on invoices issued before that was kept.
-            VStack(alignment: .leading, spacing: 2) {
-                if let customer = doc.customer {
-                    Text(customer.legalName).font(Theme.Typography.body.weight(.semibold))
-                    Text(customer.address)
-                    Text("\(customer.postalCode) \(customer.city)")
-                    Text("SIREN \(customer.siren)")
-                } else {
-                    Text(doc.issuer.name).font(Theme.Typography.body.weight(.semibold))
-                    if let company = doc.issuer.company { Text(company) }
-                    if let city = doc.issuer.city { Text(city) }
+            hero(doc)
+            partiesRow(doc)
+            linesAndTotals(doc)
+            attestation(doc)
+            mentions(doc)
+        }
+    }
+
+    private static func euros(_ amount: String, cents: Bool = true) -> String {
+        Decimal(string: amount).map { Money.euros($0, cents: cents) } ?? amount
+    }
+
+    /// Where the invoice stands, said once, with its colour.
+    private func status(_ doc: InvoiceDocument) -> (String, Color) {
+        if doc.status == "void" { return ("Annulée", Theme.Palette.destructive) }
+        if doc.isFullySigned { return (doc.status == "paid" ? "Payée" : "Signée", Theme.Palette.successText) }
+        if doc.acceptsSignatures && !doc.isSigned(by: myRole) { return ("À signer", Theme.Palette.rewardText) }
+        return ("En attente", Theme.Palette.ice)
+    }
+
+    /// The document's identity: kind, number, amount, dates, state.
+    private func hero(_ doc: InvoiceDocument) -> some View {
+        let (label, tint) = status(doc)
+        return VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(doc.isCreditNote ? "AVOIR" : "FACTURE")
+                        .font(Theme.Typography.caption.weight(.semibold))
+                        .tracking(1.6)
+                        .foregroundStyle(Theme.Palette.ice)
+                    Text("N° \(doc.number)")
+                        .font(Theme.Typography.display(20, .semibold, relativeTo: .title3))
+                        .foregroundStyle(.white)
+                    if doc.isCreditNote, let original = doc.correctsNumber {
+                        Text("sur la facture \(original)")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Palette.ice)
+                    }
                 }
-            }
-            .foregroundStyle(Theme.Palette.textPrimary)
-
-            Text(doc.apporteur.name)
-                .font(Theme.Typography.body.weight(.semibold))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-
-            VStack(spacing: 4) {
-                Text(doc.isCreditNote ? "• Avoir \(doc.number)" : "• Numéro de facture \(doc.number)")
-                    .font(Theme.Typography.body.weight(.semibold))
-                if doc.isCreditNote, let original = doc.correctsNumber {
-                    Text("sur la facture \(original)")
-                        .font(Theme.Typography.secondary)
-                        .foregroundStyle(Theme.Palette.textSecondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, Theme.Spacing.l)
-
-            VStack(alignment: .leading, spacing: 6) {
-                line("Je soussigné", doc.attestation.soussigne)
-                line("Atteste avoir mis en relation", doc.attestation.misEnRelation ?? "—")
-                line("Avec", doc.attestation.avec)
-                line("Pour la prestation suivante", doc.attestation.prestation)
-                line("Intervenue le", doc.attestation.intervenueLe)
-            }
-
-            Divider()
-            HStack {
-                Text("Montant de la prestation :")
                 Spacer()
-                Text("\(doc.amount.ttc) \(doc.amount.currency)")
-                    .font(Theme.Typography.body.weight(.semibold))
+                Text(label)
+                    .font(Theme.Typography.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.black.opacity(0.25), in: Capsule())
+                    .overlay(Capsule().strokeBorder(tint.opacity(0.5), lineWidth: 1))
             }
-            .foregroundStyle(Theme.Palette.textPrimary)
-            if doc.amount.vatRate > 0 {
-                HStack {
-                    Text("dont TVA (\(doc.amount.vatRate as NSDecimalNumber) %)")
-                    Spacer()
-                    Text("\(doc.amount.vat) \(doc.amount.currency)")
-                }
-                .font(Theme.Typography.secondary)
-                .foregroundStyle(Theme.Palette.textSecondary)
+            Text(Self.euros(doc.amount.ttc))
+                .font(Theme.Typography.display(38, .semibold, relativeTo: .largeTitle))
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                .contentTransition(.numericText())
+            HStack(spacing: Theme.Spacing.xl) {
+                fact("Émise le", doc.issuedOn)
+                if let due = doc.dueOn { fact("Échéance", due) }
+                fact("Règlement", doc.paymentMethod)
             }
-            Divider()
+        }
+        .padding(Theme.Spacing.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            // the gradient, with the mark as a faint watermark inside it
+            ZStack(alignment: .bottomTrailing) {
+                LinearGradient(colors: [Theme.Palette.brandFill, Theme.Palette.navy],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                TrinityLogo(size: 130, lineColor: .white)
+                    .opacity(0.08)
+                    .offset(x: 26, y: 22)
+                    .accessibilityHidden(true)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(doc.legalMentions)
-                line("Modalité de règlement", doc.paymentMethod)
-                line("Fait à", doc.place)
-                line("Le", doc.issuedOn)
-                if let due = doc.dueOn { line("Échéance", due) }
-            }
+    private func fact(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1)
+                .foregroundStyle(Theme.Palette.ice.opacity(0.8))
+            Text(value)
+                .font(Theme.Typography.secondary.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
 
-            if let selfBilling = doc.selfBillingMention {
-                Text(selfBilling)
-                    .font(Theme.Typography.secondary.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let late = doc.latePaymentMention {
-                Text(late)
+    /// The supplier (the apporteur, in whose name it is issued) and the client.
+    private func partiesRow(_ doc: InvoiceDocument) -> some View {
+        let a = doc.apporteur
+        let supplier = [a.company, a.address,
+                        [a.postalCode, a.city].compactMap { $0 }.joined(separator: " "),
+                        a.siret.map { "SIRET \($0)" }]
+            .compactMap { $0 }.filter { !$0.isEmpty }
+        let client: (String, [String]) = doc.customer.map { c in
+            (c.legalName, [c.address, "\(c.postalCode) \(c.city)", "SIREN \(c.siren)"])
+        } ?? (doc.issuer.company ?? doc.issuer.name, [doc.issuer.city].compactMap { $0 })
+        return HStack(alignment: .top, spacing: Theme.Spacing.m) {
+            partyCard("FOURNISSEUR", a.name, supplier)
+            partyCard("CLIENT", client.0, client.1)
+        }
+    }
+
+    private func partyCard(_ label: String, _ name: String, _ lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(Theme.Palette.brand)
+            Text(name)
+                .font(Theme.Typography.label.weight(.semibold))
+                .foregroundStyle(Theme.Palette.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(lines, id: \.self) { line in
+                Text(line)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            if let notice = doc.taxNotice {
-                Text(notice)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Signatures :").underline()
-                ForEach(doc.signatures) { signature in
-                    Text(signature.name)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-            }
         }
-        .font(Theme.Typography.body)
-        .foregroundStyle(Theme.Palette.textPrimary)
+        .padding(Theme.Spacing.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .cardSurface(radius: 18)
+    }
+
+    /// What is invoiced, then HT / TVA / TTC.
+    private func linesAndTotals(_ doc: InvoiceDocument) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(doc.attestation.prestation)
+                        .font(Theme.Typography.body.weight(.semibold))
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text("Mise en relation avec \(doc.attestation.avec), le \(doc.attestation.intervenueLe)")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+                Spacer(minLength: Theme.Spacing.m)
+                Text(Self.euros(doc.amount.ht))
+                    .font(Theme.Typography.body.weight(.semibold))
+                    .foregroundStyle(Theme.Palette.textPrimary)
+            }
+            Divider().overlay(Theme.Palette.hairline)
+            total("Total HT", Self.euros(doc.amount.ht))
+            total("TVA (\(doc.amount.vatRate as NSDecimalNumber) %)", Self.euros(doc.amount.vat))
+            HStack {
+                Text(doc.isCreditNote ? "Total TTC à déduire" : "Total TTC")
+                    .font(Theme.Typography.body.weight(.semibold))
+                Spacer()
+                Text(Self.euros(doc.amount.ttc))
+                    .font(Theme.Typography.amount)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, Theme.Spacing.l)
+            .padding(.vertical, Theme.Spacing.m)
+            .background(Theme.Palette.navy, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Theme.Palette.brand.opacity(0.4), lineWidth: 1))
+        }
         .padding(Theme.Spacing.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
     }
 
-    private func line(_ label: String, _ value: String) -> some View {
-        Text("\(label) : \(value)")
-            .fixedSize(horizontal: false, vertical: true)
+    private func total(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(Theme.Palette.textSecondary)
+            Spacer()
+            Text(value).foregroundStyle(Theme.Palette.textPrimary)
+        }
+        .font(Theme.Typography.secondary)
     }
+
+    /// The apporteur's attestation, as what it is: their statement.
+    @ViewBuilder
+    private func attestation(_ doc: InvoiceDocument) -> some View {
+        if !doc.isCreditNote {
+            HStack(alignment: .top, spacing: Theme.Spacing.m) {
+                Capsule().fill(Theme.Palette.brand).frame(width: 3)
+                Text("Je soussigné(e) \(doc.attestation.soussigne) atteste avoir mis en relation "
+                     + "\(doc.attestation.misEnRelation ?? "la société") avec \(doc.attestation.avec) "
+                     + "pour la prestation ci-dessus.")
+                    .font(Theme.Typography.secondary)
+                    .italic()
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, Theme.Spacing.s)
+        }
+    }
+
+    /// Every mandatory mention, folded: they are on the document, and on the
+    /// PDF, but do not need to fill the screen.
+    private func mentions(_ doc: InvoiceDocument) -> some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                ForEach([doc.selfBillingMention, doc.legalMentions, doc.latePaymentMention,
+                         "Fait à \(doc.place), le \(doc.issuedOn).", doc.taxNotice]
+                    .compactMap { $0 }, id: \.self) { text in
+                    Text(text)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.top, Theme.Spacing.s)
+        } label: {
+            Label("Mentions légales", systemImage: "text.book.closed")
+                .font(Theme.Typography.label)
+                .foregroundStyle(Theme.Palette.textPrimary)
+        }
+        .tint(Theme.Palette.textSecondary)
+        .padding(Theme.Spacing.l)
+        .cardSurface(radius: 18)
+    }
+
+    private static let signedAt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "fr_FR")
+        f.dateFormat = "d MMM yyyy 'à' HH:mm"
+        return f
+    }()
 
     // MARK: - Signature panel
 
@@ -500,25 +647,44 @@ public struct InvoiceView: View {
             }
 
             ForEach(doc.signatures) { signature in
-                HStack(spacing: Theme.Spacing.m) {
-                    Image(systemName: signature.signed ? "checkmark.circle.fill" : "circle")
+                HStack(alignment: .top, spacing: Theme.Spacing.m) {
+                    Image(systemName: signature.signed ? "checkmark.circle.fill" : "circle.dashed")
                         .font(.system(size: 22))
                         .foregroundStyle(signature.signed ? Theme.Palette.success
                                                           : Theme.Palette.pendingRing)
-                    Text(signature.label)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Palette.textPrimary)
-                    Spacer()
-                    if signature.signed, signature.smsVerified == true {
-                        Label("signé · SMS", systemImage: "checkmark.shield")
+                        .symbolEffect(.bounce, value: signature.signed)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: Theme.Spacing.s) {
+                            Text(signature.role == "apporteur" ? "L'apporteur" : "L'entreprise")
+                                .font(Theme.Typography.body.weight(.semibold))
+                                .foregroundStyle(Theme.Palette.textPrimary)
+                            if !signature.signed {
+                                Text("En attente")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Theme.Palette.rewardText)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Theme.Palette.rewardSoft, in: Capsule())
+                            }
+                        }
+                        Text(signature.name)
                             .font(Theme.Typography.secondary)
                             .foregroundStyle(Theme.Palette.textSecondary)
-                            .accessibilityLabel("signé, confirmé par SMS")
-                    } else {
-                        Text(signature.signed ? "signé" : "en attente")
-                            .font(Theme.Typography.secondary)
-                            .foregroundStyle(Theme.Palette.textSecondary)
+                        if signature.signed {
+                            if let at = signature.signedAt {
+                                Text("Signé le \(Self.signedAt.string(from: at))")
+                                    .font(Theme.Typography.caption)
+                                    .foregroundStyle(Theme.Palette.textSecondary)
+                            }
+                            if signature.smsVerified == true {
+                                Label("Confirmé par SMS\(signature.smsPhone.map { " · \($0)" } ?? "")",
+                                      systemImage: "checkmark.shield.fill")
+                                    .font(Theme.Typography.caption.weight(.semibold))
+                                    .foregroundStyle(Theme.Palette.successText)
+                            }
+                        }
                     }
+                    Spacer(minLength: 0)
                 }
                 .accessibilityElement(children: .combine)
             }

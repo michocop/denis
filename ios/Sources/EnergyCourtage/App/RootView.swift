@@ -8,6 +8,9 @@ public struct RootView: View {
     @State private var tab: Tab = .home
     @State private var showsCreate = false
     @State private var showsNotifications = false
+    @State private var showsMandate = false
+    /// Bumped when something outside Home changes what it shows.
+    @State private var homeRefresh = 0
     @State private var notifications: NotificationsViewModel
     @State private var connectivity = Connectivity()
     @State private var legal: LegalViewModel
@@ -91,6 +94,11 @@ public struct RootView: View {
             tabs
         }
         .animation(.snappy, value: connectivity.isOnline)
+        .sheet(isPresented: $showsMandate) {
+            LegalDocumentView(model: LegalViewModel(repository: dependencies.legal),
+                              documentKey: "mandat_facturation")
+                .onDisappear { homeRefresh += 1 }   // the notice goes once it is signed
+        }
         .sheet(isPresented: $showsNotifications) {
             NotificationsView(model: notifications)
                 .onDisappear { Task { await notifications.refreshBadge() } }
@@ -165,13 +173,34 @@ public struct RootView: View {
         }
     }
 
+    /// The bell as a glass button, for a header that is not a navigation bar.
+    private var bell: some View {
+        Button { showsNotifications = true } label: {
+            Image(systemName: notifications.unread > 0 ? "bell.badge.fill" : "bell")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.Palette.brand)
+                .symbolRenderingMode(.hierarchical)
+                .symbolEffect(.bounce, value: notifications.unread)
+                .frame(width: 44, height: 44)
+                .brandGlass(in: Circle(), interactive: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(notifications.unread > 0
+                            ? "Notifications, \(notifications.unread) non lues"
+                            : "Notifications")
+    }
+
     private var tabs: some View {
         TabView(selection: $tab) {
             NavigationStack {
-                HomeView(model: HomeViewModel(profiles: dependencies.profiles)) {
+                // the bell sits in the header row, beside the wordmark
+                HomeView(model: HomeViewModel(profiles: dependencies.profiles),
+                         accessory: AnyView(bell),
+                         onOpenMandate: { showsMandate = true },
+                         refreshToken: homeRefresh) {
                     showsCreate = true
                 }
-                .toolbar { notificationsButton }
+                .toolbar(.hidden, for: .navigationBar)
             }
             .tabItem { Label("Accueil", systemImage: "house") }
             .tag(Tab.home)

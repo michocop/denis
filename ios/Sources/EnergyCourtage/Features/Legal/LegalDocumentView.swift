@@ -108,11 +108,8 @@ public struct LegalDocumentView: View {
                     VStack(spacing: 0) {
                         ScrollView {
                             VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                                Text(document.body)
-                                    .font(Theme.Typography.body)
-                                    .foregroundStyle(Theme.Palette.textPrimary)
+                                LegalText(document.body)
                                     .textSelection(.enabled)
-                                    .fixedSize(horizontal: false, vertical: true)
 
                                 Text("Version \(document.version)")
                                     .font(Theme.Typography.caption)
@@ -192,5 +189,83 @@ public struct LegalDocumentView: View {
         .padding(Theme.Spacing.gutter)
         .background(Theme.Palette.surface)
         .overlay(alignment: .top) { Divider() }
+    }
+}
+
+
+/// The legal texts are written in a little Markdown: "## " headings, "- "
+/// lists and **bold**. Shown raw, a contract read "## Article 1 — Objet".
+struct LegalText: View {
+    enum Block: Hashable {
+        case heading(String)
+        case bullet(String)
+        case paragraph(String)
+    }
+
+    private let blocks: [Block]
+    init(_ markdown: String) { blocks = Self.parse(markdown) }
+
+    static func parse(_ markdown: String) -> [Block] {
+        var blocks: [Block] = []
+        var paragraph: [String] = []
+        func flush() {
+            if !paragraph.isEmpty { blocks.append(.paragraph(paragraph.joined(separator: " "))) }
+            paragraph = []
+        }
+        for raw in markdown.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty {
+                flush()
+            } else if line.hasPrefix("#") {
+                flush()
+                blocks.append(.heading(line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)))
+            } else if line.range(of: #"^Article \d+\b"#, options: .regularExpression) != nil,
+                      line.count < 80 {
+                // texts written before the Markdown: "Article 3 — Durée" alone on its line
+                flush()
+                blocks.append(.heading(line))
+            } else if line.hasPrefix("- ") || line.hasPrefix("• ") {
+                flush()
+                blocks.append(.bullet(String(line.dropFirst(2))))
+            } else {
+                paragraph.append(line)
+            }
+        }
+        flush()
+        return blocks
+    }
+
+    private func inline(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text,
+                               options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .heading(let text):
+                    Text(inline(text))
+                        .font(Theme.Typography.display(18, .semibold, relativeTo: .title3))
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                        .padding(.top, Theme.Spacing.s)
+                case .bullet(let text):
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Circle().fill(Theme.Palette.brand).frame(width: 5, height: 5)
+                            .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 2 }
+                        Text(inline(text))
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Palette.textPrimary)
+                    }
+                case .paragraph(let text):
+                    Text(inline(text))
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                        .lineSpacing(3)
+                }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

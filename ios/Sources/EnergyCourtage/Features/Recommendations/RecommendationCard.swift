@@ -61,43 +61,112 @@ public struct RecommendationCard: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.m) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(recommendation.filleulName)
-                    .font(Theme.Typography.cardTitle)
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            HStack(alignment: .center, spacing: Theme.Spacing.m) {
+                Text(initials)
+                    .font(Theme.Typography.badge)
                     .foregroundStyle(Theme.Palette.textPrimary)
-                Text("Recommandé par \(recommendation.parrainName)")
-                    .font(Theme.Typography.secondary)
-                    .foregroundStyle(Theme.Palette.textSecondary)
-                Text(Self.relativeDate(recommendation.createdAt))
-                    .font(Theme.Typography.secondary)
-                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .frame(width: 42, height: 42)
+                    .background(Theme.Palette.avatar, in: Circle())
+                    .overlay(Circle().strokeBorder(Theme.Palette.brand.opacity(0.35), lineWidth: 1))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(recommendation.filleulName)
+                        .font(Theme.Typography.cardTitle)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text("Par \(recommendation.parrainName) · \(Self.relativeDay(recommendation.createdAt))")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: Theme.Spacing.s)
+
+                Button {
+                    withAnimation(.snappy(duration: 0.28)) { isExpanded.toggle() }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .frame(width: 32, height: 32)
+                        .background(Theme.Palette.grouped, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isExpanded ? "Réduire" : "Développer")
             }
 
-            Spacer(minLength: Theme.Spacing.s)
-
-            if let amount = recommendation.displayedAmount {
-                Text(Self.currency.string(from: amount as NSDecimalNumber) ?? "")
-                    .font(Theme.Typography.amount)
-                    .foregroundStyle(Theme.Palette.successText)
-                    .accessibilityLabel("Récompense \(amount) euros")
+            // where the lead stands, at a glance
+            HStack(spacing: Theme.Spacing.m) {
+                if let stage = currentStageLabel {
+                    Text(stage)
+                        .font(Theme.Typography.caption.weight(.semibold))
+                        .foregroundStyle(stageTint)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(stageTint.opacity(0.14), in: Capsule())
+                }
+                ProgressView(value: progress)
+                    .tint(stageTint)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityLabel("Avancement \(Int(progress * 100)) %")
+                if let amount = recommendation.displayedAmount {
+                    Text(Money.euros(amount))
+                        .font(Theme.Typography.amount)
+                        .foregroundStyle(Theme.Palette.successText)
+                        .accessibilityLabel("Récompense \(Money.euros(amount))")
+                }
             }
-
-            Button {
-                withAnimation(.snappy(duration: 0.28)) { isExpanded.toggle() }
-            } label: {
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Theme.Palette.textSecondary)
-                    .rotationEffect(.degrees(isExpanded ? 0 : 180))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isExpanded ? "Réduire" : "Développer")
         }
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(.snappy(duration: 0.28)) { isExpanded.toggle() }
         }
+    }
+
+    /// "Aujourd'hui", "Hier" or "17/09": the time is in the detail.
+    static func relativeDay(_ date: Date, now: Date = .now) -> String {
+        let calendar = Calendar(identifier: .gregorian)
+        if calendar.isDate(date, inSameDayAs: now) { return "Aujourd'hui" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(date, inSameDayAs: yesterday) { return "Hier" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "fr_FR")
+        f.dateFormat = calendar.isDate(date, equalTo: now, toGranularity: .year) ? "dd/MM" : "dd/MM/yy"
+        return f.string(from: date)
+    }
+
+    private var initials: String {
+        recommendation.filleulName.split(separator: " ").prefix(2)
+            .compactMap { $0.first.map(String.init) }.joined().uppercased()
+    }
+
+    private var orderedPipeline: [Stage] { pipeline.sorted { $0.position < $1.position } }
+
+    private var progress: Double {
+        guard !orderedPipeline.isEmpty else { return 0 }
+        let done = orderedPipeline.filter { recommendation.state(of: $0, in: pipeline) == .completed }.count
+        return Double(done) / Double(orderedPipeline.count)
+    }
+
+    private var currentStageLabel: String? {
+        if recommendation.status.isArchived { return "Archivée" }
+        if orderedPipeline.contains(where: { recommendation.state(of: $0, in: pipeline) == .failed }) {
+            return "Non abouti"
+        }
+        return orderedPipeline.first { recommendation.state(of: $0, in: pipeline) == .current }?.label
+            ?? (progress >= 1 ? "Terminée" : nil)
+    }
+
+    private var stageTint: Color {
+        if orderedPipeline.contains(where: { recommendation.state(of: $0, in: pipeline) == .failed }) {
+            return Theme.Palette.destructive
+        }
+        return progress >= 1 ? Theme.Palette.successText : Theme.Palette.brand
     }
 
     // MARK: - Footer
@@ -145,17 +214,6 @@ public struct RecommendationCard: View {
     }
 
     // MARK: - Formatting
-
-    private static let currency: NumberFormatter = {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "EUR"
-        f.locale = Locale(identifier: "fr_FR")
-        f.maximumFractionDigits = 0
-        // The source app renders "1000 €", not the French default "1 000 €".
-        f.usesGroupingSeparator = false
-        return f
-    }()
 
     /// "Aujourd'hui à 14:57" for today, otherwise "17/09/2026 à 14:57" —
     /// both spellings appear in the source app.

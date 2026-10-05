@@ -148,14 +148,23 @@ public struct RewardBadge: View {
     public init() {}
 
     public var body: some View {
+        // the word when it fits, the gift alone when the stage name is long
+        ViewThatFits(in: .horizontal) {
+            pill(showsWord: true).fixedSize()
+            pill(showsWord: false)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Cette étape déclenche la récompense")
+    }
+
+    private func pill(showsWord: Bool) -> some View {
         HStack(spacing: 5) {
             Image(systemName: "gift.fill").font(.system(size: 12))
-            Text("Récompense").font(Theme.Typography.badge)
+            if showsWord { Text("Récompense").font(Theme.Typography.badge) }
         }
         .foregroundStyle(Theme.Palette.rewardText)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, showsWord ? 12 : 9)
         .padding(.vertical, 7)
         .background(Capsule().fill(Theme.Palette.rewardSoft))
-        .accessibilityLabel("Cette étape déclenche la récompense")
     }
 }

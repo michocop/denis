@@ -96,7 +96,7 @@ public struct SearchField: View {
 
 // MARK: - Status banner
 
-/// The green "Contrat signé. Disponible dans l'onglet Documents" strip.
+/// The green "Contrat signé. Retrouvez-le dans les documents de la recommandation." strip.
 public struct StatusBanner: View {
     private let text: String
     public init(_ text: String) { self.text = text }

@@ -2060,7 +2060,7 @@ begin
   perform assert(exists (
       select 1 from notification_feed
        where kind = 'payment_sent' and title = 'Paiement envoyé'
-         and body like '300%EUR en route'),
+         and body = '300,00 € en route'),
     'the apporteur is told in words, not a blank row, that the money is coming');
 
   -- credited before it was paid: there is nothing to pay
@@ -2971,6 +2971,17 @@ begin
   reset role;
   update profiles set address = '4 rue de Paris' where id = v_eva;
   set role authenticated;
+end $$;
+
+do $$
+begin
+  perform assert(notification_body('invoice_ready', '{"number":"FA-2026-0009","amount":"12500.00"}')
+                   = 'Facture FA-2026-0009 — 12 500,00 €',
+    'a notification writes an amount the French way');
+  perform assert(notification_body('payment_sent', '{"amount":"300.5"}') = '300,50 € en route',
+    'cents included');
+  perform assert((select count(*) from stages where banner_template like '%onglet Documents%') = 0,
+    'no banner points to a Documents tab the app does not have');
 end $$;
 
 reset role;

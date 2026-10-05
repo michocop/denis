@@ -29,10 +29,20 @@ public final class HomeViewModel {
 
 public struct HomeView: View {
     @State private var model: HomeViewModel
+    @State private var appeared = false
     private let onNewRecommendation: () -> Void
+    /// Shown at the end of the header row: the notifications bell.
+    private let accessory: AnyView
+    private let onOpenMandate: (() -> Void)?
+    private let refreshToken: Int
 
-    public init(model: HomeViewModel, onNewRecommendation: @escaping () -> Void) {
+    public init(model: HomeViewModel, accessory: AnyView = AnyView(EmptyView()),
+                onOpenMandate: (() -> Void)? = nil, refreshToken: Int = 0,
+                onNewRecommendation: @escaping () -> Void) {
         _model = State(wrappedValue: model)
+        self.accessory = accessory
+        self.onOpenMandate = onOpenMandate
+        self.refreshToken = refreshToken
         self.onNewRecommendation = onNewRecommendation
     }
 
@@ -42,7 +52,12 @@ public struct HomeView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    TrinityWordmark(logoSize: 20)
+                    HStack {
+                        TrinityWordmark(logoSize: 20)
+                        Spacer()
+                        accessory
+                    }
+                    .padding(.top, Theme.Spacing.s)
 
                     // the site's headline: white, then the blue gradient
                     VStack(alignment: .leading, spacing: 4) {
@@ -65,7 +80,7 @@ public struct HomeView: View {
                     // apporteur should learn that before earning anything.
                     if let profile = model.profile, !profile.canBeInvoiced,
                        profile.role == .apporteur {
-                        MandateNotice()
+                        MandateNotice(onOpen: onOpenMandate)
                     }
 
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: Theme.Spacing.m),
@@ -73,17 +88,19 @@ public struct HomeView: View {
                               spacing: Theme.Spacing.m) {
                         StatTile(label: "Recommandations actives",
                                  value: "\(model.stats.activeCount)",
-                                 tint: Theme.Palette.brand)
+                                 tint: Theme.Palette.brand, icon: "bolt.fill")
                         StatTile(label: "Taux de conversion",
                                  value: String(format: "%.0f %%", model.stats.conversionRate),
-                                 tint: Theme.Palette.brand)
+                                 tint: Theme.Palette.brand, icon: "chart.line.uptrend.xyaxis")
                         StatTile(label: "En attente",
                                  value: Self.euros(model.stats.pendingTotal),
-                                 tint: Theme.Palette.textSecondary)
+                                 tint: Theme.Palette.ice, icon: "hourglass")
                         StatTile(label: "Gagné",
                                  value: Self.euros(model.stats.earnedTotal),
-                                 tint: Theme.Palette.successText)
+                                 tint: Theme.Palette.successText, icon: "checkmark.seal.fill")
                     }
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 14)
 
                     PrimaryActionButton("Nouvelle recommandation", action: onNewRecommendation)
 
@@ -98,37 +115,45 @@ public struct HomeView: View {
             }
             .refreshable { await model.load() }
         }
-        .task { await model.load() }
+        .task(id: refreshToken) {
+            await model.load()
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) { appeared = true }
+        }
     }
 
-    static func euros(_ amount: Decimal) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "EUR"
-        formatter.locale = Locale(identifier: "fr_FR")
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: amount as NSDecimalNumber) ?? "—"
-    }
+    static func euros(_ amount: Decimal) -> String { Money.euros(amount) }
 }
 
+/// A figure with what it counts. The label reserves two lines, so the figures
+/// in a row line up whatever the labels' lengths.
 struct StatTile: View {
     let label: String
     let value: String
     let tint: Color
+    var icon: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 30, height: 30)
+                    .background(tint.opacity(0.14), in: Circle())
+            }
+            Text(label)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .lineLimit(2, reservesSpace: true)
             Text(value)
-                .font(Theme.Typography.display(28, .semibold, relativeTo: .title))
+                .font(Theme.Typography.display(26, .semibold, relativeTo: .title))
                 .foregroundStyle(tint)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
-            Text(label)
-                .font(Theme.Typography.secondary)
-                .foregroundStyle(Theme.Palette.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.numericText())
+                .animation(.snappy, value: value)
         }
-        .frame(maxWidth: .infinity, minHeight: 104, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.l)
         .cardSurface()
         .accessibilityElement(children: .combine)
@@ -138,7 +163,19 @@ struct StatTile: View {
 
 /// Self-billing needs a prior mandate, so this blocks payment, not just a form.
 struct MandateNotice: View {
+    var onOpen: (() -> Void)? = nil
+
     var body: some View {
+        if let onOpen {
+            Button(action: onOpen) { card(showsAction: true) }
+                .buttonStyle(PressableStyle())
+                .accessibilityHint("Ouvre le mandat pour le lire et le signer")
+        } else {
+            card(showsAction: false)
+        }
+    }
+
+    private func card(showsAction: Bool) -> some View {
         HStack(alignment: .top, spacing: Theme.Spacing.m) {
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(Theme.Palette.rewardText)
@@ -150,7 +187,15 @@ struct MandateNotice: View {
                     .font(Theme.Typography.secondary)
                     .foregroundStyle(Theme.Palette.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+                if showsAction {
+                    Label("Lire et signer", systemImage: "signature")
+                        .font(Theme.Typography.label.weight(.semibold))
+                        .foregroundStyle(Theme.Palette.rewardText)
+                        .padding(.top, 4)
+                }
             }
+            Spacer(minLength: 0)
         }
         .padding(Theme.Spacing.l)
         .background(

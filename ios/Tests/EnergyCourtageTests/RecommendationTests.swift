@@ -30,7 +30,7 @@ final class RecommendationTests: XCTestCase {
     func testBannerComesFromTheHighestReachedStage() {
         XCTAssertNil(SampleData.inProgressRecommendation.bannerText(in: pipeline))
         XCTAssertEqual(SampleData.completedRecommendation.bannerText(in: pipeline),
-                       "Contrat signé. Disponible dans l'onglet Documents")
+                       "Contrat signé. Retrouvez-le dans les documents de la recommandation.")
     }
 
     /// Only stages that carry a comment draw the 💬 bubble.

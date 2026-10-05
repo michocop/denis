@@ -195,3 +195,28 @@ private final class SmsCapture: URLProtocol {
     }
     override func stopLoading() {}
 }
+
+final class LegalTextTests: XCTestCase {
+    func testTheContractsMarkdownBecomesHeadingsListsAndParagraphs() {
+        let blocks = LegalText.parse("""
+        **Entre les soussignés :**
+
+        ## Article 1 — Objet
+
+        Le Mandant donne mandat
+        au Mandataire.
+
+        - établir les factures ;
+        - conserver un double.
+        """)
+        XCTAssertEqual(blocks, [
+            .paragraph("**Entre les soussignés :**"),
+            .heading("Article 1 — Objet"),
+            .paragraph("Le Mandant donne mandat au Mandataire."),
+            .bullet("établir les factures ;"),
+            .bullet("conserver un double.")
+        ])
+        XCTAssertEqual(LegalText.parse("Article 2 — Obligations\n\nTexte."),
+                       [.heading("Article 2 — Obligations"), .paragraph("Texte.")])
+    }
+}

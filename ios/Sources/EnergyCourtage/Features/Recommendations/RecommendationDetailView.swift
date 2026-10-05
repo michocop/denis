@@ -201,15 +201,7 @@ public struct RecommendationDetailView: View {
         }
     }
 
-    static func euros(_ amount: Decimal) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "EUR"
-        f.locale = Locale(identifier: "fr_FR")
-        f.maximumFractionDigits = 0
-        f.usesGroupingSeparator = false
-        return f.string(from: amount as NSDecimalNumber) ?? "—"
-    }
+    static func euros(_ amount: Decimal) -> String { Money.euros(amount) }
 }
 
 /// Nothing in the source app shows that a recommendation has gone quiet, which
