@@ -3,7 +3,6 @@
 -- them to run the migrations and the RLS tests against a plain Postgres,
 -- and must never be applied to a real Supabase project.
 
-create extension if not exists pgcrypto;
 
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'authenticated') then
@@ -15,6 +14,20 @@ do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'service_role') then
     create role service_role nologin bypassrls;
   end if;
+end $$;
+
+-- Where Supabase keeps it: in `extensions`, not `public`. A function that
+-- pins its search_path to public and calls digest() works against a plain
+-- Postgres and fails on every hosted project -- which is how invoice issuing
+-- was broken without a single local test noticing.
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+grant usage on schema extensions to authenticated, anon, service_role;
+-- and, as on Supabase, on the default search path of every session, so only
+-- a function that pins its own path without it can miss them
+do $$ begin
+  execute format('alter database %I set search_path = "$user", public, extensions',
+                 current_database());
 end $$;
 
 create schema if not exists auth;
@@ -36,7 +49,7 @@ as $$
          )::uuid;
 $$;
 
-grant usage on schema auth to authenticated, anon;
+grant usage on schema auth to authenticated, anon, service_role;
 
 -- Storage, in the same spirit: Supabase provides storage.buckets and
 -- storage.objects with RLS on objects. The invoice PDF policies are written
@@ -61,7 +74,8 @@ create table if not exists storage.objects (
 
 alter table storage.objects enable row level security;
 
-grant usage on schema storage to authenticated, anon;
+grant usage on schema storage to authenticated, anon, service_role;
+grant all on storage.objects, storage.buckets to service_role;
 grant select, insert on storage.objects to authenticated;
 grant select on storage.buckets to authenticated;
 
@@ -94,6 +108,6 @@ as $$
   returning id;
 $$;
 
-grant usage on schema net to authenticated;
+grant usage on schema net to authenticated, service_role;
 -- the test suite reads it back to assert what would have been sent
 grant select on net.sent_requests to authenticated;

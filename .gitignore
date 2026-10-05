@@ -7,3 +7,6 @@ ios/.build/
 
 # Your own Supabase project's URL and anon key (see Config.example.xcconfig)
 ios/Config.xcconfig
+
+# Local Postgres, PostgREST and Deno for running the tests (scripts/dev_tools.sh)
+.devtools/

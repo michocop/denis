@@ -3,6 +3,9 @@
 -- means every assertion below held.
 
 \set ON_ERROR_STOP on
+-- What PostgREST and the SQL editor see on Supabase (config.toml extra_search_path).
+set search_path = public, extensions;
+alter role authenticated set search_path = public, extensions;
 set client_min_messages = notice;
 
 create or replace function assert(p_condition boolean, p_label text)
