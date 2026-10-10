@@ -91,14 +91,21 @@ public enum SampleData {
 }
 
 /// In-memory repository for previews, UI work and tests.
+///
+/// It keeps what is done to it. Each stage used to be applied to the original
+/// sample rather than to the last result, so validating twice lost the first
+/// step and the demo could never get past "Proposition envoyée" to "Devis
+/// signé"; closing, resetting and new recommendations vanished on the next
+/// reload. The state lives with the instance -- one per demo session, a fresh
+/// one per test.
 public struct PreviewRecommendationsRepository: RecommendationsRepository {
-    private let items: [Recommendation]
+    private let store: DemoRecommendations
     private let delay: Duration
 
     public init(items: [Recommendation] = [SampleData.completedRecommendation,
                                            SampleData.inProgressRecommendation],
                 delay: Duration = .milliseconds(120)) {
-        self.items = items
+        self.store = DemoRecommendations(items)
         self.delay = delay
     }
 
@@ -111,30 +118,35 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
                          cursor: RecommendationCursor?) async throws -> [Recommendation] {
         try? await Task.sleep(for: delay)
         guard cursor == nil else { return [] }   // previews hold one page
-        return items
+        return await store.items
             .filter { $0.status.isArchived == archived }
             .filter { search.isEmpty
                       || $0.filleulName.localizedCaseInsensitiveContains(search)
                       || $0.parrainName.localizedCaseInsensitiveContains(search) }
     }
 
+    public func recommendation(id: UUID) async throws -> Recommendation? {
+        await store.items.first { $0.id == id }
+    }
+
     public func advanceStage(recommendationID: UUID, stageKey: String) async throws -> Recommendation {
         try? await Task.sleep(for: delay)
-        guard var reco = items.first(where: { $0.id == recommendationID }),
-              let stage = SampleData.stages.first(where: { $0.key == stageKey })
-        else { throw PreviewError.notFound }
-
-        reco.events.append(StageEvent(id: UUID(), stageID: stage.id,
-                                      comment: SampleData.comments[stageKey],
-                                      completedAt: .now))
-        reco.currentStageID = stage.id
-        if stage.isRewardTrigger, reco.rewardStatus == .pending { reco.rewardStatus = .earned }
-        return reco
+        guard let stage = SampleData.stages.first(where: { $0.key == stageKey }) else {
+            throw PreviewError.notFound
+        }
+        return try await store.update(recommendationID) { reco in
+            guard reco.event(for: stage) == nil else { return }
+            reco.events.append(StageEvent(id: UUID(), stageID: stage.id,
+                                          comment: SampleData.comments[stageKey],
+                                          completedAt: .now))
+            reco.currentStageID = stage.id
+            if stage.isRewardTrigger, reco.rewardStatus == .pending { reco.rewardStatus = .earned }
+        }
     }
 
     public func create(_ draft: RecommendationDraft) async throws -> Recommendation {
         try? await Task.sleep(for: delay)
-        return Recommendation(
+        let reco = Recommendation(
             id: UUID(),
             filleulFirstName: draft.firstName,
             filleulLastName: draft.lastName,
@@ -143,9 +155,50 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
             createdAt: .now,
             currentStageID: SampleData.stages[0].id
         )
+        await store.insert(reco)
+        return reco
+    }
+
+    public func archive(recommendationID: UUID, won: Bool) async throws {
+        _ = try await store.update(recommendationID) { $0.status = won ? .archivedWon : .archivedLost }
+    }
+
+    public func resetPipeline(recommendationID: UUID) async throws {
+        _ = try await store.update(recommendationID) { reco in
+            reco.events = []
+            reco.currentStageID = SampleData.stages[0].id
+            if reco.rewardStatus == .earned { reco.rewardStatus = .pending }
+        }
+    }
+
+    public func setRewardAmount(recommendationID: UUID, amount: Decimal) async throws {
+        _ = try await store.update(recommendationID) { $0.rewardAmount = amount }
+    }
+
+    public func softDelete(recommendationID: UUID) async throws {
+        await store.remove(recommendationID)
     }
 
     enum PreviewError: Error { case notFound }
+}
+
+/// The demo's recommendations, as they stand after whatever was done to them.
+actor DemoRecommendations {
+    private(set) var items: [Recommendation]
+
+    init(_ items: [Recommendation]) { self.items = items }
+
+    func update(_ id: UUID, _ change: (inout Recommendation) -> Void) throws -> Recommendation {
+        guard let index = items.firstIndex(where: { $0.id == id }) else {
+            throw PreviewRecommendationsRepository.PreviewError.notFound
+        }
+        change(&items[index])
+        return items[index]
+    }
+
+    func insert(_ reco: Recommendation) { items.insert(reco, at: 0) }
+
+    func remove(_ id: UUID) { items.removeAll { $0.id == id } }
 }
 
 // MARK: - Fakes for the other screens
@@ -312,8 +365,11 @@ public struct PreviewProfileRepository: ProfileRepository {
         // are yours by comparing sender ids, and a random id put every message
         // on the same side of the conversation.
         let isAdmin = role.isAdmin
-        // signing the mandate in the demo counts, as it does for real
-        let signed = hasMandate ? true : await DemoLegalStore.shared.isAccepted("mandat_facturation")
+        // Signed from the demo's mandate sheet counts, as the server's
+        // acceptance sets billing_mandate_signed_at: the notice on Accueil
+        // used to stay after signing.
+        let accepted = await DemoLegalStore.shared.isAccepted("mandat_facturation")
+        let signed = hasMandate || accepted
         return Profile(
             id: isAdmin ? DemoChatStore.them : DemoChatStore.me,
             role: role,
@@ -575,6 +631,8 @@ actor DemoLegalStore {
     private var accepted: Set<String> = []
     func accept(_ key: String) { accepted.insert(key) }
     func isAccepted(_ key: String) -> Bool { accepted.contains(key) }
+    /// For tests, which share this store with every other test.
+    func reset() { accepted = [] }
 }
 
 public struct PreviewLegalRepository: LegalRepository {

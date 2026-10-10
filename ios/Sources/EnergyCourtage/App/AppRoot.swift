@@ -326,7 +326,6 @@ public extension AppModel.Phase {
 
 public struct AppRootView: View {
     @State private var model = AppModel()
-    @State private var showsSignUp = false
     @State private var showsForgotPassword = false
     /// The opening covers everything until it has played and the session is
     /// known. A cold launch only: coming back from the background keeps this
@@ -444,7 +443,6 @@ public struct AppRootView: View {
                 signIn: { email, password in
                     try await model.signIn(email: email, password: password)
                 },
-                onCreateAccount: { showsSignUp = true },
                 onForgotPassword: { showsForgotPassword = true },
                 onDemo: { asAdmin in model.startDemo(asAdmin: asAdmin) }
             )
@@ -455,11 +453,6 @@ public struct AppRootView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.Spacing.gutter)
             }
-        }
-        // Sign-up is closed: an account comes from the invitation email.
-        .sheet(isPresented: $showsSignUp) {
-            InvitationHelpView()
-                .presentationDetents([.medium])
         }
         .sheet(isPresented: $showsForgotPassword) {
             ForgotPasswordView { email in await model.requestPasswordReset(email: email) }

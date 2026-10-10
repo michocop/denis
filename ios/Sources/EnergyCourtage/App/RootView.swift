@@ -89,8 +89,10 @@ public struct RootView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            // No banner in the demo: the way in ("Découvrir l'application")
-            // already says, before anything is shown, that the data is fictitious.
+            // No banner in demo: it is entered only through "Découvrir
+            // l'application (démo)", whose confirmation says the data is
+            // fictitious, and a strip on every screen made the app look
+            // unfinished.
             tabs
         }
         .animation(.snappy, value: connectivity.isOnline)
@@ -257,17 +259,14 @@ public struct SignInView: View {
     @State private var choosesDemo = false
 
     private let signIn: (String, String) async throws -> Void
-    private let onCreateAccount: () -> Void
     private let onForgotPassword: () -> Void
     /// Opens the app on sample data, as an apporteur (false) or as the company.
     private let onDemo: ((Bool) -> Void)?
 
     public init(signIn: @escaping (String, String) async throws -> Void,
-                onCreateAccount: @escaping () -> Void,
                 onForgotPassword: @escaping () -> Void,
                 onDemo: ((Bool) -> Void)? = nil) {
         self.signIn = signIn
-        self.onCreateAccount = onCreateAccount
         self.onForgotPassword = onForgotPassword
         self.onDemo = onDemo
     }
@@ -340,11 +339,9 @@ public struct SignInView: View {
                 .cardSurface()
                 .staggeredAppear(index: 3)
 
-                SecondaryActionButton("J'ai reçu une invitation", systemImage: "envelope.open",
-                                      action: onCreateAccount)
-                    .staggeredAppear(index: 4)
-
-                Text("L'accès est réservé aux apporteurs invités par Trinity Énergie.")
+                // No button for invitations: an invitation is an email whose
+                // link opens the app, so there is nothing to tap here.
+                Text("L'accès est réservé aux apporteurs invités par Trinity Énergie. Votre invitation arrive par e-mail.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Palette.textSecondary)
                     .frame(maxWidth: .infinity)

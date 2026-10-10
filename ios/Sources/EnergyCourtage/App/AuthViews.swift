@@ -457,29 +457,3 @@ public struct CompleteInviteView: View {
         .background(BrandBackground())
     }
 }
-
-/// What "J'ai reçu une invitation" explains, now that nobody can sign up
-/// without one: the invitation is an email, and its link opens the app.
-public struct InvitationHelpView: View {
-    @Environment(\.dismiss) private var dismiss
-    public init() {}
-
-    public var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-            Image(systemName: "envelope.open.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(Theme.Palette.brand)
-            Text("Votre invitation est dans votre boîte mail")
-                .font(Theme.Typography.cardTitle)
-                .foregroundStyle(Theme.Palette.textPrimary)
-            Text("Ouvrez l'e-mail de Trinity Énergie sur cet iPhone et touchez le lien : l'application s'ouvre pour que vous choisissiez votre mot de passe. Vous ne le trouvez pas ? Regardez dans les indésirables, ou demandez à votre interlocuteur de vous l'envoyer à nouveau.")
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Palette.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            PrimaryActionButton("Compris") { dismiss() }
-        }
-        .padding(Theme.Spacing.xl)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(BrandBackground())
-    }
-}

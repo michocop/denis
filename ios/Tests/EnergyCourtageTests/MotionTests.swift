@@ -77,6 +77,8 @@ final class MotionTests: XCTestCase {
     }
 
     func testAnAcceptedDocumentIsCounted() async {
+        await DemoLegalStore.shared.reset()
+        defer { Task { await DemoLegalStore.shared.reset() } }
         let model = LegalViewModel(repository: PreviewLegalRepository())
         await model.load()
         guard let document = model.documents.first(where: { !$0.accepted }) else {
