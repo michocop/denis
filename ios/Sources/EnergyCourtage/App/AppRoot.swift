@@ -16,15 +16,8 @@ public final class AppModel {
     public enum Phase {
         case launching
         case signedOut(String?)
-        /// Signed up, and the project wants the address confirmed before
-        /// anyone can sign in with it.
-        case awaitingConfirmation(email: String)
-        case needsInvite(email: String)
-        /// Arrived from a password-reset link, signed in, and asked for a new
-        /// password before anything else.
-        case choosingPassword
-        /// Arrived from an invitation email: the account exists and has no
-        /// password or name yet.
+        /// Signed in for the first time: the account exists (an invitation
+        /// opened it) and has no name yet.
         case completingInvite(email: String)
         case pendingApproval(email: String)
         case suspended
@@ -155,27 +148,31 @@ public final class AppModel {
         phase = await resolvePhase()
     }
 
+    /// Sign-in is by emailed code: nobody has a password to forget, and an
+    /// invitation is no longer a link that has to survive the mail provider's
+    /// click tracking -- the address is the invitation.
     @MainActor
-    public func register(code: String, firstName: String, lastName: String,
-                         email: String, password: String) async throws {
+    public func sendEmailCode(to email: String) async throws {
         guard let client else { throw SupabaseError.notConfigured }
-        guard let session = try await client.signUp(email: email, password: password) else {
-            // The code is asked for again after the first sign-in, which is
-            // what .needsInvite is for: it cannot be redeemed without a session.
-            self.email = email
-            phase = .awaitingConfirmation(email: email)
-            return
-        }
+        try await client.sendEmailCode(to: Self.normalized(email))
+    }
+
+    @MainActor
+    public func verifyEmailCode(_ code: String, email: String) async throws {
+        guard let client else { throw SupabaseError.notConfigured }
+        let session = try await client.verifyEmailCode(code, email: Self.normalized(email))
         try? sessionStore.save(refreshToken: session.refreshToken)
         await client.setRefreshToken(session.refreshToken)
         self.email = session.user.email ?? email
-        try await redeem(code: code, firstName: firstName, lastName: lastName)
+        phase = await resolvePhase()
     }
 
-    /// Turns a signed-in account with no profile into a member. Separate from
-    /// `register` because the account may already exist -- signed up before
-    /// confirming the address, or closed mid-sign-up -- and signing up a
-    /// second time with the same address only fails.
+    static func normalized(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// Turns a signed-in account with no profile into a member: the
+    /// invitation addressed to it gives the role.
     @MainActor
     public func redeem(code: String, firstName: String, lastName: String) async throws {
         guard let client else { throw SupabaseError.notConfigured }
@@ -210,49 +207,25 @@ public final class AppModel {
                 let session = try await client.restore(refreshToken: callback.refreshToken)
                 try? sessionStore.save(refreshToken: session.refreshToken)
                 email = session.user.email ?? ""
-                switch callback.kind {
-                case .recovery:
-                    phase = .choosingPassword
-                case .invite:
-                    let state = await resolvePhase()
-                    if case .needsInvite = state {
-                        phase = .completingInvite(email: email)
-                    } else {
-                        phase = state      // already joined: the link only signs in
-                    }
-                default:
-                    phase = await resolvePhase()
-                }
+                // an invitation or reset link sent before sign-in by code: it
+                // signs in, and routing asks for a name if one is missing
+                phase = await resolvePhase()
             } catch {
                 phase = .signedOut(AuthCallback.Failure.expired.localizedDescription)
             }
         }
     }
 
-    /// The invited person names themselves and chooses a password; the
-    /// invitation addressed to their email does the rest -- no code to type.
+    /// The invited person names themselves; the invitation addressed to
+    /// their email does the rest -- no code to type, no password to choose.
     @MainActor
-    public func completeInvite(firstName: String, lastName: String, password: String) async throws {
-        guard let client else { throw SupabaseError.notConfigured }
-        try await client.updatePassword(password)
+    public func completeInvite(firstName: String, lastName: String) async throws {
         try await redeem(code: "", firstName: firstName, lastName: lastName)
-    }
-
-    @MainActor
-    public func setNewPassword(_ password: String) async throws {
-        guard let client else { throw SupabaseError.notConfigured }
-        try await client.updatePassword(password)
-        phase = await resolvePhase()
     }
 
     @MainActor
     public func backToSignIn() {
         phase = .signedOut(nil)
-    }
-
-    @MainActor
-    public func requestPasswordReset(email: String) async {
-        await client?.requestPasswordReset(email: email)
     }
 
     @MainActor
@@ -307,7 +280,9 @@ public final class AppModel {
                     isDemo: false
                 )
             case "pending_approval": return .pendingApproval(email: email)
-            case "needs_invite":     return .needsInvite(email: email)
+            // signed in, not yet introduced: an account only exists because
+            // this address was invited, and the invitation is found by it
+            case "needs_invite":     return .completingInvite(email: email)
             case "suspended":        return .suspended
             default:                 return .signedOut(nil)
             }
@@ -326,7 +301,6 @@ public extension AppModel.Phase {
 
 public struct AppRootView: View {
     @State private var model = AppModel()
-    @State private var showsForgotPassword = false
     /// The opening covers everything until it has played and the session is
     /// known. A cold launch only: coming back from the background keeps this
     /// view, so it does not play again.
@@ -397,25 +371,10 @@ public struct AppRootView: View {
             case .locked:
                 LockedView { await model.unlock() }
 
-            case .choosingPassword:
-                NewPasswordView { password in try await model.setNewPassword(password) }
-
             case .completingInvite(let email):
-                CompleteInviteView(email: email) { first, last, password in
-                    try await model.completeInvite(firstName: first, lastName: last, password: password)
-                }
-
-            case .awaitingConfirmation(let email):
-                AwaitingConfirmationView(email: email) { model.backToSignIn() }
-
-            // Signed in, but the invitation was never redeemed: the address
-            // had to be confirmed first, or the app was closed mid-sign-up.
-            // Only the code is asked for -- the account already exists, and
-            // this used to try to create it a second time.
-            case .needsInvite:
-                SignUpView(asksForCredentials: false,
-                           onCancel: { Task { await model.signOut() } }) { code, first, last, _, _ in
-                    try await model.redeem(code: code, firstName: first, lastName: last)
+                CompleteInviteView(email: email,
+                                   onSignOut: { Task { await model.signOut() } }) { first, last in
+                    try await model.completeInvite(firstName: first, lastName: last)
                 }
 
             case .pendingApproval(let email):
@@ -438,24 +397,11 @@ public struct AppRootView: View {
     }
 
     private func signedOut(_ message: String?) -> some View {
-        VStack(spacing: Theme.Spacing.m) {
-            SignInView(
-                signIn: { email, password in
-                    try await model.signIn(email: email, password: password)
-                },
-                onForgotPassword: { showsForgotPassword = true },
-                onDemo: { asAdmin in model.startDemo(asAdmin: asAdmin) }
-            )
-            if let message {
-                Text(message)
-                    .font(Theme.Typography.secondary)
-                    .foregroundStyle(Theme.Palette.destructive)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.Spacing.gutter)
-            }
-        }
-        .sheet(isPresented: $showsForgotPassword) {
-            ForgotPasswordView { email in await model.requestPasswordReset(email: email) }
-        }
+        SignInView(
+            notice: message,
+            sendCode: { email in try await model.sendEmailCode(to: email) },
+            verifyCode: { code, email in try await model.verifyEmailCode(code, email: email) },
+            onDemo: { asAdmin in model.startDemo(asAdmin: asAdmin) }
+        )
     }
 }

@@ -44,6 +44,40 @@ public enum SupabaseError: LocalizedError {
     }
 }
 
+/// What can go wrong with an emailed sign-in code, said so a person can act
+/// on it. Auth answers in English and in its own shape, so the status decides.
+public enum EmailCodeError: LocalizedError, Equatable {
+    /// No account for that address (Auth: 422, sign-ups closed).
+    case unknownAddress
+    /// A code was asked for less than a minute ago (429).
+    case tooSoon
+    /// Wrong, already used, or older than an hour (401/403).
+    case invalidCode
+    case unavailable
+
+    init(status: Int, verifying: Bool = false) {
+        switch status {
+        case 429: self = .tooSoon
+        case 401, 403: self = verifying ? .invalidCode : .unavailable
+        case 400, 404, 422: self = verifying ? .invalidCode : .unknownAddress
+        default: self = .unavailable
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .unknownAddress:
+            return "Aucun accès n'est ouvert pour cette adresse. Utilisez celle à laquelle Trinity Énergie vous a invité."
+        case .tooSoon:
+            return "Un code vient d'être envoyé. Patientez une minute avant d'en demander un autre."
+        case .invalidCode:
+            return "Code incorrect ou expiré. Vérifiez le dernier e-mail reçu, ou demandez un nouveau code."
+        case .unavailable:
+            return "Le service est momentanément indisponible. Réessayez dans un instant."
+        }
+    }
+}
+
 /// Type-erasing box so request bodies can be built as plain dictionaries.
 public struct AnyEncodable: Encodable, Sendable {
     private let encodeTo: @Sendable (Encoder) throws -> Void
@@ -240,6 +274,41 @@ public actor SupabaseClient: SupabaseTransport {
         applyHeaders(to: &request, authenticated: false)
         request.httpBody = try? JSONEncoder().encode(["email": email])
         _ = try? await performRaw(request)
+    }
+
+    /// Emails a six-digit sign-in code. Only to an address that already has
+    /// an account -- an invitation creates it -- so this cannot open one.
+    public func sendEmailCode(to email: String) async throws {
+        var request = URLRequest(url: makeURL(prefix: authPath, path: "otp"))
+        request.httpMethod = "POST"
+        applyHeaders(to: &request, authenticated: false)
+        request.httpBody = try JSONEncoder().encode(
+            ["email": AnyEncodable(email), "create_user": AnyEncodable(false)])
+        do {
+            _ = try await performRaw(request, allowRefresh: false)
+        } catch SupabaseError.http(let status, _) {
+            throw EmailCodeError(status: status)
+        }
+    }
+
+    /// Exchanges the emailed code for a session. `email` covers both codes
+    /// Auth sends: the sign-in one, and the first one of an account whose
+    /// address was never confirmed (an invitation nobody opened).
+    public func verifyEmailCode(_ code: String, email: String) async throws -> AuthSession {
+        var request = URLRequest(url: makeURL(prefix: authPath, path: "verify"))
+        request.httpMethod = "POST"
+        applyHeaders(to: &request, authenticated: false)
+        request.httpBody = try JSONEncoder().encode(
+            ["type": "email", "email": email, "token": code])
+        let session: AuthSession
+        do {
+            session = try await perform(request, allowRefresh: false)
+        } catch SupabaseError.http(let status, _) {
+            throw EmailCodeError(status: status, verifying: true)
+        }
+        accessToken = session.accessToken
+        refreshToken = session.refreshToken
+        return session
     }
 
     /// Sets a new password for the signed-in account -- the end of a reset,

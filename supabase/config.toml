@@ -43,6 +43,12 @@ refresh_token_reuse_interval = 10
 enable_signup = false
 enable_confirmations = true
 double_confirm_changes = true
+# Sign-in is by a code sent to the address (the app has no passwords). Six
+# digits, as the app's code field and the SMS codes are; the hosted default
+# was eight. One an hour at most a minute apart.
+otp_length = 6
+otp_expiry = 3600
+max_frequency = "1m0s"
 
 # Nothing in this product needs a Google or GitHub identity.
 [auth.external.google]

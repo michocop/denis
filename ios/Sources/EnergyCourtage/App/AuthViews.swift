@@ -1,153 +1,5 @@
 import SwiftUI
 
-/// Registration. There is no open sign-up: an apporteur is recruited, so the
-/// code the company issued is the first field, and the role travels with it —
-/// the client never asks to be anything.
-public struct SignUpView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var code = ""
-    @State private var firstName = ""
-    @State private var lastName = ""
-    @State private var email = ""
-    @State private var password = ""
-    @State private var errorMessage: String?
-    @State private var isWorking = false
-
-    private let register: (String, String, String, String, String) async throws -> Void
-    /// False once the account exists and only the invitation is missing: the
-    /// person is already signed in, so asking for an email and password again
-    /// would only create a second account, or fail trying.
-    private let asksForCredentials: Bool
-    private let onCancel: (() -> Void)?
-
-    public init(asksForCredentials: Bool = true,
-                onCancel: (() -> Void)? = nil,
-                register: @escaping (_ code: String, _ firstName: String, _ lastName: String,
-                                     _ email: String, _ password: String) async throws -> Void) {
-        self.asksForCredentials = asksForCredentials
-        self.onCancel = onCancel
-        self.register = register
-    }
-
-    public var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    Text(asksForCredentials
-                         ? "Vous avez reçu une invitation de votre interlocuteur ? Saisissez son code pour créer votre compte."
-                         : "Votre compte est créé. Saisissez le code d'invitation reçu de votre interlocuteur pour y accéder.")
-                        .font(Theme.Typography.secondary)
-                        .foregroundStyle(Theme.Palette.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    LabelledField("Code d'invitation") {
-                        TextField("XXXXXXXX", text: $code)
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                            .font(Theme.Typography.body.monospaced())
-                    }
-                    LabelledField("Prénom") {
-                        TextField("Prénom", text: $firstName).textContentType(.givenName)
-                    }
-                    LabelledField("Nom") {
-                        TextField("Nom", text: $lastName).textContentType(.familyName)
-                    }
-                    if asksForCredentials {
-                        LabelledField("Email") {
-                            TextField("adresse@exemple.fr", text: $email)
-                                .keyboardType(.emailAddress)
-                                .textContentType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        }
-                        LabelledField("Mot de passe") {
-                            SecureField("8 caractères minimum", text: $password)
-                                .textContentType(.newPassword)
-                        }
-                    }
-
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(Theme.Typography.secondary)
-                            .foregroundStyle(Theme.Palette.destructive)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    PrimaryActionButton(isWorking ? "Création…"
-                                        : (asksForCredentials ? "Créer mon compte" : "Valider mon invitation")) {
-                        Task { await submit() }
-                    }
-                    .disabled(!isValid || isWorking)
-                    .opacity(isValid && !isWorking ? 1 : 0.5)
-                }
-                .padding(Theme.Spacing.gutter)
-            }
-            .background(BrandBackground())
-            .navigationTitle(asksForCredentials ? "Créer un compte" : "Code d'invitation")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(onCancel == nil ? "Annuler" : "Se déconnecter") {
-                        if let onCancel { onCancel() } else { dismiss() }
-                    }
-                }
-            }
-        }
-    }
-
-    private var isValid: Bool {
-        !code.trimmingCharacters(in: .whitespaces).isEmpty
-        && !firstName.trimmingCharacters(in: .whitespaces).isEmpty
-        && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
-        && (!asksForCredentials || (email.contains("@") && password.count >= 8))
-    }
-
-    private func submit() async {
-        isWorking = true
-        defer { isWorking = false }
-        do {
-            try await register(code, firstName, lastName, email, password)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-}
-
-/// Shown after signing up on a project that confirms addresses by email.
-public struct AwaitingConfirmationView: View {
-    private let email: String
-    private let onContinue: () -> Void
-
-    public init(email: String, onContinue: @escaping () -> Void) {
-        self.email = email
-        self.onContinue = onContinue
-    }
-
-    public var body: some View {
-        VStack(spacing: Theme.Spacing.l) {
-            Spacer()
-            Image(systemName: "envelope.badge")
-                .font(.system(size: 44))
-                .foregroundStyle(Theme.Palette.brand)
-            Text("Confirmez votre adresse")
-                .font(Theme.Typography.cardTitle)
-                .foregroundStyle(Theme.Palette.textPrimary)
-                .multilineTextAlignment(.center)
-            Text("Un e-mail vient d'être envoyé à \(email). Ouvrez le lien qu'il contient, puis connectez-vous : votre code d'invitation vous sera demandé une dernière fois.")
-                .font(Theme.Typography.body)
-                .foregroundStyle(Theme.Palette.textSecondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            PrimaryActionButton("Me connecter", action: onContinue)
-            Spacer()
-        }
-        .padding(Theme.Spacing.xl)
-        .background(BrandBackground())
-    }
-}
-
 /// Shown after registering against an invitation the company wants to vet.
 public struct PendingApprovalView: View {
     private let email: String
@@ -217,65 +69,6 @@ public struct SuspendedView: View {
     }
 }
 
-public struct ForgotPasswordView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var email = ""
-    @State private var sent = false
-
-    private let requestReset: (String) async -> Void
-
-    public init(requestReset: @escaping (String) async -> Void) {
-        self.requestReset = requestReset
-    }
-
-    public var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                if sent {
-                    // Deliberately says "if an account exists": confirming that
-                    // an address is registered would leak the member list.
-                    Text("Si un compte existe pour \(email), un lien de réinitialisation vient d'être envoyé.")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(Theme.Palette.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    PrimaryActionButton("Fermer") { dismiss() }
-                } else {
-                    Text("Saisissez votre adresse : nous vous enverrons un lien pour choisir un nouveau mot de passe.")
-                        .font(Theme.Typography.secondary)
-                        .foregroundStyle(Theme.Palette.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    LabelledField("Email") {
-                        TextField("adresse@exemple.fr", text: $email)
-                            .keyboardType(.emailAddress)
-                            .textContentType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    }
-
-                    PrimaryActionButton("Envoyer le lien") {
-                        Task {
-                            await requestReset(email)
-                            sent = true
-                        }
-                    }
-                    .disabled(!email.contains("@"))
-                }
-                Spacer()
-            }
-            .padding(Theme.Spacing.gutter)
-            .background(BrandBackground())
-            .navigationTitle("Mot de passe oublié")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Annuler") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
 /// Shown over the tabs when a restored session is waiting on Face ID.
 public struct LockedView: View {
     /// Face ID is asked for once the opening has gone, not over it.
@@ -305,155 +98,119 @@ public struct LockedView: View {
     }
 }
 
-/// The end of a password reset: the emailed link has signed the person in,
-/// and this is where they choose the new password. Before it existed the
-/// reset could be requested but never finished.
-public struct NewPasswordView: View {
-    @State private var password = ""
-    @State private var confirmation = ""
-    @State private var errorMessage: String?
-    @State private var isWorking = false
-
-    private let save: (String) async throws -> Void
-
-    public init(save: @escaping (String) async throws -> Void) {
-        self.save = save
-    }
-
-    private var problem: String? {
-        if password.count < 8 { return "8 caractères minimum." }
-        if confirmation != password { return "Les deux mots de passe ne correspondent pas." }
-        return nil
-    }
-
-    public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
-                TrinityWordmark()
-                    .padding(.top, Theme.Spacing.xl)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Choisissez un")
-                        .foregroundStyle(Theme.Palette.textPrimary)
-                    Text("nouveau mot de passe.")
-                        .brandGradient()
-                }
-                .font(Theme.Typography.display(30, .semibold, relativeTo: .largeTitle))
-                .padding(.top, 24)
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    LabelledField("Nouveau mot de passe") {
-                        SecureField("8 caractères minimum", text: $password)
-                            .textContentType(.newPassword)
-                    }
-                    LabelledField("Confirmation") {
-                        SecureField("Le même, une seconde fois", text: $confirmation)
-                            .textContentType(.newPassword)
-                    }
-                    if let message = errorMessage ?? (confirmation.isEmpty ? nil : problem) {
-                        Text(message)
-                            .font(Theme.Typography.secondary)
-                            .foregroundStyle(Theme.Palette.destructive)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    PrimaryActionButton(isWorking ? "Enregistrement…" : "Enregistrer") {
-                        Task {
-                            isWorking = true
-                            defer { isWorking = false }
-                            do { try await save(password) }
-                            catch { errorMessage = error.localizedDescription }
-                        }
-                    }
-                    .disabled(problem != nil || isWorking)
-                    .opacity(problem != nil ? 0.6 : 1)
-                }
-                .padding(Theme.Spacing.cardPadding)
-                .cardSurface()
-            }
-            .padding(Theme.Spacing.gutter)
-        }
-        .background(BrandBackground())
-    }
-}
-
-
-/// The invited person's first screen: their name and a password. The email
-/// they came from is the invitation; nothing else is asked.
+/// The first sign-in of an invited address: the person says who they are,
+/// and the invitation sent to that address gives them their role. Nothing
+/// else to choose -- signing in is by emailed code, so there is no password.
 public struct CompleteInviteView: View {
     @State private var firstName = ""
     @State private var lastName = ""
-    @State private var password = ""
     @State private var errorMessage: String?
     @State private var isWorking = false
+    @FocusState private var focus: Field?
+
+    private enum Field { case first, last }
 
     private let email: String
-    private let complete: (String, String, String) async throws -> Void
+    private let onSignOut: () -> Void
+    private let complete: (String, String) async throws -> Void
 
-    public init(email: String, complete: @escaping (String, String, String) async throws -> Void) {
+    public init(email: String, onSignOut: @escaping () -> Void,
+                complete: @escaping (_ firstName: String, _ lastName: String) async throws -> Void) {
         self.email = email
+        self.onSignOut = onSignOut
         self.complete = complete
     }
 
     private var isValid: Bool {
         !firstName.trimmingCharacters(in: .whitespaces).isEmpty
         && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
-        && password.count >= 8
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
                 TrinityWordmark()
-                    .padding(.top, Theme.Spacing.xl)
+                Spacer()
+                Button("Se déconnecter", action: onSignOut)
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+            }
+            .padding(.top, Theme.Spacing.l)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Bienvenue chez")
-                        .foregroundStyle(Theme.Palette.textPrimary)
-                    Text("Trinity Énergie.")
-                        .brandGradient()
-                }
-                .font(Theme.Typography.display(32, .semibold, relativeTo: .largeTitle))
-                .padding(.top, 24)
+            Spacer(minLength: Theme.Spacing.l)
 
-                Text("Votre invitation pour \(email) est valable. Il ne reste qu'à vous présenter et choisir un mot de passe.")
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Bienvenue chez")
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                Text("Trinity Énergie.")
+                    .brandGradient()
+            }
+            .font(Theme.Typography.display(32, .semibold, relativeTo: .largeTitle))
+            .minimumScaleFactor(0.8)
+            .staggeredAppear(index: 0)
+
+            if focus == nil {
+                Text("Votre accès pour \(email) est ouvert. Dites-nous simplement comment vous appeler.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    LabelledField("Prénom") {
-                        TextField("Prénom", text: $firstName).textContentType(.givenName)
-                    }
-                    LabelledField("Nom") {
-                        TextField("Nom", text: $lastName).textContentType(.familyName)
-                    }
-                    LabelledField("Mot de passe") {
-                        SecureField("8 caractères minimum", text: $password)
-                            .textContentType(.newPassword)
-                    }
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(Theme.Typography.secondary)
-                            .foregroundStyle(Theme.Palette.destructive)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    PrimaryActionButton(isWorking ? "Création…" : "Rejoindre Trinity Énergie") {
-                        Task {
-                            isWorking = true
-                            defer { isWorking = false }
-                            do { try await complete(firstName, lastName, password) }
-                            catch { errorMessage = error.localizedDescription }
-                        }
-                    }
-                    .disabled(!isValid || isWorking)
-                    .opacity(isValid ? 1 : 0.6)
-                }
-                .padding(Theme.Spacing.cardPadding)
-                .cardSurface()
+                    .padding(.top, Theme.Spacing.m)
+                    .transition(.opacity)
             }
-            .padding(Theme.Spacing.gutter)
+
+            Spacer(minLength: Theme.Spacing.l)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                LabelledField("Prénom") {
+                    TextField("Prénom", text: $firstName)
+                        .textContentType(.givenName)
+                        .submitLabel(.next)
+                        .focused($focus, equals: .first)
+                        .onSubmit { focus = .last }
+                }
+                LabelledField("Nom") {
+                    TextField("Nom", text: $lastName)
+                        .textContentType(.familyName)
+                        .submitLabel(.join)
+                        .focused($focus, equals: .last)
+                        .onSubmit { Task { await submit() } }
+                }
+                if let errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.destructive)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                PrimaryActionButton(isWorking ? "Un instant…" : "Rejoindre Trinity Énergie") {
+                    Task { await submit() }
+                }
+                .disabled(!isValid || isWorking)
+                .opacity(isValid && !isWorking ? 1 : 0.6)
+            }
+            .padding(Theme.Spacing.cardPadding)
+            .cardSurface()
+            .staggeredAppear(index: 1)
+
+            Spacer(minLength: Theme.Spacing.m)
         }
-        .scrollDismissesKeyboard(.interactively)
+        .padding(.horizontal, Theme.Spacing.gutter)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(BrandBackground())
+        .animation(.smooth(duration: 0.3), value: focus)
+        .animation(.smooth(duration: 0.3), value: errorMessage)
+        .errorFeedback(errorMessage)
+    }
+
+    @MainActor
+    private func submit() async {
+        guard isValid, !isWorking else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await complete(firstName.trimmingCharacters(in: .whitespaces),
+                               lastName.trimmingCharacters(in: .whitespaces))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }

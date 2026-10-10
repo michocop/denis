@@ -3,6 +3,8 @@
 -- Data, not schema: applied to the production project once (and again after
 -- any change here) with
 --   supabase db query --linked -f supabase/seed/trinity_energie.sql
+-- Re-running it refreshes a text nobody has accepted yet; once anyone has
+-- accepted a version, it is left exactly as it was agreed to.
 --
 -- Source: the RNE / INSEE record (societe.com, 05/10/2026) and the company's
 -- site. Values marked PROPOSITION in the texts are commercial or legal choices
@@ -101,7 +103,11 @@ Les parties conviennent que la signature électronique apposée via l''applicati
 confirmée le cas échéant par un code reçu par SMS, constitue une signature au
 sens de l''article 1367 du Code civil et vaut preuve de leur consentement. La
 date, l''heure et l''empreinte du document signé sont conservées.', '', false)
-on conflict (key, version) do nothing;
+on conflict (key, version) do update
+  set title = excluded.title, body = excluded.body
+  where not exists (
+    select 1 from legal_acceptances a
+     where a.key = legal_documents.key and a.version = legal_documents.version);
 
 -- ========================================================== the CGU
 insert into legal_documents (key, version, title, body, sha256, active)
@@ -183,7 +189,11 @@ Droit français. À défaut de résolution amiable, compétence des tribunaux du
 ressort de la cour d''appel de Douai.
 
 Version du 5 octobre 2026.', '', false)
-on conflict (key, version) do nothing;
+on conflict (key, version) do update
+  set title = excluded.title, body = excluded.body
+  where not exists (
+    select 1 from legal_acceptances a
+     where a.key = legal_documents.key and a.version = legal_documents.version);
 
 -- ===================================================== the privacy policy
 insert into legal_documents (key, version, title, body, sha256, active)
@@ -226,8 +236,11 @@ Les données sont accessibles :
 - à l''apporteur, pour ses seules recommandations ;
 - aux collaborateurs habilités de TRINITY ENERGIE ;
 - à nos sous-traitants techniques : Supabase (hébergement, Paris, Union
-  européenne), Brevo (envoi des SMS de vérification, France) et le prestataire
-  d''envoi des emails ;
+  européenne) et Brevo (envoi des emails et des SMS de vérification, France) ;
+- à Apple, qui achemine les notifications vers l''iPhone : le titre et le
+  texte d''une notification (par exemple le nom d''un filleul et l''étape de son
+  dossier) transitent par ses serveurs, qui peuvent être situés hors de
+  l''Union européenne ;
 - le cas échéant, aux fournisseurs d''énergie sollicités, avec l''accord de la
   personne concernée.
 
@@ -267,4 +280,8 @@ journalisé.
 ## 7. Modifications
 
 Toute modification sera notifiée dans l''application. Version du 5 octobre 2026.', '', false)
-on conflict (key, version) do nothing;
+on conflict (key, version) do update
+  set title = excluded.title, body = excluded.body
+  where not exists (
+    select 1 from legal_acceptances a
+     where a.key = legal_documents.key and a.version = legal_documents.version);

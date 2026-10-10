@@ -30,6 +30,7 @@ const NEXT_STEP: Record<string, string> = {
   member_pending: "Un nouveau membre attend votre validation dans la console Apporteurs.",
   invoice_signed_by_apporteur: "L'apporteur a signé : il ne manque plus que la signature de l'entreprise.",
   document_added: "Un document a été joint à une recommandation.",
+  member_approved: "Ouvrez l'application et saisissez votre adresse e-mail : un code de connexion vous sera envoyé.",
 };
 
 export async function sendNotificationEmail(notificationId: string, deps: Deps) {

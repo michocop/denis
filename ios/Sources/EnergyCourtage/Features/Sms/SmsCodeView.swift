@@ -19,6 +19,7 @@ struct SmsCodeField: View {
     var phase: Phase
     /// Bumped on every wrong code, to replay the shake.
     var shakes: Int
+    var accessibilityLabel = "Code reçu par SMS, six chiffres"
     var onComplete: (String) -> Void
     @FocusState private var focused: Bool
 
@@ -46,7 +47,7 @@ struct SmsCodeField: View {
                 .focused($focused)
                 .foregroundStyle(.clear)
                 .tint(.clear)
-                .accessibilityLabel("Code reçu par SMS, six chiffres")
+                .accessibilityLabel(accessibilityLabel)
 
             HStack(spacing: 10) {
                 ForEach(0..<6, id: \.self) { index in

@@ -22,6 +22,9 @@ export interface HookPayload {
 
 const APP_REDIRECT = "trinityenergie://auth-callback";
 
+/** Where the app is installed from while it is in beta. */
+export const INSTALL_URL = "https://testflight.apple.com/join/cmSnjrEh";
+
 /** The link the button opens: Supabase verifies it, then hands over to the app. */
 export function verifyLink(supabaseUrl: string, tokenHash: string, type: string, redirectTo?: string | null): string {
   const params = new URLSearchParams({ token: tokenHash, type, redirect_to: redirectTo || APP_REDIRECT });
@@ -41,14 +44,7 @@ export function authMail(payload: HookPayload, supabaseUrl: string): Mail {
   let to = payload.user.email;
   switch (d.email_action_type) {
     case "invite":
-      subject = "Votre invitation à rejoindre Trinity Énergie";
-      heading = "Vous êtes invité à rejoindre Trinity Énergie";
-      paragraphs = [
-        "Trinity Énergie vous ouvre un accès apporteur d'affaires : vous recommandez des professionnels, suivez chaque dossier et signez vos factures depuis l'application.",
-        "Ouvrez ce lien depuis votre iPhone, l'application installée, pour choisir votre mot de passe.",
-      ];
-      label = "Activer mon accès";
-      break;
+      return invitationMail(to, greeting);
     case "recovery":
       subject = "Réinitialisez votre mot de passe";
       heading = "Choisissez un nouveau mot de passe";
@@ -67,12 +63,14 @@ export function authMail(payload: HookPayload, supabaseUrl: string): Mail {
       }
       break;
     case "magiclink":
+    case "signup": // the first code of an invited address nobody confirmed yet
+      if (d.token) return codeMail(to, greeting, d.token);
       subject = "Votre lien de connexion";
       heading = "Connectez-vous à Trinity Énergie";
       paragraphs = ["Ouvrez ce lien depuis votre iPhone pour vous connecter."];
       label = "Me connecter";
       break;
-    default: // signup, reauthentication...
+    default: // reauthentication...
       subject = "Confirmez votre adresse e-mail";
       heading = "Confirmez votre adresse";
       paragraphs = d.token
@@ -83,8 +81,33 @@ export function authMail(payload: HookPayload, supabaseUrl: string): Mail {
   return letter(to, subject, greeting, heading, paragraphs, label, link());
 }
 
+/** No sign-in link: the app signs in by emailed code, so the invitation only
+ *  has to say where the app is and which address to type. Sent by
+ *  send-invite itself, and by this hook if an invitation ever comes from the
+ *  dashboard. */
+export function invitationMail(to: string, greeting = "Bonjour,"): Mail {
+  return letter(to, "Votre invitation à rejoindre Trinity Énergie", greeting,
+    "Votre accès Trinity Énergie est ouvert", [
+      "Trinity Énergie vous ouvre un accès apporteur d'affaires : vous recommandez des professionnels, suivez chaque dossier et signez vos factures depuis l'application.",
+      "Installez l'application sur votre iPhone, ouvrez-la et saisissez cette adresse e-mail : vous recevrez un code de connexion à six chiffres. Aucun mot de passe à retenir.",
+    ], "Installer l'application", INSTALL_URL);
+}
+
+/** The sign-in code, and nothing to click. The code leads the subject so the
+ *  lock screen shows it and iOS offers it above the keyboard. */
+function codeMail(to: string, greeting: string, code: string): Mail {
+  const rendered = renderLetter({
+    greeting,
+    heading: "Votre code de connexion",
+    paragraphs: ["Saisissez ce code dans l'application Trinity Énergie. Il est valable une heure et ne sert qu'une fois."],
+    code,
+    footerNote: FOOTER,
+  });
+  return { to: [to], subject: `${code} est votre code Trinity Énergie`, text: rendered.text, html: rendered.html };
+}
+
 function letter(to: string, subject: string, greeting: string, heading: string,
                 paragraphs: string[], label: string, url: string): Mail {
-  const rendered = renderLetter({ greeting, heading, paragraphs, action: { label, url }, footerNote: FOOTER });
+  const rendered = renderLetter({ greeting, heading, paragraphs, action: { label, url, plain: true }, footerNote: FOOTER });
   return { to: [to], subject, text: rendered.text, html: rendered.html };
 }

@@ -248,129 +248,271 @@ public struct RootView: View {
     }
 }
 
-/// Email/password sign-in. Signup is invitation-based in this product, so the
-/// screen offers no self-registration.
+/// Sign-in by emailed code: the address, then the six digits sent to it.
+/// One screen that fits the phone -- nothing to scroll -- and no password:
+/// signup is invitation-based, so an address only has an account because
+/// Trinity Énergie invited it.
 public struct SignInView: View {
+    private enum Step: Equatable { case email, code(String) }
+
+    @State private var step: Step = .email
     @State private var email = ""
-    @State private var password = ""
+    @State private var code = ""
+    @State private var codePhase: SmsCodeField.Phase = .entering
+    @State private var shakes = 0
     @State private var errorMessage: String?
-    @State private var isWorking = false
-
+    @State private var resent = false
+    @State private var isSending = false
+    @State private var resendAvailableAt = Date.distantPast
+    @State private var now = Date.now
     @State private var choosesDemo = false
+    @FocusState private var emailFocused: Bool
 
-    private let signIn: (String, String) async throws -> Void
-    private let onForgotPassword: () -> Void
+    private let sendCode: (String) async throws -> Void
+    private let verifyCode: (String, String) async throws -> Void
     /// Opens the app on sample data, as an apporteur (false) or as the company.
     private let onDemo: ((Bool) -> Void)?
 
-    public init(signIn: @escaping (String, String) async throws -> Void,
-                onForgotPassword: @escaping () -> Void,
+    public init(notice: String? = nil,
+                sendCode: @escaping (_ email: String) async throws -> Void,
+                verifyCode: @escaping (_ code: String, _ email: String) async throws -> Void,
                 onDemo: ((Bool) -> Void)? = nil) {
-        self.signIn = signIn
-        self.onForgotPassword = onForgotPassword
+        self.sendCode = sendCode
+        self.verifyCode = verifyCode
         self.onDemo = onDemo
+        _errorMessage = State(initialValue: notice)
     }
 
+    private var isValidEmail: Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        guard let at = trimmed.firstIndex(of: "@") else { return false }
+        return trimmed[trimmed.index(after: at)...].contains(".") && !trimmed.contains(" ")
+    }
+    private var secondsBeforeResend: Int {
+        max(0, Int(resendAvailableAt.timeIntervalSince(now).rounded(.up)))
+    }
+    /// With the keyboard up the screen keeps only what is being typed into.
+    private var isTyping: Bool { emailFocused || step != .email }
+
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
-                TrinityWordmark()
-                    .padding(.top, Theme.Spacing.xl)
-                    .staggeredAppear(index: 0)
+        VStack(alignment: .leading, spacing: 0) {
+            TrinityWordmark()
+                .padding(.top, Theme.Spacing.l)
+                .staggeredAppear(index: 0)
 
-                // the site's headline: white, then the blue gradient
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Votre espace")
-                        .foregroundStyle(Theme.Palette.textPrimary)
-                    Text("apporteur d'affaires.")
-                        .brandGradient()
-                }
-                .font(Theme.Typography.display(34, .semibold, relativeTo: .largeTitle))
-                .padding(.top, 36)
-                .staggeredAppear(index: 1)
+            Spacer(minLength: Theme.Spacing.l)
 
+            // the site's headline: white, then the blue gradient
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Votre espace")
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                Text("apporteur d'affaires.")
+                    .brandGradient()
+            }
+            .font(Theme.Typography.display(34, .semibold, relativeTo: .largeTitle))
+            .minimumScaleFactor(0.8)
+            .staggeredAppear(index: 1)
+
+            if !isTyping {
                 Text("Suivez vos recommandations, signez vos factures et recevez vos commissions.")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Theme.Spacing.m)
+                    .transition(.opacity)
                     .staggeredAppear(index: 2)
+            }
 
-                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    LabelledField("Email") {
-                        TextField("adresse@exemple.fr", text: $email)
-                            .keyboardType(.emailAddress)
-                            .textContentType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    }
-                    LabelledField("Mot de passe") {
-                        SecureField("••••••••", text: $password)
-                            .textContentType(.password)
-                    }
+            Spacer(minLength: Theme.Spacing.l)
 
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(Theme.Typography.secondary)
-                            .foregroundStyle(Theme.Palette.destructive)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    PrimaryActionButton(isWorking ? "Connexion…" : "Se connecter") {
-                        Task {
-                            isWorking = true
-                            defer { isWorking = false }
-                            do {
-                                try await signIn(email, password)
-                                errorMessage = nil
-                            } catch {
-                                errorMessage = error.localizedDescription
-                            }
-                        }
-                    }
-                    .disabled(email.isEmpty || password.isEmpty || isWorking)
-                    .opacity(email.isEmpty || password.isEmpty ? 0.6 : 1)
-
-                    Button("Mot de passe oublié ?", action: onForgotPassword)
-                        .font(Theme.Typography.secondary.weight(.semibold))
-                        .foregroundStyle(Theme.Palette.brand)
-                        .frame(maxWidth: .infinity)
-                }
-                .padding(Theme.Spacing.cardPadding)
-                .cardSurface()
+            card
                 .staggeredAppear(index: 3)
 
-                // No button for invitations: an invitation is an email whose
-                // link opens the app, so there is nothing to tap here.
-                Text("L'accès est réservé aux apporteurs invités par Trinity Énergie. Votre invitation arrive par e-mail.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .multilineTextAlignment(.center)
+            Spacer(minLength: Theme.Spacing.m)
 
-                // Sign-up is closed, so without this nobody uninvited -- a
-                // prospect being shown the app, Apple's reviewers -- could
-                // see anything. Sample data only, said so on every screen.
-                if onDemo != nil {
-                    Button { choosesDemo = true } label: {
-                        Label("Découvrir l'application (démo)", systemImage: "sparkles")
-                            .font(Theme.Typography.label)
-                            .foregroundStyle(Theme.Palette.brand)
-                            .frame(maxWidth: .infinity)
+            if !isTyping { footer.transition(.opacity) }
+        }
+        .padding(.horizontal, Theme.Spacing.gutter)
+        .padding(.bottom, Theme.Spacing.m)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(BrandBackground())
+        .animation(.smooth(duration: 0.3), value: isTyping)
+        .animation(.smooth(duration: 0.35), value: step)
+        .animation(.smooth(duration: 0.3), value: errorMessage)
+        .animation(.smooth(duration: 0.3), value: codePhase)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
+        .errorFeedback(errorMessage)
+        .feedback(.error, trigger: shakes)
+        .feedback(.success, trigger: codePhase == .accepted) { _, accepted in accepted }
+    }
+
+    // MARK: - The card
+
+    @ViewBuilder
+    private var card: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+            switch step {
+            case .email:
+                LabelledField("Email") {
+                    TextField("adresse@exemple.fr", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.send)
+                        .focused($emailFocused)
+                        .onSubmit { Task { await send() } }
+                }
+                message
+                PrimaryActionButton(isSending ? "Envoi…" : "Recevoir mon code") {
+                    Task { await send() }
+                }
+                .disabled(!isValidEmail || isSending)
+                .opacity(isValidEmail && !isSending ? 1 : 0.6)
+
+            case .code(let address):
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(codePhase == .accepted ? "C'est bon." : "Saisissez votre code")
+                        .font(Theme.Typography.cardTitle)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                        .contentTransition(.opacity)
+                    Text("Six chiffres, envoyés à \(address).")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                }
+                SmsCodeField(code: $code, phase: codePhase, shakes: shakes,
+                             accessibilityLabel: "Code reçu par e-mail, six chiffres") { digits in
+                    Task { await verify(digits, email: address) }
+                }
+                .disabled(codePhase == .checking || codePhase == .accepted)
+                message
+                HStack {
+                    Button("Changer d'adresse") {
+                        step = .email
+                        code = ""
+                        errorMessage = nil
+                        resent = false
+                        codePhase = .entering
                     }
-                    .confirmationDialog("Découvrir avec des données de démonstration",
-                                        isPresented: $choosesDemo, titleVisibility: .visible) {
-                        Button("Vue apporteur") { onDemo?(false) }
-                        Button("Vue entreprise") { onDemo?(true) }
-                        Button("Annuler", role: .cancel) {}
-                    } message: {
-                        Text("Aucune donnée réelle : les noms, montants et documents sont fictifs.")
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    Spacer()
+                    Button {
+                        Task { await send(again: true) }
+                    } label: {
+                        if secondsBeforeResend > 0 {
+                            Text("Renvoyer dans \(secondsBeforeResend) s")
+                                .contentTransition(.numericText(countsDown: true))
+                        } else {
+                            Text("Renvoyer le code")
+                        }
                     }
+                    .foregroundStyle(secondsBeforeResend > 0 ? Theme.Palette.textSecondary
+                                                             : Theme.Palette.brand)
+                    .disabled(secondsBeforeResend > 0 || isSending)
+                    .monospacedDigit()
+                    .animation(.snappy, value: secondsBeforeResend)
+                }
+                .font(Theme.Typography.label)
+            }
+        }
+        .padding(Theme.Spacing.cardPadding)
+        .cardSurface()
+        .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)))
+        .id(step == .email ? "email" : "code")
+    }
+
+    @ViewBuilder
+    private var message: some View {
+        if let errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                .font(Theme.Typography.secondary)
+                .foregroundStyle(Theme.Palette.destructive)
+                .fixedSize(horizontal: false, vertical: true)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        } else if resent {
+            Label("Nouveau code envoyé.", systemImage: "paperplane.fill")
+                .font(Theme.Typography.secondary)
+                .foregroundStyle(Theme.Palette.successText)
+                .transition(.opacity)
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footer: some View {
+        VStack(spacing: Theme.Spacing.s) {
+            Text("L'accès est réservé aux apporteurs invités par Trinity Énergie.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Palette.textSecondary)
+                .multilineTextAlignment(.center)
+            // Sign-up is closed, so without this nobody uninvited -- a
+            // prospect being shown the app, Apple's reviewers -- could see
+            // anything.
+            if onDemo != nil {
+                Button { choosesDemo = true } label: {
+                    Label("Découvrir l'application (démo)", systemImage: "sparkles")
+                        .font(Theme.Typography.label)
+                        .foregroundStyle(Theme.Palette.brand)
+                }
+                .confirmationDialog("Découvrir avec des données de démonstration",
+                                    isPresented: $choosesDemo, titleVisibility: .visible) {
+                    Button("Vue apporteur") { onDemo?(false) }
+                    Button("Vue entreprise") { onDemo?(true) }
+                    Button("Annuler", role: .cancel) {}
+                } message: {
+                    Text("Aucune donnée réelle : les noms, montants et documents sont fictifs.")
                 }
             }
-            .padding(Theme.Spacing.gutter)
         }
-        .scrollDismissesKeyboard(.interactively)
-        .background(BrandBackground())
-        .errorFeedback(errorMessage)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Actions
+
+    @MainActor
+    private func send(again: Bool = false) async {
+        guard isValidEmail, !isSending else { return }
+        isSending = true
+        defer { isSending = false }
+        let address = email.trimmingCharacters(in: .whitespaces).lowercased()
+        do {
+            try await sendCode(address)
+            errorMessage = nil
+            code = ""
+            codePhase = .entering
+            resent = again
+            // Auth refuses a second email inside a minute
+            resendAvailableAt = .now.addingTimeInterval(60)
+            emailFocused = false
+            step = .code(address)
+        } catch EmailCodeError.tooSoon where !again {
+            // a code is already on its way: go and type it
+            errorMessage = nil
+            step = .code(address)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func verify(_ digits: String, email address: String) async {
+        guard digits.count == 6, codePhase == .entering else { return }
+        codePhase = .checking
+        resent = false
+        do {
+            try await verifyCode(digits, address)
+            errorMessage = nil
+            codePhase = .accepted
+        } catch {
+            errorMessage = error.localizedDescription
+            codePhase = .wrong
+            shakes += 1
+            try? await Task.sleep(for: .milliseconds(500))
+            code = ""
+            if codePhase == .wrong { codePhase = .entering }
+        }
     }
 }

@@ -1,19 +1,33 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { authMail, verifyLink } from "./handler.ts";
+import { authMail, INSTALL_URL, verifyLink } from "./handler.ts";
 import { brevoSender, parseFrom } from "../_shared/email.ts";
 
 const base = { user: { email: "johann@example.test", user_metadata: { first_name: "Johann" } } };
 
-Deno.test("an invitation is a branded letter whose button opens the app through Supabase", () => {
+Deno.test("an invitation says where the app is and carries no sign-in link", () => {
   const mail = authMail({ ...base, email_data: { token_hash: "abc", email_action_type: "invite",
     redirect_to: "trinityenergie://auth-callback" } }, "https://ref.supabase.co");
   assertEquals(mail.to, ["johann@example.test"]);
   assertEquals(mail.subject, "Votre invitation à rejoindre Trinity Énergie");
-  const link = "https://ref.supabase.co/auth/v1/verify?token=abc&type=invite&redirect_to=trinityenergie%3A%2F%2Fauth-callback";
-  assert(mail.html.includes(`href="${link.replace(/&/g, "&amp;")}"`), "the button is a real link");
-  assert(mail.text.includes(link), "and the plain-text part carries it too");
+  assert(!mail.html.includes("/auth/v1/verify") && !mail.text.includes("/auth/v1/verify"),
+    "nothing for Brevo's click tracking to break: signing in is by code");
+  assert(mail.text.includes(INSTALL_URL), "the plain-text part says where to install");
+  assert(!mail.html.includes(`href="${INSTALL_URL}"`), "as text, not an <a> Brevo would rewrite");
+  assert(mail.html.includes("code de connexion"));
   assert(mail.html.includes("Bonjour Johann,"));
   assert(!mail.html.includes("désactiver ces e-mails"), "account mail cannot be switched off");
+});
+
+Deno.test("a sign-in code leads the subject and the letter, with no link at all", () => {
+  for (const type of ["magiclink", "signup"]) {
+    const mail = authMail({ user: { email: "a@b.test" },
+      email_data: { token: "482913", token_hash: "h", email_action_type: type } }, "https://ref.supabase.co");
+    assertEquals(mail.subject, "482913 est votre code Trinity Énergie", type);
+    assert(mail.html.includes(">482913</span>"), "set large in the letter");
+    assert(mail.text.includes("Votre code : 482913"));
+    assert(!mail.html.includes("<a href=\"https://ref.supabase.co"), "no sign-in link");
+    assert(!mail.text.includes("/auth/v1/verify"));
+  }
 });
 
 Deno.test("a password reset says so and goes back to the app by default", () => {

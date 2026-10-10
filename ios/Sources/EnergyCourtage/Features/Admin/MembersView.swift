@@ -333,7 +333,7 @@ struct InviteSheet: View {
                         .font(Theme.Typography.body)
 
                     Text(autoActivate
-                         ? "La personne reçoit un e-mail, choisit son mot de passe et accède aussitôt à l'application."
+                         ? "La personne reçoit un e-mail, ouvre l'application avec son adresse et se connecte avec le code reçu : aucun mot de passe."
                          : "La personne reçoit un e-mail ; un administrateur devra ensuite valider son inscription.")
                         .font(Theme.Typography.secondary)
                         .foregroundStyle(Theme.Palette.textSecondary)

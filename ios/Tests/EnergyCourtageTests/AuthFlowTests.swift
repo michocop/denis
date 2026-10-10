@@ -275,6 +275,93 @@ private final class Box: @unchecked Sendable {
 }
 
 /// A URLProtocol whose answers are scripted per request.
+// MARK: - Signing in by emailed code
+
+final class EmailCodeTests: XCTestCase {
+    private let base = URL(string: "https://project.supabase.co")!
+
+    private func makeClient() -> SupabaseClient {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ScriptedProtocol.self]
+        return SupabaseClient(baseURL: base, anonKey: "anon-key",
+                              session: URLSession(configuration: configuration))
+    }
+
+    override func setUp() {
+        super.setUp()
+        ScriptedProtocol.requests = []
+        ScriptedProtocol.handler = nil
+    }
+
+    /// URLProtocol hands the body over as a stream.
+    private func body(of request: URLRequest?) -> [String: Any] {
+        guard let stream = request?.httpBodyStream else { return [:] }
+        stream.open(); defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            if read <= 0 { break }
+            data.append(buffer, count: read)
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    /// Never `create_user`: sign-up is closed, and a code must not open an
+    /// account for whoever types an address.
+    func testAskingForACodeNeverCreatesAnAccount() async throws {
+        ScriptedProtocol.handler = { _ in .init(status: 200, body: "{}") }
+        try await makeClient().sendEmailCode(to: "michel@example.test")
+
+        let request = ScriptedProtocol.requests.first
+        XCTAssertEqual(request?.url?.path, "/auth/v1/otp")
+        let sent = body(of: request)
+        XCTAssertEqual(sent["email"] as? String, "michel@example.test")
+        XCTAssertEqual(sent["create_user"] as? Bool, false)
+    }
+
+    func testTheCodeIsExchangedForASessionThatCanBeRefreshed() async throws {
+        ScriptedProtocol.handler = { _ in .init(status: 200, body: """
+            {"access_token":"t1","refresh_token":"r1",
+             "user":{"id":"11111111-1111-1111-1111-111111111111","email":"michel@example.test"}}
+            """) }
+        let session = try await makeClient().verifyEmailCode("123456", email: "michel@example.test")
+
+        let request = ScriptedProtocol.requests.first
+        XCTAssertEqual(request?.url?.path, "/auth/v1/verify")
+        let sent = body(of: request)
+        XCTAssertEqual(sent["type"] as? String, "email",
+                       "covers the sign-in code and the first code of an invited address")
+        XCTAssertEqual(sent["token"] as? String, "123456")
+        XCTAssertEqual(session.refreshToken, "r1")
+    }
+
+    /// Auth answers in English; the person reads French they can act on.
+    func testAuthRefusalsBecomeSentencesSomeoneCanActOn() async {
+        let cases: [(Int, Bool, EmailCodeError)] = [
+            (422, false, .unknownAddress),   // no account for that address
+            (429, false, .tooSoon),          // a code inside the last minute
+            (403, true, .invalidCode),       // wrong or expired
+            (400, true, .invalidCode),
+            (500, false, .unavailable),
+        ]
+        for (status, verifying, expected) in cases {
+            ScriptedProtocol.handler = { _ in .init(status: status, body: #"{"msg":"nope"}"#) }
+            do {
+                if verifying {
+                    _ = try await makeClient().verifyEmailCode("000000", email: "a@b.test")
+                } else {
+                    try await makeClient().sendEmailCode(to: "a@b.test")
+                }
+                XCTFail("\(status) should fail")
+            } catch {
+                XCTAssertEqual(error as? EmailCodeError, expected, "status \(status)")
+                XCTAssertFalse(error.localizedDescription.isEmpty)
+            }
+        }
+    }
+}
+
 private final class ScriptedProtocol: URLProtocol {
     struct Response {
         let status: Int
