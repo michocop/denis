@@ -115,8 +115,8 @@ note "Invoicing stays blocked until mandat_facturation is published and signed."
 
 echo
 echo "== 7. Push =="
-note "In the SQL editor: select count(*) from push_config;"
-note "0 means push is inert: in-app notifications work, nothing is sent."
+note "In the SQL editor: select enabled from edge_hooks where name = 'send-push';"
+note "false (or no row) means push is inert: in-app notifications work, nothing is sent."
 note "That is fine until the APNs key exists (docs/DEPLOY.md section 6)."
 
 echo

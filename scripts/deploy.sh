@@ -23,7 +23,9 @@
 #   MAIL_FROM          the sender, verified in Brevo (Senders), e.g.
 #                      "Trinity Énergie <pierrelouis@trinity-energie.fr>"
 #   RESEND_API_KEY     optional: emails through Resend instead of Brevo
-#   APNS_*             push notifications   (Apple Developer account)
+#   APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY
+#                      push notifications (Apple Developer → Keys → APNs): the
+#                      push hook switches on once all three are set
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -131,6 +133,7 @@ deploy gdpr-purge   --no-verify-jwt
 deploy send-sms     --no-verify-jwt
 deploy send-invite                    # called by a signed-in admin: the JWT is checked
 deploy auth-email   --no-verify-jwt   # Supabase Auth's send-email hook, signed
+deploy send-push    --no-verify-jwt   # inert until the Apple key is set (step 4)
 
 # ------------------------------------------------------- 4. the hooks
 say "Hooks between the database and the functions"
@@ -160,6 +163,14 @@ hook gdpr-purge   GDPR_PURGE_HOOK_SECRET   true
 if has_secret BREVO_API_KEY; then hook send-sms SEND_SMS_HOOK_SECRET true
 else hook send-sms SEND_SMS_HOOK_SECRET false; fi
 has_secret SMS_SENDER || printf 'SMS_SENDER=Trinity\n' >> "$envfile"
+# Push waits for the Apple key: until then send-push could only answer 503.
+if has_secret APNS_KEY_ID && has_secret APNS_TEAM_ID && has_secret APNS_PRIVATE_KEY; then
+  hook send-push PUSH_HOOK_SECRET true
+else hook send-push PUSH_HOOK_SECRET false; fi
+# the app's bundle id (ios/project.yml); production serves TestFlight and the
+# App Store, and send-push falls back to the sandbox for Xcode builds by itself
+has_secret APNS_TOPIC || printf 'APNS_TOPIC=com.trinityenergie.energycourtage\n' >> "$envfile"
+has_secret APNS_ENVIRONMENT || printf 'APNS_ENVIRONMENT=production\n' >> "$envfile"
 "$SB" secrets set --project-ref "$REF" --env-file "$envfile" </dev/null >/dev/null
 ok "shared secrets stored"
 
@@ -183,8 +194,9 @@ missing=0
 if has_secret BREVO_API_KEY; then ok "BREVO_API_KEY (SMS and email)"; else todo "BREVO_API_KEY"; missing=1; fi
 if has_secret MAIL_FROM; then ok "MAIL_FROM"; else
   todo "MAIL_FROM: a sender verified in Brevo, e.g. \"Trinity Énergie <pierrelouis@trinity-energie.fr>\""; missing=1; fi
-if has_secret APNS_KEY_ID; then deploy send-push --no-verify-jwt
-else todo "push notifications: APNS_* keys (Apple Developer account), then re-run"; fi
+if has_secret APNS_KEY_ID && has_secret APNS_TEAM_ID && has_secret APNS_PRIVATE_KEY; then
+  ok "APNs key (push notifications)"
+else todo "push notifications: APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY (Apple Developer → Keys), then re-run"; fi
 [ "$missing" = 0 ] || echo "    Paste missing keys in the dashboard: Edge Functions → Secrets, then re-run."
 
 say "Done: https://supabase.com/dashboard/project/$REF"

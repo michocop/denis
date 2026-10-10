@@ -1611,12 +1611,12 @@ begin
     'but the notification itself still exists, so the app shows it');
 end $$;
 
--- Configured by whoever runs the deploy, not by the app: push_config has no
+-- Configured by whoever runs the deploy, not by the app: edge_hooks has no
 -- grant for `authenticated` at all, because the secret in it would let its
 -- holder push anything to anyone.
 reset role;
-insert into push_config (function_url, hook_secret)
-values ('https://project.supabase.co/functions/v1/send-push', 'shared-secret');
+insert into edge_hooks (name, url, secret)
+values ('send-push', 'https://project.supabase.co/functions/v1/send-push', 'shared-secret');
 set role authenticated;
 
 do $$
@@ -1649,13 +1649,32 @@ begin
 
   -- the secret must not be readable by anyone signed in
   perform login(v_johann);
-  perform assert_denied(v_johann, 'select hook_secret from push_config',
+  perform assert((v_req.body -> 'record' ->> 'badge')::int = unread_notification_count(),
+    'and the unread count, so the icon says what the bell will say');
+  perform assert_denied(v_johann, 'select secret from edge_hooks',
     'no signed-in user can read the push secret');
 
 end $$;
 
 reset role;
-update push_config set enabled = false;
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_before bigint;
+  v_ids    uuid[];
+begin
+  select coalesce(max(id), 0) into v_before from net.sent_requests;
+  with n as (
+    insert into notifications (profile_id, kind, payload)
+    values (v_johann, 'reminder_due', '{"label": "Relancer"}')
+    returning id
+  ) select array_agg(id) into v_ids from n;
+  perform assert(not exists (select 1 from net.sent_requests
+                              where id > v_before and url like '%/send-push'),
+    'a reminder is not pushed: the phone that set it already rang, at the minute');
+  delete from notifications where id = any (v_ids);
+end $$;
+update edge_hooks set enabled = false where name = 'send-push';
 set role authenticated;
 
 do $$
@@ -3001,6 +3020,83 @@ begin
     'until SMS is set up, no code is asked for');
   select * into v_sig from sign_invoice(v_inv.id, v_inv.document_sha256);
   perform assert(not v_sig.otp_verified, 'and signing works as before');
+end $$;
+
+
+\echo ''
+\echo '=== 52. Approved, lost, countersigned: the apporteur is told ======'
+reset role;
+insert into auth.users (id, email) values ('aaaaaaaa-0000-0000-0000-000000000052', 'nadia@example.test');
+insert into profiles (id, role, status, first_name, last_name, email)
+values ('aaaaaaaa-0000-0000-0000-000000000052', 'apporteur', 'pending', 'Nadia', 'Nouvelle',
+        'nadia@example.test');
+set role authenticated;
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_nadia  uuid := 'aaaaaaaa-0000-0000-0000-000000000052';
+  v_reco   uuid;
+  v_won    uuid;
+  v_inv    invoices%rowtype;
+begin
+  perform login(v_pierre);
+  perform approve_member(v_nadia);
+  perform login(v_nadia);
+  perform assert(exists (select 1 from notification_feed
+                          where kind = 'member_approved' and title = 'Compte activé'),
+    'an approved member is told their account is open');
+
+  -- a lead closed as lost
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id, consent_confirmed_at)
+  values ('Sans', 'Suite', v_johann, now()) returning id into v_reco;
+  insert into recommendations (filleul_first_name, filleul_last_name, parrain_id, consent_confirmed_at)
+  values ('Bien', 'Conclu', v_johann, now()) returning id into v_won;
+  perform login(v_pierre);
+  perform archive_recommendation(v_reco, false);
+  perform archive_recommendation(v_won, true);
+  perform login(v_johann);
+  perform assert(exists (select 1 from notification_feed
+                          where kind = 'recommendation_lost' and recommendation_id = v_reco
+                            and body = 'Le dossier de Sans Suite est clôturé sans suite.'),
+    'the apporteur learns a lead went nowhere, and which one');
+  perform assert(not exists (select 1 from notification_feed
+                              where kind = 'recommendation_lost' and recommendation_id = v_won),
+    'and a won one is not called lost');
+
+  -- the company countersigns
+  perform login(v_pierre);
+  select * into v_inv from issue_invoice(test_reco_at_reward(v_johann, v_pierre, 75, 'Contresigne'));
+  perform login(v_johann);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform assert(not exists (select 1 from notification_feed
+                              where kind = 'invoice_signed' and invoice_id = v_inv.id),
+    'their own signature alone completes nothing');
+  perform login(v_pierre);
+  perform sign_invoice(v_inv.id, v_inv.document_sha256);
+  perform login(v_johann);
+  perform assert((select count(*) from notification_feed
+                   where kind = 'invoice_signed' and invoice_id = v_inv.id) = 1,
+    'once the company has signed too, the apporteur is told, once');
+  perform assert(exists (select 1 from notification_feed
+                          where kind = 'invoice_signed' and invoice_id = v_inv.id
+                            and body like 'Facture ' || v_inv.number || ' signée des deux parties — 75,00 €'),
+    'with the invoice and its amount, written the French way');
+end $$;
+
+reset role;
+set role service_role;
+do $$
+declare v_nadia uuid := 'aaaaaaaa-0000-0000-0000-000000000052';
+begin
+  perform assert(
+    notification_email((select id from notifications
+                         where profile_id = v_nadia and kind = 'member_approved')) ->> 'to'
+      = 'nadia@example.test',
+    'the approval goes by email too: they may not have the app open yet');
+  perform assert(not is_email_worthy('recommendation_lost') and not is_email_worthy('invoice_signed'),
+    'a lost lead is not mailed, and the countersigned invoice already is, with its PDF');
 end $$;
 
 reset role;

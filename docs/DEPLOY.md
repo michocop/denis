@@ -159,9 +159,18 @@ out.
 
 ## 6. Push notifications
 
-The client side is finished and the sender now exists
-(`supabase/functions/send-push`). What it needs is a key only an Apple
-Developer account can issue, so this step waits on §Apple below.
+Everything is built and deployed: the app registers its device token, the
+database renders each notification and hands it to `send-push`, and
+`send-push` posts it to Apple. What is missing is a key only an Apple
+Developer account can issue, so this step waits on §Apple below. Until then
+notifications appear in the app and important ones go by email; nothing is
+pushed, and nothing errors.
+
+What is pushed: a lead advancing or lost, a commission earned, an invoice to
+sign, countersigned or paid, a message, an account approved; and, for admins,
+a new lead, a member to approve, an invoice to countersign, a document added.
+Not reminders: the phone that set one already rings at that minute.
+The icon badge carries the unread count, so it is right before the app opens.
 
 ### The APNs key
 
@@ -173,48 +182,29 @@ Developer account can issue, so this step waits on §Apple below.
    app only calls `registerForRemoteNotifications()` when the entitlement is
    present, so nothing happens until this is done and nothing breaks either.
 
-### Deploy the sender
+### Switch it on
 
 ```bash
-supabase functions deploy send-push --no-verify-jwt
-
-supabase secrets set \
+supabase secrets set --project-ref <ref> \
   APNS_KEY_ID=ABC123DEFG \
   APNS_TEAM_ID=1234567890 \
-  APNS_TOPIC=com.trinityenergie.energycourtage \
-  APNS_ENVIRONMENT=production \
-  PUSH_HOOK_SECRET="$(openssl rand -hex 32)" \
   APNS_PRIVATE_KEY="$(cat AuthKey_ABC123DEFG.p8)"
+scripts/deploy.sh
 ```
 
-`--no-verify-jwt` because the caller is the database, not a signed-in user.
-The function is protected by `PUSH_HOOK_SECRET` instead — without that check
-anyone who found the URL could push arbitrary text to every apporteur's lock
-screen.
+`deploy.sh` sees the three keys and switches the `send-push` hook on, with a
+fresh `PUSH_HOOK_SECRET` given to both the function and `edge_hooks`. It also
+sets `APNS_TOPIC` to the bundle id and `APNS_ENVIRONMENT=production`, which is
+what TestFlight and the App Store use. A build installed from Xcode has a
+sandbox token; `send-push` notices Apple's `BadDeviceToken` and retries it on
+the sandbox, so one key serves both without changing anything.
 
-`APNS_ENVIRONMENT=sandbox` for builds installed from Xcode; TestFlight and the
-App Store use `production`. A token minted in one environment is rejected by
-the other, which is the usual cause of "it worked on my phone and not in
-TestFlight".
+A token is dropped only when Apple says it no longer reaches anyone (410, or
+unknown in both environments). A mistake on our side, such as a wrong topic,
+is reported in the function's logs and costs nobody their device.
 
-### Point the database at it
-
-```sql
-insert into push_config (function_url, hook_secret)
-values ('https://<project-ref>.supabase.co/functions/v1/send-push',
-        '<the same PUSH_HOOK_SECRET>');
-```
-
-`push_config` has **no RLS policy for `authenticated`**, on purpose: the secret
-in it would let its holder push anything to anyone, and no screen needs it.
-Only the trigger reads it, as definer.
-
-Until that row exists the trigger is inert — notifications still appear in the
-app, nothing is sent, and nothing errors. That is the state the project ships
-in, and it is a tested path rather than an accident.
-
-To stop sending without touching anything else: `update push_config set
-enabled = false;`
+To stop sending without touching anything else:
+`update edge_hooks set enabled = false where name = 'send-push';`
 
 ---
 
