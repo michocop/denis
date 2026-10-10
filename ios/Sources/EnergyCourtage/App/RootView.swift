@@ -89,17 +89,8 @@ public struct RootView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            // Said out loud, because the sample data contains plausible names
-            // and four-figure commissions, and nobody should have to guess
-            // whether what they are looking at is real.
-            if isDemo {
-                Text("Données de démonstration — \(role.isAdmin ? "vue entreprise" : "vue apporteur")")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Palette.rewardText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(Theme.Palette.rewardSoft)
-            }
+            // No banner in the demo: the way in ("Découvrir l'application")
+            // already says, before anything is shown, that the data is fictitious.
             tabs
         }
         .animation(.snappy, value: connectivity.isOnline)

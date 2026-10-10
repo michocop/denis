@@ -220,3 +220,17 @@ final class LegalTextTests: XCTestCase {
                        [.heading("Article 2 — Obligations"), .paragraph("Texte.")])
     }
 }
+
+final class DemoMandateTests: XCTestCase {
+    /// Signing the mandate in the demo takes the notice away, as it does for real.
+    /// (The demo store is shared across tests, so only the "after" is asserted.)
+    func testSigningTheMandateInTheDemoRemovesTheNotice() async throws {
+        let legal = PreviewLegalRepository()
+        let documents = try await legal.documents()
+        let mandate = try XCTUnwrap(documents.first { $0.key == "mandat_facturation" })
+        try await legal.accept(key: mandate.key, sha256: mandate.sha256)
+
+        let profile = try await PreviewProfileRepository().currentProfile()
+        XCTAssertTrue(profile.canBeInvoiced, "the notice is gone once the mandate is signed")
+    }
+}

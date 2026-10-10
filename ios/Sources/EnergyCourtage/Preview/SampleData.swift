@@ -312,6 +312,8 @@ public struct PreviewProfileRepository: ProfileRepository {
         // are yours by comparing sender ids, and a random id put every message
         // on the same side of the conversation.
         let isAdmin = role.isAdmin
+        // signing the mandate in the demo counts, as it does for real
+        let signed = hasMandate ? true : await DemoLegalStore.shared.isAccepted("mandat_facturation")
         return Profile(
             id: isAdmin ? DemoChatStore.them : DemoChatStore.me,
             role: role,
@@ -320,7 +322,7 @@ public struct PreviewProfileRepository: ProfileRepository {
             email: isAdmin ? "pl@trinity-energie.test" : "johann@example.test",
             companyName: isAdmin ? "Trinity Énergie" : "Lefeuvre Conseil",
             city: "Lille",
-            billingMandateSignedAt: hasMandate ? .now.addingTimeInterval(-86_400 * 90) : nil)
+            billingMandateSignedAt: signed ? .now.addingTimeInterval(-86_400 * 90) : nil)
     }
 
     public func save(_ profile: Profile) async throws -> Profile { profile }
