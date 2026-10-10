@@ -51,8 +51,9 @@ public struct HomeView: View {
             BrandBackground()
 
             // One screen, no scrolling: a dashboard is read at a glance, so it
-            // is laid out to the height it is given -- the four tiles share
-            // whatever the header, the notice and the button leave. Figures
+            // is laid out to the height it is given -- the four tiles take up
+            // to a compact height of whatever the header, the notice and the
+            // button leave. Figures
             // are reloaded each time the tab comes back into view, which is
             // what pulling to refresh used to be for.
             VStack(alignment: .leading, spacing: Theme.Spacing.l) {
@@ -115,7 +116,13 @@ public struct HomeView: View {
                             .staggeredAppear(index: 6, when: appeared)
                     }
                 }
-                .frame(maxHeight: .infinity)
+                // Compact, close to the content's own height: tiles stretched
+                // down a tall screen read as empty boxes. They still shrink on
+                // a small iPhone; what a tall one has spare goes above the button.
+                .frame(maxHeight: 330)
+                .layoutPriority(1)
+
+                Spacer(minLength: 0)
 
                 if let message = model.errorMessage {
                     Text(message)
@@ -175,12 +182,14 @@ struct StatTile: View {
     }
 
     private func content(showsIcon: Bool) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+        // tighter when filling: Home caps its tiles at a compact height, and
+        // the icon must still fit in it
+        VStack(alignment: .leading, spacing: fills ? Theme.Spacing.s : Theme.Spacing.m) {
             if showsIcon, let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: fills ? 12 : 13, weight: .semibold))
                     .foregroundStyle(tint)
-                    .frame(width: 30, height: 30)
+                    .frame(width: fills ? 26 : 30, height: fills ? 26 : 30)
                     .background(tint.opacity(0.14), in: Circle())
             }
             Text(label)

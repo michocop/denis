@@ -40,6 +40,9 @@ public struct AppNotification: Identifiable, Hashable, Codable, Sendable {
         case "member_pending":   return "person.crop.circle.badge.questionmark"
         case "invoice_signed_by_apporteur": return "signature"
         case "document_added":   return "paperclip"
+        case "member_approved":  return "person.crop.circle.badge.checkmark"
+        case "recommendation_lost": return "xmark.circle"
+        case "invoice_signed":   return "checkmark.seal"
         default:                 return "bell"
         }
     }
