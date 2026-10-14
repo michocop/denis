@@ -34,8 +34,8 @@ final class InvoicePDFTests: XCTestCase {
             "FOURNISSEUR", "Johann Lefeuvre", "12 rue des Lilas", "59000 Lille",
             "SIRET 12345678900011",
             // the customer is the company, by its legal identity
-            "CLIENT", "Trinity Énergie", "SAS au capital de 10 000 €",
-            "1 rue de la Gare", "59310 Aix-en-Pévèle", "SIREN 000000000 · RCS Lille",
+            "CLIENT", "TRINITY ENERGIE", "SAS au capital de 1 000 €",
+            "945 rue du Général de Gaulle", "59310 Aix-en-Pévèle", "SIREN 102470705 · RCS Lille Métropole",
             "Autofacturation",
             "Total HT", "Total TTC", "300,00 €",
             "Article 293B",

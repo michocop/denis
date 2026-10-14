@@ -122,12 +122,14 @@ public struct LegalDocumentView: View {
                                 // Marks the bottom. Reaching it enables the
                                 // button: agreeing to a contract you have not
                                 // scrolled through is the thing this screen
-                                // exists to stop.
-                                Color.clear.frame(height: 1)
-                                    .onAppear { hasReadToEnd = true }
+                                // exists to stop. Measured, not `onAppear`: in
+                                // a scroll view that fires as soon as the text
+                                // is laid out, scrolled or not.
+                                EndOfTextMarker()
                             }
                             .padding(Theme.Spacing.gutter)
                         }
+                        .onReadToEnd { hasReadToEnd = true }
 
                         footer(document)
                     }
@@ -273,5 +275,41 @@ struct LegalText: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+
+// MARK: - Read to the end
+
+/// The last line of a scrolled text. With `onReadToEnd` on the scroll view,
+/// says when it has actually come into view.
+struct EndOfTextMarker: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: EndOfTextKey.self,
+                                   value: proxy.frame(in: .named(EndOfTextKey.space)).minY)
+        }
+        .frame(height: 1)
+        .accessibilityHidden(true)
+    }
+}
+
+struct EndOfTextKey: PreferenceKey {
+    static let space = "endOfText"
+    static let defaultValue: CGFloat = .infinity
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = min(value, nextValue()) }
+}
+
+extension View {
+    /// On a scroll view holding an `EndOfTextMarker`: calls `action` once the
+    /// marker is within the visible height.
+    func onReadToEnd(_ action: @escaping @MainActor () -> Void) -> some View {
+        GeometryReader { outer in
+            self.coordinateSpace(.named(EndOfTextKey.space))
+                .onPreferenceChange(EndOfTextKey.self) { minY in
+                    let visible = outer.size.height
+                    Task { @MainActor in if minY <= visible { action() } }
+                }
+        }
     }
 }

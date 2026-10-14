@@ -128,6 +128,7 @@ deploy() {
     && ok "$1" || { echo "    ✗ $1 failed to deploy" >&2; exit 1; }
 }
 deploy invoice-pdf  --no-verify-jwt
+deploy contract-pdf --no-verify-jwt   # the apporteur's signed contract
 deploy notify-email --no-verify-jwt
 deploy gdpr-purge   --no-verify-jwt
 deploy send-sms     --no-verify-jwt
@@ -156,6 +157,7 @@ hook() {   # name, secret variable, enabled
   if [ "$enabled" = "true" ]; then ok "$name"; else todo "$name registered, off until its key is set"; fi
 }
 hook invoice-pdf  INVOICE_PDF_HOOK_SECRET  true
+hook contract-pdf CONTRACT_PDF_HOOK_SECRET true
 hook notify-email NOTIFY_EMAIL_HOOK_SECRET true
 hook gdpr-purge   GDPR_PURGE_HOOK_SECRET   true
 # SMS codes become required for signing the moment this hook is on, so it

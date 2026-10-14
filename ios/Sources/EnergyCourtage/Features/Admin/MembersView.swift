@@ -1,4 +1,5 @@
 import SwiftUI
+import QuickLook
 import Observation
 
 @Observable
@@ -10,8 +11,39 @@ public final class MembersViewModel {
     public var isLoading = false
     public var lastInvite: Invite?
 
+    /// A contract's PDF, opened over the list.
+    public var contractURL: URL?
+    /// The member whose contract is being fetched, for the row's spinner.
+    public private(set) var openingContractFor: UUID?
+
     private let repository: AdminRepository
-    public init(repository: AdminRepository) { self.repository = repository }
+    private let contracts: ContractRepository
+    public init(repository: AdminRepository,
+                contracts: ContractRepository = PreviewContractRepository()) {
+        self.repository = repository
+        self.contracts = contracts
+    }
+
+    /// The apporteur's signed contract, as filed by the server.
+    @MainActor
+    public func openContract(_ member: MemberOverview) async {
+        openingContractFor = member.id
+        defer { openingContractFor = nil }
+        do {
+            guard let contract = try await contracts.contract(for: member.id),
+                  let data = try await contracts.pdf(of: contract) else {
+                errorMessage = "Le PDF du contrat de \(member.fullName) est en préparation. Réessayez dans un instant."
+                return
+            }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+                "Contrat \(member.fullName) \(contract.reference).pdf")
+            try data.write(to: url, options: .atomic)
+            errorMessage = nil
+            contractURL = url
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 
     public var visibleMembers: [MemberOverview] {
         members
@@ -127,7 +159,9 @@ public struct MembersView: View {
                             onReactivate: { Task { await model.setStatus(member, to: "active") } },
                             onSetBankDetails: { onFile in
                                 Task { await model.setBankDetails(member, onFile: onFile) }
-                            }
+                            },
+                            isOpeningContract: model.openingContractFor == member.id,
+                            onOpenContract: { Task { await model.openContract(member) } }
                         )
                     }
 
@@ -143,6 +177,7 @@ public struct MembersView: View {
             .refreshable { await model.load() }
         }
         .task { await model.load() }
+        .quickLookPreview($model.contractURL)
         .sheet(isPresented: $showsInvite) {
             InviteSheet(lastInvite: model.lastInvite,
                         errorMessage: model.inviteError) { email, role, autoActivate in
@@ -158,6 +193,8 @@ struct MemberRow: View {
     let onSuspend: () -> Void
     let onReactivate: () -> Void
     let onSetBankDetails: (Bool) -> Void
+    var isOpeningContract = false
+    var onOpenContract: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
@@ -186,6 +223,8 @@ struct MemberRow: View {
                 metric("Dû", HomeView.euros(member.owedTotal))
                 metric("Versé", HomeView.euros(member.paidTotal))
             }
+
+            if member.role == .apporteur { contractLine }
 
             // Two things that quietly block payment, surfaced before anyone
             // wonders why an apporteur has not been paid.
@@ -229,6 +268,37 @@ struct MemberRow: View {
         .padding(Theme.Spacing.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
+    }
+
+    /// Signed, with the PDF a tap away; or not yet, which means the person
+    /// has not finished their first sign-in.
+    @ViewBuilder
+    private var contractLine: some View {
+        if let signedAt = member.contractSignedAt {
+            Button(action: onOpenContract) {
+                HStack(spacing: 6) {
+                    Image(systemName: "signature").font(.system(size: 13))
+                    Text("Contrat signé le \(signedAt.formatted(date: .abbreviated, time: .omitted))"
+                         + (member.businessStatus.map { " · \($0.label)" } ?? ""))
+                        .font(Theme.Typography.caption)
+                    Spacer(minLength: Theme.Spacing.s)
+                    if isOpeningContract {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("PDF", systemImage: "doc.text")
+                            .font(Theme.Typography.caption.weight(.semibold))
+                            .foregroundStyle(Theme.Palette.brand)
+                    }
+                }
+                .foregroundStyle(Theme.Palette.successText)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isOpeningContract)
+            .accessibilityHint("Ouvre le PDF du contrat signé")
+        } else {
+            flag("Contrat d'apporteur pas encore signé", tint: Theme.Palette.textSecondary)
+        }
     }
 
     private var statusPill: some View {

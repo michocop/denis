@@ -15,6 +15,8 @@ public struct RootView: View {
     @State private var connectivity = Connectivity()
     @State private var legal: LegalViewModel
     @State private var requiredDocument: LegalDocumentKey?
+    /// An apporteur who has not signed the contract yet starts there.
+    @State private var showsOnboarding = false
     /// An invoice opened from a notification, over whatever tab is showing.
     @State private var openedInvoice: OpenedInvoice?
     /// Recommendations sent from the create sheet, counted for the vibration:
@@ -61,7 +63,7 @@ public struct RootView: View {
     /// and nothing ever looked at it, so nobody was ever asked.
     @MainActor
     private func presentOutstandingDocuments() async {
-        guard !isDemo else { return }
+        guard !isDemo else { return await presentOnboardingIfNeeded() }
         await legal.load()
         // Offline, the last list is all there is; presenting from it would
         // reopen the sheet every time it was closed.
@@ -69,6 +71,16 @@ public struct RootView: View {
         requiredDocument = legal.outstanding
             .first { Self.requiredDocuments.contains($0.key) }
             .map { LegalDocumentKey(id: $0.key) }
+        if requiredDocument == nil { await presentOnboardingIfNeeded() }
+    }
+
+    /// After the CGU and the privacy policy, and only for an apporteur: the
+    /// company's side has no contract to sign.
+    @MainActor
+    private func presentOnboardingIfNeeded() async {
+        guard !role.isAdmin,
+              let profile = try? await dependencies.profiles.currentProfile() else { return }
+        showsOnboarding = !profile.hasSignedContract
     }
 
     public var body: some View {
@@ -94,6 +106,17 @@ public struct RootView: View {
             // fictitious, and a strip on every screen made the app look
             // unfinished.
             tabs
+                .fullScreenCover(isPresented: $showsOnboarding) {
+                    OnboardingView(
+                        model: OnboardingModel(profiles: dependencies.profiles, legal: dependencies.legal,
+                                               sms: dependencies.sms, contracts: dependencies.contracts),
+                        onFinished: {
+                            showsOnboarding = false
+                            homeRefresh += 1      // the mandate notice goes with the signature
+                        },
+                        onSignOut: onSignOut)
+                    .interactiveDismissDisabled()
+                }
         }
         .animation(.snappy, value: connectivity.isOnline)
         .sheet(isPresented: $showsMandate) {

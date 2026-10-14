@@ -23,6 +23,13 @@ public struct Profile: Identifiable, Hashable, Codable, Sendable {
     /// Self-billing is only lawful with a prior mandate, so the app has to know
     /// whether this apporteur has signed one.
     public var billingMandateSignedAt: Date?
+    /// Société or indépendant, said at the first sign-in.
+    public var businessStatus: BusinessStatus?
+    /// When the apporteur contract was signed; nil until then, and the app
+    /// starts with the onboarding that leads to it.
+    public var contractSignedAt: Date?
+
+    public var hasSignedContract: Bool { contractSignedAt != nil }
 
     public var fullName: String { "\(firstName) \(lastName)" }
     public var initials: String {
@@ -41,12 +48,14 @@ public struct Profile: Identifiable, Hashable, Codable, Sendable {
                 phone: String? = nil, companyName: String? = nil, siret: String? = nil,
                 city: String? = nil, vatLiable: Bool = false,
                 billingMandateSignedAt: Date? = nil,
-                legalForm: String? = nil, address: String? = nil, postalCode: String? = nil) {
+                legalForm: String? = nil, address: String? = nil, postalCode: String? = nil,
+                businessStatus: BusinessStatus? = nil, contractSignedAt: Date? = nil) {
         self.id = id; self.role = role; self.firstName = firstName; self.lastName = lastName
         self.email = email; self.phone = phone; self.companyName = companyName
         self.siret = siret; self.city = city; self.vatLiable = vatLiable
         self.billingMandateSignedAt = billingMandateSignedAt
         self.legalForm = legalForm; self.address = address; self.postalCode = postalCode
+        self.businessStatus = businessStatus; self.contractSignedAt = contractSignedAt
     }
 }
 

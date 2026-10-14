@@ -18,6 +18,11 @@ public struct MemberOverview: Identifiable, Hashable, Codable, Sendable {
     public var paidTotal: Decimal
     public var owedTotal: Decimal
     public var lastRecommendationAt: Date?
+    public var businessStatus: BusinessStatus? = nil
+    /// The last contract this apporteur signed, and whether its PDF is filed.
+    public var contractId: UUID? = nil
+    public var contractSignedAt: Date? = nil
+    public var contractPdfReady: Bool? = nil
 
     public var initials: String {
         fullName.split(separator: " ").prefix(2).map { $0.prefix(1) }.joined().uppercased()

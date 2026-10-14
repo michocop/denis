@@ -1,4 +1,5 @@
 import SwiftUI
+import QuickLook
 import Observation
 
 @Observable
@@ -76,6 +77,10 @@ public struct ProfileView: View {
     @State private var isExporting = false
     @State private var smsStatus: SmsStatus?
     @State private var verifiesPhone = false
+    @State private var contract: ApporteurContract?
+    @State private var contractURL: URL?
+    @State private var isOpeningContract = false
+    @State private var contractMessage: String?
     private let dependencies: Dependencies
     private let onSignOut: () -> Void
 
@@ -107,7 +112,8 @@ public struct ProfileView: View {
                         if profile.role.isAdmin {
                             NavigationLink {
                                 MembersView(model: MembersViewModel(
-                                    repository: dependencies.admin))
+                                    repository: dependencies.admin,
+                                    contracts: dependencies.contracts))
                             } label: {
                                 consoleRow("Apporteurs", icon: "person.2")
                             }
@@ -128,6 +134,7 @@ public struct ProfileView: View {
                                 consoleRow("Mes gains", icon: "eurosign.circle")
                             }
                             billing(profile)
+                            if let contract { contractCard(contract) }
                             if let smsStatus, smsStatus.smsRequired { mobileCard(smsStatus) }
                         }
                     }
@@ -207,7 +214,11 @@ public struct ProfileView: View {
         .task {
             await model.load()
             smsStatus = try? await dependencies.sms.status()
+            if let profile = model.profile, !profile.role.isAdmin {
+                contract = try? await dependencies.contracts.contract(for: profile.id)
+            }
         }
+        .quickLookPreview($contractURL)
         .sheet(isPresented: $verifiesPhone) {
             NavigationStack {
                 PhoneVerificationView(
@@ -279,6 +290,60 @@ public struct ProfileView: View {
             .cardSurface()
         }
         .buttonStyle(PressableStyle())
+    }
+
+    /// The signed contract, as filed: opens the PDF the company holds too.
+    private func contractCard(_ contract: ApporteurContract) -> some View {
+        Button {
+            Task { await openContract(contract) }
+        } label: {
+            HStack(spacing: Theme.Spacing.m) {
+                Image(systemName: "signature")
+                    .font(.system(size: 19))
+                    .foregroundStyle(Theme.Palette.success)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Contrat d'apporteur signé")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text(contractMessage
+                         ?? "\(contract.signedAt.formatted(date: .abbreviated, time: .omitted)) · \(contract.businessStatus.label) · \(contract.reference)")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                }
+                Spacer()
+                if isOpeningContract {
+                    ProgressView()
+                } else {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.Palette.brand)
+                }
+            }
+            .padding(Theme.Spacing.l)
+            .cardSurface()
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(isOpeningContract)
+        .accessibilityHint("Ouvre le PDF du contrat")
+    }
+
+    @MainActor
+    private func openContract(_ contract: ApporteurContract) async {
+        isOpeningContract = true
+        defer { isOpeningContract = false }
+        do {
+            guard let data = try await dependencies.contracts.pdf(of: contract) else {
+                contractMessage = "PDF en préparation, réessayez dans un instant"
+                return
+            }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(contract.fileName)
+            try data.write(to: url, options: .atomic)
+            contractMessage = nil
+            contractURL = url
+        } catch {
+            contractMessage = error.localizedDescription
+        }
     }
 
     private func consoleRow(_ title: String, icon: String) -> some View {

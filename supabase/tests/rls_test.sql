@@ -1517,9 +1517,10 @@ declare
   v_acc    legal_acceptances%rowtype;
   n int;
 begin
-  -- Nothing ships live: every seeded text still has placeholders in it.
+  -- Nothing ships live but the apporteur contract, which ships complete:
+  -- every seeded text still has placeholders in it.
   perform login(v_pierre);
-  select count(*) into n from legal_documents where active;
+  select count(*) into n from legal_documents where active and key <> 'contrat_apporteur';
   perform assert(n = 0, 'no legal text is published until someone fills it in');
 
   perform assert_denied(v_pierre,
@@ -3097,6 +3098,141 @@ begin
     'the approval goes by email too: they may not have the app open yet');
   perform assert(not is_email_worthy('recommendation_lost') and not is_email_worthy('invoice_signed'),
     'a lost lead is not mailed, and the countersigned invoice already is, with its PDF');
+end $$;
+
+reset role;
+\echo ''
+\echo '=== 53. An apporteur starts by signing the contract, by SMS ======='
+insert into edge_hooks (name, url, secret)
+values ('send-sms', 'https://project.supabase.co/functions/v1/send-sms', 'sms-secret'),
+       ('contract-pdf', 'https://project.supabase.co/functions/v1/contract-pdf', 'pdf-secret')
+on conflict (name) do update set enabled = true;
+insert into auth.users (id, email) values ('aaaaaaaa-0000-0000-0000-000000000053', 'lina@example.test');
+insert into profiles (id, role, status, first_name, last_name, email)
+values ('aaaaaaaa-0000-0000-0000-000000000053', 'apporteur', 'active', 'Lina', 'Laurent',
+        'lina@example.test');
+-- the published mandate, as production has it
+update legal_documents set active = false where key = 'mandat_facturation';
+insert into legal_documents (key, version, title, body, sha256, active)
+values ('mandat_facturation', '2026-10-1', 'Mandat de facturation', 'Le Mandant donne mandat.', '', true);
+set role authenticated;
+do $$
+declare
+  v_lina     uuid := 'aaaaaaaa-0000-0000-0000-000000000053';
+  v_johann   uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre   uuid := '33333333-3333-3333-3333-333333333333';
+  v_contract text := (select sha256 from legal_documents where key = 'contrat_apporteur' and active);
+  v_mandate  text := (select sha256 from legal_documents where key = 'mandat_facturation' and active);
+  v_r        jsonb;
+  v_row      apporteur_contracts%rowtype;
+begin
+  perform assert(v_contract is not null and v_mandate is not null,
+    'the contract ships published, beside the mandate it annexes');
+
+  perform login(v_lina);
+  perform assert((select contract_signed_at is null and business_status is null
+                    from profiles where id = v_lina),
+    'a new apporteur starts with nothing signed');
+  perform assert_denied(v_lina,
+    format('update profiles set contract_signed_at = now() where id = %L', v_lina),
+    'nobody can mark their own contract signed');
+  perform assert_denied(v_lina,
+    format('select sign_apporteur_contract(''societe'', %L, %L)', v_contract, v_mandate),
+    'a contract is not signed without a SIRET and an address');
+
+  update profiles set company_name = 'Laurent Conseil', legal_form = 'SASU',
+         siret = '123 456 789 00012', address = '3 rue Nationale', postal_code = '59000',
+         city = 'Lille'
+   where id = v_lina;
+  perform assert_denied(v_lina,
+    format('select sign_apporteur_contract(''societe'', %L, %L)', v_contract, v_mandate),
+    'nor without a code sent by SMS');
+  perform assert_denied(v_lina,
+    format('select sign_apporteur_contract(''freelance'', %L, %L)', v_contract, v_mandate),
+    'and only as a company or an independent');
+
+  v_r := request_sms_code('sign_contract', null, '06 98 76 54 32');
+  perform assert((v_r ->> 'required')::boolean and v_r ->> 'masked_phone' = '+33 6 •• •• •• 32',
+    'the code goes to the mobile typed');
+  perform assert((select body ->> 'text' from net.sent_requests
+                   where url like '%/send-sms' order by id desc limit 1)
+                 like '%votre code pour signer votre contrat%',
+    'and says what it is for');
+  v_r := confirm_sms_code('sign_contract', test_last_sms_code());
+  perform assert((v_r ->> 'ok')::boolean and v_r ->> 'valid_until' is not null,
+    'the right code opens a short window to sign');
+  perform assert((select phone_verified_at is not null from profiles where id = v_lina),
+    'and proves the number');
+
+  perform assert_denied(v_lina,
+    format('select sign_apporteur_contract(''societe'', %L, %L)', repeat('0', 64), v_mandate),
+    'a text other than the one in force cannot be signed');
+
+  select * into v_row from sign_apporteur_contract('societe', v_contract, v_mandate);
+  perform assert(v_row.otp_verified and v_row.otp_phone = '+33 6 •• •• •• 32'
+                 and v_row.signer_full_name = 'Lina Laurent'
+                 and v_row.company_name = 'Laurent Conseil' and v_row.siret = '12345678900012',
+    'the record keeps who signed, as what, and from which number');
+  perform assert((select contract_signed_at is not null and billing_mandate_signed_at is not null
+                         and business_status = 'societe'
+                    from profiles where id = v_lina),
+    'signing admits the apporteur and gives the company the mandate to invoice for them');
+  perform assert((select count(*) from legal_acceptances where profile_id = v_lina
+                   and key in ('contrat_apporteur', 'mandat_facturation')) = 2,
+    'both texts are accepted, each by version and digest');
+  perform assert_denied(v_lina,
+    format('select sign_apporteur_contract(''societe'', %L, %L)', v_contract, v_mandate),
+    'the code is used up by the signature');
+
+  perform login(v_johann);
+  perform assert(not exists (select 1 from apporteur_contracts where profile_id = v_lina),
+    'another apporteur cannot see the contract');
+
+  perform login(v_pierre);
+  perform assert(exists (select 1 from apporteur_contracts where id = v_row.id),
+    'the company can');
+  perform assert((select contract_id = v_row.id and not contract_pdf_ready
+                    from member_overview where id = v_lina),
+    'and finds it on the member''s line, its PDF on the way');
+  perform assert(exists (select 1 from notification_feed
+                          where kind = 'contract_signed' and title = 'Contrat signé'
+                            and body = 'Lina Laurent a signé son contrat d''apporteur d''affaires.'),
+    'the admins are told');
+end $$;
+
+reset role;
+do $$
+declare
+  v_lina uuid := 'aaaaaaaa-0000-0000-0000-000000000053';
+  v_id   uuid := (select id from apporteur_contracts where profile_id = 'aaaaaaaa-0000-0000-0000-000000000053');
+  v_doc  jsonb;
+begin
+  perform assert(exists (select 1 from net.sent_requests
+                          where url like '%/contract-pdf' and body ->> 'contract_id' = v_id::text
+                            and headers ->> 'x-hook-secret' = 'pdf-secret'),
+    'signing asks the server to file the PDF');
+  v_doc := contract_document(v_id);
+  perform assert(v_doc #>> '{contract,title}' = 'Contrat d''apporteur d''affaires'
+                 and v_doc #>> '{mandate,body}' = 'Le Mandant donne mandat.'
+                 and v_doc #>> '{signer,siret}' = '12345678900012'
+                 and (v_doc #>> '{evidence,sms_verified}')::boolean
+                 and v_doc #>> '{company,siren}' is not null,
+    'the renderer gets the record, both texts and the company');
+  perform assert(retain_contract_pdf(v_id, v_id || '.pdf', repeat('a', 64)) = v_id || '.pdf',
+    'the PDF is filed under the contract''s id');
+  perform assert(retain_contract_pdf(v_id, v_id || '.pdf', repeat('b', 64)) = v_id || '.pdf'
+                 and (select pdf_sha256 from apporteur_contracts where id = v_id) = repeat('a', 64),
+    'once: the filed copy does not change');
+  perform assert((select contract_pdf_ready from member_overview where id = v_lina),
+    'and the console shows it ready');
+end $$;
+delete from edge_hooks where name in ('send-sms', 'contract-pdf');
+set role authenticated;
+do $$
+begin
+  perform assert_denied('11111111-1111-1111-1111-111111111111',
+    format('select contract_document(%L)', (select id from apporteur_contracts limit 1)),
+    'nobody signed in reads a contract through the renderer''s door');
 end $$;
 
 reset role;

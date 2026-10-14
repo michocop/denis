@@ -389,17 +389,14 @@ public struct PhoneVerificationView: View {
 
             LabelledField("Numéro de mobile") {
                 HStack {
+                    // What is typed, as typed: rewriting the text on every
+                    // keystroke (to space the pairs) replaced it under the
+                    // keyboard, and fast typing lost digits. The number is
+                    // read however it is written, and shown spaced once sent.
                     TextField("06 12 34 56 78", text: Binding(
                         get: { phone },
                         set: { typed in
-                            // backspace over a space would leave the digits as they
-                            // were, and the formatting would put the space back
-                            var raw = typed
-                            if typed.count < phone.count,
-                               typed.filter(\.isNumber) == phone.filter(\.isNumber) {
-                                raw = String(typed.dropLast())
-                            }
-                            phone = MobileNumber.formatted(raw)
+                            phone = String(typed.filter { $0.isNumber || $0 == " " || $0 == "+" }.prefix(20))
                         }))
                         .keyboardType(.phonePad)
                         .textContentType(.telephoneNumber)

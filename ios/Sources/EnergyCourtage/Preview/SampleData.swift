@@ -370,6 +370,14 @@ public struct PreviewProfileRepository: ProfileRepository {
         // used to stay after signing.
         let accepted = await DemoLegalStore.shared.isAccepted("mandat_facturation")
         let signed = hasMandate || accepted
+        let contract = await DemoContractStore.shared.contract
+        // what the demo's onboarding typed in, shown back on the profile
+        if !isAdmin, var saved = await DemoProfileStore.shared.saved {
+            saved.billingMandateSignedAt = signed ? (saved.billingMandateSignedAt ?? .now) : nil
+            saved.contractSignedAt = contract?.signedAt
+            saved.businessStatus = contract?.businessStatus ?? saved.businessStatus
+            return saved
+        }
         return Profile(
             id: isAdmin ? DemoChatStore.them : DemoChatStore.me,
             role: role,
@@ -378,10 +386,18 @@ public struct PreviewProfileRepository: ProfileRepository {
             email: isAdmin ? "pl@trinity-energie.test" : "johann@example.test",
             companyName: isAdmin ? "Trinity Énergie" : "Lefeuvre Conseil",
             city: "Lille",
-            billingMandateSignedAt: signed ? .now.addingTimeInterval(-86_400 * 90) : nil)
+            billingMandateSignedAt: signed ? .now.addingTimeInterval(-86_400 * 90) : nil,
+            // the company's side has no contract to sign; the demo apporteur
+            // starts where a real one does, with the onboarding -- unless the
+            // preview is of someone already set up
+            contractSignedAt: isAdmin || hasMandate ? .now.addingTimeInterval(-86_400 * 90)
+                                                    : contract?.signedAt)
     }
 
-    public func save(_ profile: Profile) async throws -> Profile { profile }
+    public func save(_ profile: Profile) async throws -> Profile {
+        await DemoProfileStore.shared.save(profile)
+        return profile
+    }
 
     public func dashboardStats() async throws -> DashboardStats {
         try? await Task.sleep(for: .milliseconds(100))
@@ -419,9 +435,9 @@ public struct PreviewInvoiceRepository: InvoiceRepository {
             kind: "invoice",
             issuer: .init(name: "Pierre-Louis Tettamanti", company: "Trinity Énergie",
                           city: "Aix-en-Pévèle", siret: nil),
-            customer: .init(legalName: "Trinity Énergie", legalForm: "SAS",
-                            shareCapital: "10 000 €", siren: "000000000", rcsCity: "Lille",
-                            vatNumber: nil, address: "1 rue de la Gare",
+            customer: .init(legalName: "TRINITY ENERGIE", legalForm: "SAS",
+                            shareCapital: "1 000 €", siren: "102470705", rcsCity: "Lille Métropole",
+                            vatNumber: "FR18102470705", address: "945 rue du Général de Gaulle",
                             postalCode: "59310", city: "Aix-en-Pévèle"),
             apporteur: .init(name: "Johann Lefeuvre", company: "Lefeuvre Conseil",
                              city: "Lille", siret: "12345678900011",
@@ -504,7 +520,10 @@ public struct PreviewAdminRepository: AdminRepository {
                            hasMandate: true, bankDetailsOnFile: true,
                            totalRecommendations: 18,
                            activeRecommendations: 4, paidTotal: 2300, owedTotal: 1000,
-                           lastRecommendationAt: .now),
+                           lastRecommendationAt: .now,
+                           businessStatus: .societe, contractId: UUID(),
+                           contractSignedAt: .now.addingTimeInterval(-86_400 * 90),
+                           contractPdfReady: true),
             MemberOverview(id: UUID(), fullName: "Marie Durand",
                            email: "marie@example.test", phone: nil,
                            role: .apporteur, status: "pending", vatLiable: false,
@@ -626,6 +645,15 @@ public struct PreviewNotificationsRepository: NotificationsRepository {
 
 /// Demo legal documents. The mandate carries enough real text that the
 /// scroll-to-the-end rule and the accept button can actually be tried.
+/// The demo apporteur's profile as last saved, so what the onboarding typed in
+/// is what the profile then shows.
+actor DemoProfileStore {
+    static let shared = DemoProfileStore()
+    private(set) var saved: Profile?
+    func save(_ profile: Profile) { saved = profile }
+    func reset() { saved = nil }
+}
+
 actor DemoLegalStore {
     static let shared = DemoLegalStore()
     private var accepted: Set<String> = []
@@ -638,17 +666,57 @@ actor DemoLegalStore {
 public struct PreviewLegalRepository: LegalRepository {
     public init() {}
 
+    private static let contract = """
+    **Entre les soussignés :**
+
+    **TRINITY ENERGIE**, SAS au capital de 1 000 €, 945 rue du Général de Gaulle, 59310 Aix-en-Pévèle, RCS Lille Métropole 102 470 705, ci-après « la Société »,
+
+    **Et** l'apporteur d'affaires titulaire du compte, ci-après « l'Apporteur ».
+
+    ## Article 1 — Objet
+
+    Le présent contrat définit les conditions dans lesquelles l'Apporteur met la Société en relation avec des personnes susceptibles de lui confier le courtage de leurs contrats d'électricité et de gaz.
+
+    ## Article 2 — Mission de l'Apporteur
+
+    - n'adresser que des personnes préalablement informées et d'accord ;
+    - transmettre des informations exactes, obtenues de manière licite ;
+    - ne jamais engager la Société ni se présenter comme son représentant.
+
+    ## Article 3 — Indépendance
+
+    L'Apporteur exerce en toute indépendance. Le contrat ne crée ni lien de subordination, ni exclusivité.
+
+    ## Article 4 — Rémunération
+
+    Une commission, fixée pour chaque recommandation et affichée dans l'application, est acquise à la signature du devis par la personne recommandée, et réglée sous 30 jours après la signature de la facture.
+
+    ## Article 5 — Facturation
+
+    Les factures sont établies par la Société au nom de l'Apporteur, selon le mandat de facturation annexé.
+
+    ## Article 6 — Durée
+
+    Durée indéterminée, résiliable par écrit avec un préavis de 30 jours.
+
+    ## Article 7 — Signature électronique
+
+    La signature apposée via l'application, confirmée par un code reçu par SMS, vaut signature au sens des articles 1366 et 1367 du Code civil.
+
+    — Données de démonstration, sans valeur contractuelle —
+    """
+
     private static let mandate = """
     Entre les soussignés :
 
-    Trinity Énergie, SAS au capital de 10 000 €, dont le siège social est situé
-    à AIX-EN-PEVELE, immatriculée au RCS de Lille sous le numéro 000 000 000,
-    représentée par Pierre-Louis Tettamanti, en qualité de Président,
+    TRINITY ENERGIE, SAS au capital de 1 000 €, dont le siège social est situé
+    945 rue du Général de Gaulle, 59310 Aix-en-Pévèle, immatriculée au RCS de
+    Lille Métropole sous le numéro 102 470 705, représentée par Pierre-Louis
+    Tettamanti, en qualité de Président,
 
     ci-après « le Mandataire »,
 
-    Et : Johann Lefeuvre, micro-entrepreneur, immatriculé sous le numéro SIREN
-    000 000 000, ci-après « le Mandant ».
+    Et : l'apporteur d'affaires titulaire du compte, ci-après « le Mandant ».
 
     Article 1 — Objet
 
@@ -687,7 +755,14 @@ public struct PreviewLegalRepository: LegalRepository {
 
     public func documents() async throws -> [LegalDocument] {
         let accepted = await DemoLegalStore.shared.isAccepted("mandat_facturation")
+        let contractAccepted = await DemoLegalStore.shared.isAccepted("contrat_apporteur")
         return [
+            LegalDocument(key: "contrat_apporteur", version: "demo-1",
+                          title: "Contrat d'apporteur d'affaires",
+                          body: Self.contract,
+                          sha256: Self.digest(Self.contract),
+                          publishedAt: .now.addingTimeInterval(-86_400 * 30),
+                          accepted: contractAccepted),
             LegalDocument(key: "mandat_facturation", version: "demo-1",
                           title: "Mandat de facturation",
                           body: Self.mandate,

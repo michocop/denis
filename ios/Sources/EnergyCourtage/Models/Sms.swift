@@ -5,6 +5,8 @@ import Foundation
 public enum SmsPurpose: String, Sendable {
     case verifyPhone = "verify_phone"
     case signInvoice = "sign_invoice"
+    /// The apporteur contract and its annex, signed once at the first sign-in.
+    case signContract = "sign_contract"
 }
 
 /// Whether signing needs a code, and whether this person can receive one.
@@ -163,9 +165,9 @@ public actor PreviewSmsRepository: SmsRepository {
                             resend: Bool) async throws -> SmsChallenge {
         let number: String
         switch purpose {
-        case .signInvoice:
+        case .signInvoice, .signContract:
             guard required else { return SmsChallenge(required: false) }
-            if let ends = signingWindowEnds, ends > .now, let verifiedPhone {
+            if purpose == .signInvoice, let ends = signingWindowEnds, ends > .now, let verifiedPhone {
                 return SmsChallenge(required: false, maskedPhone: mask(verifiedPhone), session: true)
             }
             if let phone {
