@@ -85,7 +85,9 @@ public enum SampleData {
             rewardStatus: .pending,
             hasContract: false,
             // Deliberately stale, so the staleness banner has something to show.
-            daysSinceActivity: 11
+            daysSinceActivity: 11,
+            apporteurComment: "Contrat chez Engie jusqu'en mars. Joignable après 18 h, "
+                + "c'est son associé qui signe."
         )
     }
 }
@@ -153,7 +155,8 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
             filleulPhone: draft.phone,
             parrainName: "Johann Lefeuvre",
             createdAt: .now,
-            currentStageID: SampleData.stages[0].id
+            currentStageID: SampleData.stages[0].id,
+            apporteurComment: draft.trimmedComment
         )
         await store.insert(reco)
         return reco

@@ -104,6 +104,26 @@ final class FormAndFilterTests: XCTestCase {
         XCTAssertTrue(draft.isValid)
     }
 
+    /// The comment is optional: blank sends nothing, and the server's limit
+    /// is the form's, so a valid draft is never refused for its length.
+    func testDraftCommentIsTrimmedAndBounded() {
+        var draft = RecommendationDraft()
+        draft.firstName = "Thomas"
+        draft.lastName = "Dubois"
+        draft.phone = "+33 6 75 75 75 75"
+        draft.consentConfirmed = true
+
+        draft.comment = "  \n "
+        XCTAssertNil(draft.trimmedComment)
+        XCTAssertTrue(draft.isValid)
+
+        draft.comment = "  Joignable après 18 h\n"
+        XCTAssertEqual(draft.trimmedComment, "Joignable après 18 h")
+
+        draft.comment = String(repeating: "x", count: RecommendationDraft.commentLimit + 1)
+        XCTAssertFalse(draft.isValid)
+    }
+
     func testDraftRequiresAName() {
         var draft = RecommendationDraft()
         draft.consentConfirmed = true

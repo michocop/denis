@@ -3237,4 +3237,51 @@ end $$;
 
 reset role;
 \echo ''
+\echo '=== 54. The apporteur comment travels with the lead ============='
+insert into auth.users (id, email) values ('aaaaaaaa-0000-0000-0000-000000000054', 'noe@example.test');
+insert into profiles (id, role, status, first_name, last_name, email)
+values ('aaaaaaaa-0000-0000-0000-000000000054', 'apporteur', 'active', 'Noé', 'Garnier',
+        'noe@example.test');
+set role authenticated;
+do $$
+declare
+  v_noe    uuid := 'aaaaaaaa-0000-0000-0000-000000000054';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_reco   uuid := 'c0ffee00-0000-0000-0000-000000000054';
+  v_text   text := 'Contrat chez Engie jusqu''en mars, joignable après 18 h.';
+  v_export jsonb;
+begin
+  perform login(v_noe);
+  insert into recommendations (id, filleul_first_name, filleul_last_name, filleul_phone,
+                               parrain_id, consent_confirmed_at, apporteur_comment)
+  values (v_reco, 'Inès', 'Roux', '0600000054', v_noe, now(), v_text);
+  perform assert((select apporteur_comment from recommendation_feed where id = v_reco) = v_text,
+    'the apporteur files a comment with the lead and reads it back');
+
+  perform login(v_pierre);
+  perform assert((select apporteur_comment from recommendation_feed where id = v_reco) = v_text,
+    'the company reads it on the lead');
+
+  perform login(v_marie);
+  perform assert(not exists (select 1 from recommendation_feed where id = v_reco),
+    'another apporteur does not see the lead, comment included');
+
+  perform assert_denied(v_noe,
+    format('insert into recommendations (filleul_first_name, filleul_last_name, filleul_phone,
+                                         parrain_id, consent_confirmed_at, apporteur_comment)
+            values (''A'', ''B'', ''0600000055'', %L, now(), %L)', v_noe, repeat('x', 2001)),
+    'a comment past 2 000 characters is refused');
+
+  perform login(v_pierre);
+  v_export := filleul_data_export('0600000054', null);
+  perform assert(v_export -> 0 ->> 'apporteur_comment' = v_text,
+    'an access request returns the comment, since it is about the filleul');
+  perform erase_filleul(v_reco);
+  perform assert((select apporteur_comment from recommendations where id = v_reco) is null,
+    'erasing the filleul erases the comment');
+end $$;
+
+reset role;
+\echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

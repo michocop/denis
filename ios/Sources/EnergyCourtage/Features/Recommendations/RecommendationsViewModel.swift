@@ -64,7 +64,18 @@ public struct RecommendationDraft: Hashable, Sendable {
     public var phone: String = ""
     public var email: String = ""
     public var company: String = ""
+    /// Free text for the company: when to call, the current supplier, who decides.
+    public var comment: String = ""
     public var consentConfirmed: Bool = false
+
+    /// The database refuses more; the form stops the typing there instead.
+    public static let commentLimit = 2000
+
+    /// Trimmed, and nil when there is nothing to send.
+    public var trimmedComment: String? {
+        let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
 
     public init() {}
 
@@ -73,6 +84,7 @@ public struct RecommendationDraft: Hashable, Sendable {
         && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
         && !phone.trimmingCharacters(in: .whitespaces).isEmpty
         && consentConfirmed
+        && comment.count <= Self.commentLimit
     }
 }
 

@@ -35,6 +35,7 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         let daysSinceActivity: Int
         let hasNote: Bool
         let pendingReminders: Int
+        let apporteurComment: String?
     }
 
     public func loadPipeline() async throws -> [Stage] {
@@ -102,7 +103,8 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
             invoiceID: row.invoiceId,
             daysSinceActivity: row.daysSinceActivity,
             hasNote: row.hasNote,
-            pendingReminders: row.pendingReminders
+            pendingReminders: row.pendingReminders,
+            apporteurComment: row.apporteurComment
         )
     }
 
@@ -151,6 +153,7 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         if !draft.phone.isEmpty { values["filleul_phone"] = AnyEncodable(draft.phone) }
         if !draft.email.isEmpty { values["filleul_email"] = AnyEncodable(draft.email) }
         if !draft.company.isEmpty { values["filleul_company"] = AnyEncodable(draft.company) }
+        if let comment = draft.trimmedComment { values["apporteur_comment"] = AnyEncodable(comment) }
         // The server refuses a lead without it, and records its own clock
         // rather than this one: what is sent is the "yes", not the time.
         if draft.consentConfirmed {

@@ -23,13 +23,18 @@ public struct RecommendationActionSheet: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-            header
-            details
-            actions
-            Spacer(minLength: 0)
+        // Scrolls: at the medium detent the header, a long comment and the
+        // actions do not all fit, and a fixed stack is centred and clipped at
+        // both ends -- the filleul's name and the last action both vanished.
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                header
+                details
+                actions
+            }
+            .padding(Theme.Spacing.gutter)
         }
-        .padding(Theme.Spacing.gutter)
+        .scrollBounceBehavior(.basedOnSize)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .confirmationDialog(confirmTitle, isPresented: Binding(
@@ -100,6 +105,18 @@ public struct RecommendationActionSheet: View {
 
             detailRow(icon: "calendar",
                       text: RecommendationCard.relativeDate(recommendation.createdAt))
+
+            if let comment = recommendation.apporteurComment, !comment.isEmpty {
+                HStack(alignment: .top, spacing: Theme.Spacing.m) {
+                    Image(systemName: "text.bubble").foregroundStyle(Theme.Palette.textSecondary)
+                    Text(comment)
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(Theme.Typography.body)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Commentaire de l'apporteur : \(comment)")
+            }
 
             // The source app prints the raw column name here when there is no
             // invoice; show the number, or say plainly that there isn't one.

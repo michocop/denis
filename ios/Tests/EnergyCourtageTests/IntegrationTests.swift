@@ -150,10 +150,13 @@ final class IntegrationTests: XCTestCase {
         draft.firstName = "Integration"
         draft.lastName = "Test\(Int.random(in: 1000...9999))"
         draft.phone = "06\(Int.random(in: 10_000_000...99_999_999))"
+        draft.comment = "  Joignable après 18 h  "
         draft.consentConfirmed = true
 
         let created = try await repository.create(draft)
         XCTAssertEqual(created.filleulFirstName, "Integration")
+        XCTAssertEqual(created.apporteurComment, "Joignable après 18 h",
+                       "the comment is stored trimmed and read back through the feed")
         // The entry stage is chosen by a trigger, so this proves the client can
         // omit it and still get a usable row back.
         XCTAssertNotNil(created.currentStageID)

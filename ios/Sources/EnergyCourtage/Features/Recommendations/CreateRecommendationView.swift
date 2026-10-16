@@ -60,7 +60,7 @@ public struct CreateRecommendationView: View {
                     LabelledField("Société (facultatif)") {
                         TextField("Raison sociale", text: $draft.company)
                     }
-
+                    commentField
 
                     if documents != nil { attachmentsCard }
 
@@ -100,6 +100,31 @@ public struct CreateRecommendationView: View {
         .onChange(of: draft.email) { _, _ in scheduleDuplicateCheck() }
         .errorFeedback(errorMessage)
         .onDisappear { duplicateTask?.cancel() }
+    }
+
+    /// What the fields cannot say — the current supplier, when to call, who
+    /// decides. Read by the company on the lead.
+    private var commentField: some View {
+        VStack(alignment: .trailing, spacing: Theme.Spacing.xs) {
+            LabelledField("Commentaire (facultatif)") {
+                TextField("Fournisseur actuel, échéance du contrat, meilleur moment pour appeler…",
+                          text: $draft.comment, axis: .vertical)
+                    .lineLimit(3...8)
+                    .textInputAutocapitalization(.sentences)
+            }
+            // Shown only near the limit: a counter from the first letter is noise.
+            if draft.comment.count > RecommendationDraft.commentLimit - 200 {
+                Text("\(draft.comment.count) / \(RecommendationDraft.commentLimit)")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(draft.comment.count > RecommendationDraft.commentLimit
+                                     ? Theme.Palette.destructive : Theme.Palette.textSecondary)
+            }
+        }
+        .onChange(of: draft.comment) { _, text in
+            if text.count > RecommendationDraft.commentLimit {
+                draft.comment = String(text.prefix(RecommendationDraft.commentLimit))
+            }
+        }
     }
 
     private var consentToggle: some View {

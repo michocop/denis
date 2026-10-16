@@ -108,6 +108,16 @@ public struct RecommendationDetailView: View {
                         if let phone = recommendation.filleulPhone { row("Téléphone", phone) }
                     }
 
+                    if let comment = recommendation.apporteurComment, !comment.isEmpty {
+                        section("Commentaire de l'apporteur") {
+                            Text(comment)
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.Palette.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+
                     section("Suivi") {
                         row("Recommandé par", recommendation.parrainName)
                         row("Créée le", RecommendationCard.relativeDate(recommendation.createdAt))
