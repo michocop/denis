@@ -52,7 +52,7 @@ public struct CreateRecommendationView: View {
                             .textContentType(.telephoneNumber)
                     }
                     LabelledField("Email (facultatif)") {
-                        TextField("adresse@exemple.fr", text: $draft.email)
+                        TextField("Email", text: $draft.email, prompt: Text(verbatim: "adresse@exemple.fr"))
                             .keyboardType(.emailAddress)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()

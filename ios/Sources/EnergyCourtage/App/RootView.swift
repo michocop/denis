@@ -377,7 +377,7 @@ public struct SignInView: View {
             switch step {
             case .email:
                 LabelledField("Email") {
-                    TextField("adresse@exemple.fr", text: $email)
+                    TextField("Email", text: $email, prompt: Text(verbatim: "adresse@exemple.fr"))
                         .keyboardType(.emailAddress)
                         .textContentType(.emailAddress)
                         .textInputAutocapitalization(.never)
