@@ -37,10 +37,12 @@ enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
 
 [auth.email]
-# Closed. Accounts are created by inviting an address (the send-invite
-# function, admins only); nobody can sign themselves up, so there is no
-# sign-up form for a bot to hammer and nothing for a captcha to guard.
-enable_signup = false
+# This switch is the EMAIL PROVIDER itself, not sign-up: false turns every
+# email login off ("Email logins are disabled"), which is how nobody could
+# receive a sign-in code. Sign-up stays closed by [auth] enable_signup = false
+# above: accounts are created by inviting an address (the send-invite
+# function, admins only), so there is no sign-up form for a bot to hammer.
+enable_signup = true
 enable_confirmations = true
 double_confirm_changes = true
 # Sign-in is by a code sent to the address (the app has no passwords). Six
