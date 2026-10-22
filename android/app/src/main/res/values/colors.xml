@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="night">#03081A</color>
+    <color name="navy">#0A1F4A</color>
+    <color name="brand_fill">#1F5FFF</color>
+    <color name="ink">#F5F7FC</color>
+    <color name="logo_inner">#3C8BFF</color>
+</resources>
