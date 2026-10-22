@@ -351,6 +351,18 @@ struct InviteSheet: View {
     let errorMessage: String?
     let create: (String, UserRole, Bool) async -> Void
 
+    /// Where the app is installed from while it is in beta; the same link as
+    /// the invitation email (INSTALL_URL in supabase/functions/auth-email).
+    static let installURL = "https://testflight.apple.com/join/cmSnjrEh"
+
+    static func installMessage(for email: String) -> String {
+        """
+        Bonjour, je vous invite sur l'application Trinity Énergie.
+        1. Installez-la sur votre iPhone : \(installURL)
+        2. Ouvrez-la et saisissez votre adresse \(email) : vous recevrez un code de connexion par e-mail (pensez à regarder dans les indésirables).
+        """
+    }
+
     private var isValidEmail: Bool {
         email.trimmingCharacters(in: .whitespaces)
             .range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#, options: .regularExpression) != nil
@@ -365,16 +377,16 @@ struct InviteSheet: View {
                             Label("Invitation envoyée à \(invite.email)", systemImage: "checkmark.circle.fill")
                                 .font(Theme.Typography.body.weight(.semibold))
                                 .foregroundStyle(Theme.Palette.success)
-                            Text("Si l'e-mail n'arrive pas, voici le code à lui communiquer :")
+                            // Sign-in is by a code emailed to that address, so
+                            // what the person needs is the app itself: the
+                            // link, sent however reaches them (SMS, WhatsApp),
+                            // in case the email sits in a spam folder.
+                            Text("Envoyez-lui aussi le lien de l'application par SMS ou WhatsApp, au cas où l'e-mail arriverait dans ses indésirables.")
                                 .font(Theme.Typography.secondary)
                                 .foregroundStyle(Theme.Palette.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text(invite.code)
-                                .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(Theme.Palette.textPrimary)
-                                .textSelection(.enabled)
-                            ShareLink(item: "Votre code d'invitation Trinity Énergie : \(invite.code)") {
-                                Label("Partager le code", systemImage: "square.and.arrow.up")
+                            ShareLink(item: Self.installMessage(for: invite.email)) {
+                                Label("Envoyer le lien de l'application", systemImage: "square.and.arrow.up")
                                     .font(Theme.Typography.body)
                             }
                         }
