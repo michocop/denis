@@ -97,6 +97,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     // push; initialised by hand from BuildConfig (push/Push.kt), no google-services plugin
     implementation("com.google.firebase:firebase-messaging:24.1.2")
+    // lead documents: the system document scanner (edge detection, perspective, PDF out)
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
