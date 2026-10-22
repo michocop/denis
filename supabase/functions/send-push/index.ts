@@ -3,14 +3,18 @@
 // Called by the database (call_edge_hook 'send-push') from a trigger on
 // `notifications`, with the inserted row already rendered: the same title and
 // body the in-app list shows, and the unread count for the icon. It looks up
-// that person's devices and posts to APNs. See handler.ts, and the migration
-// 20261005000005_push.sql.
+// that person's devices and posts to APNs (iPhones) and FCM (Android). See
+// handler.ts, and the migration 20261005000005_push.sql.
 //
-// Deploy (scripts/deploy.sh does all of it, and switches the hook on once the
-// Apple key is set):
+// Each platform stands on its own key: without the Apple key iPhones are
+// skipped and Android phones still get their pushes, and the other way round.
+//
+// Deploy (scripts/deploy.sh does all of it, and switches the hook on once
+// either key is set; scripts/link_push.sh and scripts/link_fcm.sh set them):
 //   supabase functions deploy send-push --no-verify-jwt
 //   supabase secrets set APNS_KEY_ID=... APNS_TEAM_ID=... \
 //                        APNS_PRIVATE_KEY="$(cat AuthKey_XXXX.p8)"
+//   FCM_SERVICE_ACCOUNT: the Firebase service-account JSON key, whole
 //
 // --no-verify-jwt because the caller is the database, not a signed-in user;
 // the function is instead protected by the shared secret checked below, so a
@@ -18,7 +22,16 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { create, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
-import { ApnsEnvironment, deliver, parsePushRow } from "./handler.ts";
+import {
+  ApnsConfig,
+  ApnsEnvironment,
+  dispatch,
+  FcmAuth,
+  fcmAuth,
+  FcmConfig,
+  parsePushRow,
+  parseServiceAccount,
+} from "./handler.ts";
 
 /** APNs wants an ES256 JWT signed with the .p8 key, reused for up to an hour. */
 let cachedToken: { value: string; mintedAt: number } | null = null;
@@ -52,6 +65,44 @@ async function providerToken(pem: string, keyId: string, teamId: string): Promis
   return value;
 }
 
+/** APNs, if its four secrets are set and the key can be read; null otherwise. */
+async function apnsConfig(): Promise<ApnsConfig | null> {
+  const pem = Deno.env.get("APNS_PRIVATE_KEY");
+  const keyId = Deno.env.get("APNS_KEY_ID");
+  const teamId = Deno.env.get("APNS_TEAM_ID");
+  const topic = Deno.env.get("APNS_TOPIC");
+  if (!pem || !keyId || !teamId || !topic) return null;
+  try {
+    return {
+      jwt: await providerToken(pem, keyId, teamId),
+      topic,
+      environment: (Deno.env.get("APNS_ENVIRONMENT") === "sandbox" ? "sandbox" : "production") as ApnsEnvironment,
+    };
+  } catch (error) {
+    // a broken Apple key must not stop the Android phones
+    console.error("APNS_PRIVATE_KEY could not be used:", String(error));
+    return null;
+  }
+}
+
+/** One access-token cache per service account, kept while the function is warm. */
+let fcmAuthCache: { key: string; auth: FcmAuth } | null = null;
+
+/** FCM, if FCM_SERVICE_ACCOUNT holds a service-account key; null otherwise. */
+function fcmConfig(): FcmConfig | null {
+  const raw = Deno.env.get("FCM_SERVICE_ACCOUNT");
+  if (!raw) return null;
+  const sa = parseServiceAccount(raw);
+  if (!sa) {
+    // never the value itself: it is a private key
+    console.error("FCM_SERVICE_ACCOUNT is set but is not a service-account JSON key");
+    return null;
+  }
+  const key = `${sa.project_id}/${sa.client_email}/${sa.private_key.length}`;
+  if (fcmAuthCache?.key !== key) fcmAuthCache = { key, auth: fcmAuth(sa) };
+  return { projectId: sa.project_id, auth: fcmAuthCache.auth };
+}
+
 Deno.serve(async (request) => {
   // The database calls this, so the only caller that should get through is one
   // that knows the shared secret. Without this the endpoint would let anyone
@@ -64,14 +115,14 @@ Deno.serve(async (request) => {
   const row = parsePushRow(await request.json().catch(() => null));
   if (!row) return new Response("a notification row is required", { status: 400 });
 
-  const pem = Deno.env.get("APNS_PRIVATE_KEY");
-  const keyId = Deno.env.get("APNS_KEY_ID");
-  const teamId = Deno.env.get("APNS_TEAM_ID");
-  const topic = Deno.env.get("APNS_TOPIC");
-  if (!pem || !keyId || !teamId || !topic) {
-    return Response.json({ status: "not_configured",
-                           error: "APNS_PRIVATE_KEY, APNS_KEY_ID, APNS_TEAM_ID and APNS_TOPIC are required" },
-                         { status: 503 });
+  const apns = await apnsConfig();
+  const fcm = fcmConfig();
+  if (!apns && !fcm) {
+    return Response.json({
+      status: "not_configured",
+      error: "neither APNs (APNS_PRIVATE_KEY, APNS_KEY_ID, APNS_TEAM_ID, APNS_TOPIC) "
+        + "nor FCM (FCM_SERVICE_ACCOUNT) is configured",
+    }, { status: 503 });
   }
 
   // service_role: this runs as the server, and needs to read a token belonging
@@ -82,24 +133,23 @@ Deno.serve(async (request) => {
   );
 
   try {
-    const outcome = await deliver(row, {
-      async tokens(profileId) {
+    const outcome = await dispatch(row, {
+      async devices(profileId) {
         const { data, error } = await admin
-          .from("device_tokens").select("token")
-          .eq("profile_id", profileId).eq("platform", "ios");
+          .from("device_tokens").select("token, platform")
+          .eq("profile_id", profileId);
         if (error) throw new Error(error.message);
-        return (data ?? []).map((d) => d.token as string);
+        return (data ?? []).map((d) => ({ token: d.token as string, platform: d.platform as string }));
       },
       async forget(token) {
         await admin.from("device_tokens").delete().eq("token", token);
       },
-      jwt: await providerToken(pem, keyId, teamId),
-      topic,
-      environment: (Deno.env.get("APNS_ENVIRONMENT") === "sandbox" ? "sandbox" : "production") as ApnsEnvironment,
+      apns,
+      fcm,
     });
     // only the outcome is logged: the text may carry a message's first line
     console.log(`push ${row.kind}: ${outcome.sent}/${outcome.results.length} delivered`,
-                outcome.results.filter((r) => r.status !== 200));
+                outcome.results.filter((r) => r.status !== 200), outcome.skipped);
     return Response.json(outcome);
   } catch (error) {
     console.error(`push ${row.kind} failed:`, String(error));

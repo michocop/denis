@@ -24,8 +24,12 @@
 #                      "Trinity Énergie <pierrelouis@trinity-energie.fr>"
 #   RESEND_API_KEY     optional: emails through Resend instead of Brevo
 #   APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY
-#                      push notifications (Apple Developer → Keys → APNs): the
-#                      push hook switches on once all three are set
+#                      iPhone push (Apple Developer → Keys → APNs;
+#                      scripts/link_push.sh sets them from the .p8 file)
+#   FCM_SERVICE_ACCOUNT
+#                      Android push: the Firebase service-account JSON
+#                      (scripts/link_fcm.sh sets it from the file)
+#                      The push hook switches on once either platform is set.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -134,7 +138,7 @@ deploy gdpr-purge   --no-verify-jwt
 deploy send-sms     --no-verify-jwt
 deploy send-invite                    # called by a signed-in admin: the JWT is checked
 deploy auth-email   --no-verify-jwt   # Supabase Auth's send-email hook, signed
-deploy send-push    --no-verify-jwt   # inert until the Apple key is set (step 4)
+deploy send-push    --no-verify-jwt   # inert until the Apple or Firebase key is set (step 4)
 
 # ------------------------------------------------------- 4. the hooks
 say "Hooks between the database and the functions"
@@ -165,8 +169,11 @@ hook gdpr-purge   GDPR_PURGE_HOOK_SECRET   true
 if has_secret BREVO_API_KEY; then hook send-sms SEND_SMS_HOOK_SECRET true
 else hook send-sms SEND_SMS_HOOK_SECRET false; fi
 has_secret SMS_SENDER || printf 'SMS_SENDER=Trinity\n' >> "$envfile"
-# Push waits for the Apple key: until then send-push could only answer 503.
-if has_secret APNS_KEY_ID && has_secret APNS_TEAM_ID && has_secret APNS_PRIVATE_KEY; then
+# Push waits for a key: with neither Apple's nor Firebase's, send-push could
+# only answer 503. Either one is enough -- each platform is sent on its own.
+apns_ready() { has_secret APNS_KEY_ID && has_secret APNS_TEAM_ID && has_secret APNS_PRIVATE_KEY; }
+fcm_ready()  { has_secret FCM_SERVICE_ACCOUNT; }
+if apns_ready || fcm_ready; then
   hook send-push PUSH_HOOK_SECRET true
 else hook send-push PUSH_HOOK_SECRET false; fi
 # the app's bundle id (ios/project.yml); production serves TestFlight and the
@@ -196,9 +203,10 @@ missing=0
 if has_secret BREVO_API_KEY; then ok "BREVO_API_KEY (SMS and email)"; else todo "BREVO_API_KEY"; missing=1; fi
 if has_secret MAIL_FROM; then ok "MAIL_FROM"; else
   todo "MAIL_FROM: a sender verified in Brevo, e.g. \"Trinity Énergie <pierrelouis@trinity-energie.fr>\""; missing=1; fi
-if has_secret APNS_KEY_ID && has_secret APNS_TEAM_ID && has_secret APNS_PRIVATE_KEY; then
-  ok "APNs key (push notifications)"
-else todo "push notifications: APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY (Apple Developer → Keys), then re-run"; fi
+if apns_ready; then ok "APNs key (iPhone push)"
+else todo "iPhone push: scripts/link_push.sh path/to/AuthKey_XXXXXXXXXX.p8 (Apple Developer → Keys)"; fi
+if fcm_ready; then ok "FCM service account (Android push)"
+else todo "Android push: scripts/link_fcm.sh path/to/service-account.json (Firebase → Project settings → Service accounts)"; fi
 [ "$missing" = 0 ] || echo "    Paste missing keys in the dashboard: Edge Functions → Secrets, then re-run."
 
 say "Done: https://supabase.com/dashboard/project/$REF"
