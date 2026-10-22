@@ -1,4 +1,5 @@
 import java.io.File
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -23,6 +24,19 @@ fun xcconfig(): Map<String, String> {
 }
 val config = xcconfig()
 
+// Push (FCM) without the google-services plugin: the four values Firebase
+// gives for the Android app, from android/firebase.properties (git-ignored;
+// firebase.properties.example says where each one is). Missing, they are
+// empty, and the app never initialises Firebase nor contacts Google.
+fun firebaseProperties(): Properties {
+    val props = Properties()
+    val file = File(rootDir, "firebase.properties")
+    if (file.exists()) file.inputStream().use { props.load(it) }
+    return props
+}
+val firebase = firebaseProperties()
+fun firebaseField(name: String) = "\"${(firebase.getProperty(name) ?: "").trim().replace("\"", "")}\""
+
 android {
     namespace = "com.trinityenergie.energycourtage"
     compileSdk = 35
@@ -35,6 +49,10 @@ android {
         versionName = "1.0"
         buildConfigField("String", "SUPABASE_URL", "\"${config["SUPABASE_URL"] ?: ""}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${config["SUPABASE_ANON_KEY"] ?: ""}\"")
+        buildConfigField("String", "FIREBASE_PROJECT_ID", firebaseField("FIREBASE_PROJECT_ID"))
+        buildConfigField("String", "FIREBASE_APP_ID", firebaseField("FIREBASE_APP_ID"))
+        buildConfigField("String", "FIREBASE_API_KEY", firebaseField("FIREBASE_API_KEY"))
+        buildConfigField("String", "FIREBASE_SENDER_ID", firebaseField("FIREBASE_SENDER_ID"))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -76,6 +94,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+    // push; initialised by hand from BuildConfig (push/Push.kt), no google-services plugin
+    implementation("com.google.firebase:firebase-messaging:24.1.2")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

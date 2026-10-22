@@ -1,0 +1,24 @@
+# Push notifications (Firebase Cloud Messaging) for the Android app.
+#
+# Copy this file to android/firebase.properties (git-ignored) and fill it in.
+# Left out or incomplete, the app builds and runs as before, with push off:
+# Firebase is never initialised and Google is never contacted.
+#
+# Where the values are: console.firebase.google.com → the project →
+# ⚙ Project settings → General → "Your apps" → the Android app registered with
+# the package com.trinityenergie.energycourtage → download google-services.json.
+# Each value below is in that file, at the path in brackets. (The file itself
+# is not used: the app reads only these four values.)
+#
+# None of these is a secret (they ship inside every app that uses Firebase);
+# the secret is the service-account key the server uses, which goes to
+# Supabase with scripts/link_fcm.sh and never into this file.
+
+# [project_info.project_id]
+FIREBASE_PROJECT_ID=
+# [client[0].client_info.mobilesdk_app_id], shaped 1:<number>:android:<hex>
+FIREBASE_APP_ID=
+# [client[0].api_key[0].current_key], starts with AIza
+FIREBASE_API_KEY=
+# [project_info.project_number], the "Sender ID" of the Cloud Messaging tab
+FIREBASE_SENDER_ID=
