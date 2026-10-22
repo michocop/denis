@@ -10,6 +10,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.fragment.app.FragmentActivity
@@ -20,6 +23,7 @@ import com.trinityenergie.energycourtage.ui.auth.LockedScreen
 import com.trinityenergie.energycourtage.ui.auth.PendingApprovalScreen
 import com.trinityenergie.energycourtage.ui.auth.SignInScreen
 import com.trinityenergie.energycourtage.ui.auth.SuspendedScreen
+import com.trinityenergie.energycourtage.ui.root.LaunchIntro
 import com.trinityenergie.energycourtage.ui.root.RootScreen
 import com.trinityenergie.energycourtage.ui.theme.BrandBackground
 import com.trinityenergie.energycourtage.ui.theme.TrinityTheme
@@ -31,8 +35,7 @@ class MainActivity : FragmentActivity() {
     private val model: AppModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splash = installSplashScreen()
-        splash.setKeepOnScreenCondition { model.phase.value is AppModel.Phase.Launching }
+        installSplashScreen()
         // the app is dark: light icons on both bars, whatever the phone's theme
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
@@ -43,6 +46,11 @@ class MainActivity : FragmentActivity() {
             TrinityTheme {
                 val phase by model.phase.collectAsStateWithLifecycle()
                 val scope = rememberCoroutineScope()
+                var introDone by rememberSaveable { mutableStateOf(false) }
+                if (!introDone) {
+                    LaunchIntro(sessionKnown = phase !is AppModel.Phase.Launching) { introDone = true }
+                    return@TrinityTheme
+                }
                 AnimatedContent(
                     targetState = phase,
                     contentKey = { it::class },
