@@ -12,3 +12,6 @@ ios/Config.xcconfig
 .devtools/
 supabase/.temp/
 supabase/.env
+
+# Built Android installer served next to the store pages; rebuilt from android/, not versioned
+docs/play-store/site/*.apk

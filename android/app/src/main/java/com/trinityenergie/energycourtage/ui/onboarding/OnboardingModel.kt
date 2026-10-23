@@ -21,6 +21,7 @@ import com.trinityenergie.energycourtage.model.SigningStep
 import com.trinityenergie.energycourtage.model.SmsChallenge
 import com.trinityenergie.energycourtage.model.SmsConfirmation
 import com.trinityenergie.energycourtage.model.SmsPurpose
+import com.trinityenergie.energycourtage.model.Particulier
 import com.trinityenergie.energycourtage.model.legalForms
 import kotlinx.coroutines.delay
 
@@ -104,22 +105,26 @@ class OnboardingModel(
     fun choose(choice: BusinessStatus) {
         val changed = status != choice
         status = choice
-        // a form that belongs to the other status would read wrong
-        val d = draft
-        if (changed && d != null && (d.legalForm ?: "") !in choice.legalForms) {
-            draft = d.copy(
-                legalForm = choice.legalForms.first(),
-                companyName = if (choice == BusinessStatus.Independant) null else d.companyName,
-            )
+        val d = draft ?: return
+        if (choice == BusinessStatus.Independant) {
+            // a particulier has no SIRET, no company: none is kept
+            draft = d.copy(legalForm = Particulier.LEGAL_FORM, siret = null, companyName = null)
+        } else if (changed && (d.legalForm ?: "") !in choice.legalForms) {
+            // a form that belongs to the other status would read wrong
+            draft = d.copy(legalForm = choice.legalForms.first())
         }
     }
 
-    /** The first form preselected, so a micro-entrepreneur taps nothing. */
+    /** The first form preselected, so a company taps nothing. */
     fun preselectLegalForm() {
         val d = draft ?: return
-        val forms = status?.legalForms ?: return
+        val forms = status?.legalForms?.takeIf { it.isNotEmpty() } ?: return
         if ((d.legalForm ?: "").isEmpty() || d.legalForm !in forms) draft = d.copy(legalForm = forms.first())
     }
+
+    /** A micro-entrepreneur or sole trader may leave the company name empty. */
+    val companyNameOptional: Boolean
+        get() = (draft?.legalForm ?: "") in Particulier.soleTraderForms
 
     fun next() {
         errorMessage = null
@@ -141,8 +146,10 @@ class OnboardingModel(
             val s = status
             if (d == null || s == null) return "Choisissez votre statut."
             fun empty(v: String?) = (v ?: "").isBlank()
-            if (s == BusinessStatus.Societe && empty(d.companyName)) return "Indiquez la raison sociale."
-            if ((d.siret ?: "").count(Char::isDigit) != 14) return "Le SIRET compte 14 chiffres."
+            if (s == BusinessStatus.Societe) {
+                if (empty(d.companyName) && !companyNameOptional) return "Indiquez la raison sociale."
+                if ((d.siret ?: "").count(Char::isDigit) != 14) return "Le SIRET compte 14 chiffres."
+            }
             if (empty(d.address)) return "Indiquez l'adresse."
             if ((d.postalCode ?: "").count(Char::isDigit) != 5) return "Le code postal compte 5 chiffres."
             if (empty(d.city)) return "Indiquez la ville."
@@ -154,8 +161,11 @@ class OnboardingModel(
         if (detailsProblem != null) return
         isWorking = true
         try {
+            val particulier = status == BusinessStatus.Independant
             val cleaned = d.copy(
-                siret = d.siret?.filter(Char::isDigit),
+                siret = if (particulier) null else d.siret?.filter(Char::isDigit),
+                legalForm = if (particulier) Particulier.LEGAL_FORM else d.legalForm,
+                companyName = if (particulier) null else d.companyName?.trim()?.ifEmpty { null },
                 postalCode = d.postalCode?.filter(Char::isDigit),
                 businessStatus = status,
             )

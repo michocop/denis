@@ -3284,4 +3284,96 @@ end $$;
 
 reset role;
 \echo ''
+\echo '=== 55. A particulier signs without a SIRET, up to 2 400 € a year ==='
+insert into edge_hooks (name, url, secret)
+values ('send-sms', 'https://project.supabase.co/functions/v1/send-sms', 'sms-secret'),
+       ('contract-pdf', 'https://project.supabase.co/functions/v1/contract-pdf', 'pdf-secret')
+on conflict (name) do update set enabled = true;
+insert into auth.users (id, email) values ('aaaaaaaa-0000-0000-0000-000000000056', 'noa@example.test');
+insert into profiles (id, role, status, first_name, last_name, email, siret, legal_form)
+values ('aaaaaaaa-0000-0000-0000-000000000056', 'apporteur', 'active', 'Noa', 'Petit',
+        'noa@example.test', '12345678900099', 'SASU');
+set role authenticated;
+do $$
+declare
+  v_noa      uuid := 'aaaaaaaa-0000-0000-0000-000000000056';
+  v_pierre   uuid := '33333333-3333-3333-3333-333333333333';
+  v_contract text := (select sha256 from legal_documents where key = 'contrat_apporteur' and active);
+  v_mandate  text := (select sha256 from legal_documents where key = 'mandat_facturation' and active);
+  v_row      apporteur_contracts%rowtype;
+  v_inv      invoices%rowtype;
+  v_cap      jsonb;
+  v_text     text;
+  v_hint     text;
+  v_reco     uuid;
+begin
+  perform assert(fr_euros(4500) = '4 500 €' and fr_euros(1234.5) = '1 234,50 €'
+                 and fr_euros(0) = '0 €',
+    'amounts are written the French way');
+  perform assert((select version = '2026-10-2' and body like '%2 400 € par année civile%'
+                    from legal_documents where key = 'contrat_apporteur' and active),
+    'the contract in force sets the particulier''s ceiling');
+
+  perform login(v_noa);
+  perform assert_denied(v_noa,
+    format('select sign_apporteur_contract(''independant'', %L, %L)', v_contract, v_mandate),
+    'a particulier still needs an address');
+  update profiles set address = '8 rue Solférino', postal_code = '59000', city = 'Lille'
+   where id = v_noa;
+  perform request_sms_code('sign_contract', null, '06 11 22 33 56');
+  perform confirm_sms_code('sign_contract', test_last_sms_code());
+  select * into v_row from sign_apporteur_contract('independant', v_contract, v_mandate);
+  perform assert(v_row.siret is null and v_row.legal_form = 'Particulier'
+                 and v_row.business_status = 'independant' and v_row.company_name is null,
+    'a particulier signs with no SIRET, and the record says so');
+  perform assert((select siret is null and legal_form = 'Particulier' and contract_signed_at is not null
+                    from profiles where id = v_noa),
+    'a SIRET typed before choosing particulier is not kept');
+  v_cap := commission_cap();
+  perform assert((v_cap ->> 'particulier')::boolean and (v_cap ->> 'total')::numeric = 0
+                 and (v_cap ->> 'cap')::numeric = 2400 and (v_cap ->> 'alert_from')::numeric = 1800,
+    'the app learns where the particulier stands');
+
+  perform login(v_pierre);
+  select * into v_inv from issue_invoice(test_reco_at_reward(v_noa, v_pierre, 1500, 'PartA'));
+  perform assert(v_inv.vat_rate = 0
+                 and v_inv.legal_mentions like '%particulier non assujetti à la TVA%',
+    'a particulier''s invoice says why there is no VAT');
+  perform issue_invoice(test_reco_at_reward(v_noa, v_pierre, 900, 'PartB'));
+  perform assert((commission_cap(v_noa) ->> 'total')::numeric = 2400,
+    'up to the ceiling exactly, invoices are issued');
+  v_reco := test_reco_at_reward(v_noa, v_pierre, 100, 'PartC');
+  perform login(v_pierre);
+  begin
+    perform issue_invoice(v_reco);
+    perform assert(false, 'past 2 400 € in a year, no invoice for a particulier');
+  exception when others then
+    get stacked diagnostics v_text = message_text, v_hint = pg_exception_hint;
+    perform assert(v_hint = 'particulier_cap'
+                   and v_text like 'Noa Petit est particulier : ses commissions sont limitées à 2 400 € par année civile, et 2 400 € sont déjà facturés en %',
+      'past 2 400 € in a year, no invoice for a particulier, and the admin is told why');
+  end;
+  perform assert((select reward_status = 'earned' from recommendations where id = v_reco),
+    'the commission stays earned, waiting');
+
+  perform login(v_noa);
+  perform assert_denied(v_noa, format('select commission_cap(%L)', v_pierre),
+    'an apporteur sees only where they stand');
+  update profiles set siret = '98765432100012' where id = v_noa;
+  perform assert((select legal_form is null from profiles where id = v_noa),
+    'with a SIRET, "Particulier" is no longer printed as a legal form');
+  update profiles set legal_form = 'Micro-entrepreneur' where id = v_noa;
+  perform assert(not (commission_cap() ->> 'particulier')::boolean,
+    'with a SIRET, the ceiling no longer applies');
+
+  perform login(v_pierre);
+  select * into v_inv from issue_invoice(v_reco);
+  perform assert(v_inv.amount_ht = 100 and v_inv.legal_mentions like '%293B%',
+    'the waiting commission is invoiced once the SIRET is in, under the 293 B exemption');
+end $$;
+reset role;
+delete from edge_hooks where name in ('send-sms', 'contract-pdf');
+
+reset role;
+\echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

@@ -30,21 +30,20 @@ final class OnboardingTests: XCTestCase {
         XCTAssertNotNil(model.mandate, "with the mandate it annexes")
 
         model.choose(.independant)
-        XCTAssertEqual(model.draft?.legalForm, "Micro-entrepreneur", "the first form of the status is preselected")
-        XCTAssertNil(model.draft?.companyName, "an independent invoices in their own name")
+        XCTAssertEqual(model.draft?.legalForm, "Particulier", "the form the server stores for a particulier")
+        XCTAssertNil(model.draft?.companyName, "a particulier invoices in their own name")
+        XCTAssertEqual(model.statusSummary, "Indépendant · Particulier")
         model.next()
         XCTAssertEqual(model.step, .details)
 
-        model.draft?.siret = "123 456"
-        XCTAssertEqual(model.detailsProblem, "Le SIRET compte 14 chiffres.")
-        model.draft?.siret = "123 456 789 00012"
+        XCTAssertEqual(model.detailsProblem, "Indiquez l'adresse.", "no SIRET asked for: the address comes first")
         model.draft?.address = "3 rue Nationale"
         model.draft?.postalCode = "59000"
         model.draft?.city = "Lille"
         XCTAssertNil(model.detailsProblem)
         await model.saveDetails()
         XCTAssertEqual(model.step, .contract)
-        XCTAssertEqual(model.draft?.siret, "12345678900012", "stored as digits")
+        XCTAssertNil(model.draft?.siret)
 
         await model.startSigning()
         XCTAssertEqual(model.signingStep, .enterPhone, "no verified mobile yet: the number comes first")
@@ -62,7 +61,105 @@ final class OnboardingTests: XCTestCase {
         let after = try await profiles.currentProfile()
         XCTAssertTrue(after.hasSignedContract, "the onboarding is not shown again")
         XCTAssertTrue(after.canBeInvoiced, "and the mandate, signed with it, lets invoices be issued")
-        XCTAssertEqual(after.siret, "12345678900012", "the profile shows what was typed")
+        XCTAssertEqual(after.address, "3 rue Nationale", "the profile shows what was typed")
+        XCTAssertNil(after.siret, "and no SIRET")
+    }
+
+    @MainActor
+    func testAParticulierKeepsNothingOfACompany() async {
+        let model = makeModel()
+        await model.load()
+        model.choose(.societe)
+        model.draft?.siret = "12345678900012"
+        model.draft?.companyName = "Lefeuvre Conseil"
+        model.choose(.independant)
+        XCTAssertNil(model.draft?.siret, "a particulier has no SIRET")
+        XCTAssertNil(model.draft?.companyName)
+        XCTAssertEqual(model.draft?.legalForm, "Particulier")
+        model.choose(.societe)
+        XCTAssertEqual(model.draft?.legalForm, "SASU", "\"Particulier\" is no company's form")
+    }
+
+    @MainActor
+    func testACompanyStillNeedsItsSiret() async {
+        let model = makeModel()
+        await model.load()
+        model.choose(.societe)
+        model.draft?.companyName = "Lefeuvre Conseil"
+        model.draft?.siret = "123 456"
+        model.draft?.address = "1 rue"
+        model.draft?.postalCode = "59000"
+        model.draft?.city = "Lille"
+        XCTAssertEqual(model.detailsProblem, "Le SIRET compte 14 chiffres.")
+        model.draft?.siret = "123 456 789 00012"
+        XCTAssertNil(model.detailsProblem)
+        await model.saveDetails()
+        XCTAssertEqual(model.draft?.siret, "12345678900012", "stored as digits")
+    }
+
+    @MainActor
+    func testAMicroEntrepreneurTradesUnderTheirOwnName() async {
+        let model = makeModel()
+        await model.load()
+        model.choose(.societe)
+        model.draft?.legalForm = "Micro-entrepreneur"
+        model.draft?.companyName = nil
+        model.draft?.siret = "12345678900012"
+        model.draft?.address = "1 rue"
+        model.draft?.postalCode = "59000"
+        model.draft?.city = "Lille"
+        XCTAssertTrue(model.companyNameIsOptional)
+        XCTAssertNil(model.detailsProblem, "no company name needed")
+        XCTAssertEqual(model.statusSummary, "Société ou entreprise · Micro-entrepreneur")
+        model.draft?.legalForm = "Entreprise individuelle"
+        XCTAssertNil(model.detailsProblem)
+        model.draft?.legalForm = "EURL"
+        XCTAssertEqual(model.detailsProblem, "Indiquez la raison sociale.")
+    }
+
+    // MARK: - The particulier's ceiling
+
+    func testTheCeilingCardSpeaksFromTheAlertOn() throws {
+        let cap = try SupabaseClient.decoder.decode(CommissionCap.self, from: Data("""
+        {"particulier":true,"year":2026,"total":1800.00,"cap":2400.00,"alert_from":1800.00}
+        """.utf8))
+        XCTAssertEqual(cap.alert, .approaching, "from 1 800 €")
+        XCTAssertEqual(cap.title, "Plafond de 2\u{00A0}400\u{00A0}€ par an")
+        XCTAssertEqual(cap.message, "Vous avez reçu 1\u{00A0}800\u{00A0}€ de commissions en 2026. Au-delà de 2\u{00A0}400\u{00A0}€ par année civile, vous devez exercer en société ou en micro-entreprise et renseigner votre SIRET.")
+
+        XCTAssertNil(CommissionCap(particulier: true, year: 2026, total: 1799.99).alert, "below it, nothing")
+        XCTAssertNil(CommissionCap(particulier: false, year: 2026, total: 5000).alert, "nor with a SIRET")
+
+        let close = CommissionCap(particulier: true, year: 2026, total: Decimal(string: "2399.60")!)
+        XCTAssertEqual(close.alert, .approaching)
+        XCTAssertTrue(close.message.hasPrefix("Vous avez reçu 2\u{00A0}399,60\u{00A0}€"),
+                      "cents kept: rounded, it would read as the ceiling")
+
+        let reached = CommissionCap(particulier: true, year: 2026, total: 2400)
+        XCTAssertEqual(reached.alert, .reached)
+        XCTAssertEqual(reached.title, "Plafond atteint")
+        XCTAssertEqual(reached.message, "Vos commissions de 2026 ont atteint 2\u{00A0}400\u{00A0}€. Pour recevoir les suivantes, renseignez votre SIRET (société ou micro-entreprise).")
+    }
+
+    @MainActor
+    func testAccueilWarnsAnApporteurOnly() async {
+        struct Capped: CommissionsRepository {
+            func statement(year: Int?) async throws -> [CommissionLine] { [] }
+            func commissionCap() async throws -> CommissionCap {
+                CommissionCap(particulier: true, year: 2026, total: 2000)
+            }
+        }
+        let apporteur = HomeViewModel(profiles: PreviewProfileRepository(), commissions: Capped())
+        await apporteur.load()
+        XCTAssertEqual(apporteur.capAlert?.alert, .approaching)
+
+        let admin = HomeViewModel(profiles: PreviewProfileRepository(role: .admin), commissions: Capped())
+        await admin.load()
+        XCTAssertNil(admin.capAlert, "the company has no ceiling")
+
+        let demo = HomeViewModel(profiles: PreviewProfileRepository(), commissions: PreviewCommissionsRepository())
+        await demo.load()
+        XCTAssertNil(demo.capAlert, "the demo's 1 300 € say nothing")
     }
 
     @MainActor

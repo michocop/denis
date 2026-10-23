@@ -249,9 +249,10 @@ object DemoSamples {
         filleulFirstName = "Thomas", filleulLastName = "Dubois",
         filleulPhone = "+33 6 75 75 75 75",
         parrainName = "Johann Lefeuvre",
-        createdAt = Instant.now().minusSeconds(8 * 3600),
+        // created 12 days ago, last moved 11 days ago: "Sans activité depuis 11 jours" holds
+        createdAt = Instant.now().minusSeconds(12 * 86_400),
         currentStageId = stages[1].id,
-        events = listOf(event("a_contacter", 60)),
+        events = listOf(event("a_contacter", 11 * 1440)),
         rewardAmount = BigDecimal(1000),
         rewardStatus = RewardStatus.Pending,
         // deliberately stale, so the staleness banner has something to show

@@ -1,0 +1,767 @@
+<title>Trinity Énergie App</title>
+<style>
+/* Layout: the phone on the left, a short reading of what you're looking at on the right; stacked on phones with the bezel dropped. */
+:root {
+  /* Theme.swift, light side — the screenshots' exact values */
+  --brand: #2196D3; --brand-soft: #E3F2FB;
+  --success: #22C55E; --success-text: #16A34A; --success-soft: #DCFCE7;
+  --reward-soft: #FEF3C7; --reward-text: #B45309;
+  --destructive: #FF3B30;
+  --text: #111827; --text-2: #9CA3AF;
+  --surface: #FFFFFF; --canvas: #FFFFFF; --track: #F1F2F4; --grouped: #F2F2F7;
+  --hairline: #E5E7EB; --pending-ring: #D1D5DB; --connector-idle: #E5E7EB;
+  --avatar: #9EEBD3; --stale-soft: #FFF1E6; --stale-text: #C2410C;
+  --shadow: rgba(0,0,0,.06);
+  /* The page around the phone */
+  --page: #EEF3F7; --page-ink: #1B2733; --page-muted: #5F7080; --bezel: #0E1419; --scrim: rgba(0,0,0,.35);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --brand: #4FB3E8; --brand-soft: #10303F;
+  --success: #34D06F; --success-text: #4ADE80; --success-soft: #0E2C1B;
+  --reward-soft: #3A2E0B; --reward-text: #F5C451; --destructive: #FF6961;
+  --text: #F2F2F7; --text-2: #8E8E93;
+  --surface: #1C1C1E; --canvas: #000000; --track: #2C2C2E; --grouped: #2C2C2E;
+  --hairline: #38383A; --pending-ring: #48484A; --connector-idle: #3A3A3C;
+  --avatar: #1F4D40; --stale-soft: #3A2415; --stale-text: #FDBA74; --shadow: rgba(0,0,0,.4);
+  --page: #0B1116; --page-ink: #E4EBF1; --page-muted: #8A9AA8; --bezel: #2A333B; --scrim: rgba(0,0,0,.55);
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --brand: #4FB3E8; --brand-soft: #10303F;
+  --success: #34D06F; --success-text: #4ADE80; --success-soft: #0E2C1B;
+  --reward-soft: #3A2E0B; --reward-text: #F5C451; --destructive: #FF6961;
+  --text: #F2F2F7; --text-2: #8E8E93;
+  --surface: #1C1C1E; --canvas: #000000; --track: #2C2C2E; --grouped: #2C2C2E;
+  --hairline: #38383A; --pending-ring: #48484A; --connector-idle: #3A3A3C;
+  --avatar: #1F4D40; --stale-soft: #3A2415; --stale-text: #FDBA74; --shadow: rgba(0,0,0,.4);
+  --page: #0B1116; --page-ink: #E4EBF1; --page-muted: #8A9AA8; --bezel: #2A333B; --scrim: rgba(0,0,0,.55);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--page-ink); font-family: var(--font); margin: 0; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+input, textarea { font: inherit; color: var(--text); background: transparent; border: 0; outline: none; width: 100%; }
+input::placeholder, textarea::placeholder { color: var(--text-2); }
+svg.i { width: 1em; height: 1em; flex: none; }
+
+/* ---------- page ---------- */
+.wrap { max-width: 1060px; margin: 0 auto; padding: 32px 24px 48px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 48px; align-items: start; }
+.notes { display: flex; flex-direction: column; gap: 20px; padding-top: 12px; min-width: 0; }
+.brandrow { display: flex; align-items: center; gap: 14px; }
+.brandrow svg { width: 52px; height: 52px; border-radius: 12px; flex: none; }
+.notes h1 { font-size: 28px; line-height: 1.15; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.notes .sub { color: var(--page-muted); font-size: 15px; margin: 2px 0 0; }
+.notes p { margin: 0; font-size: 15px; line-height: 1.55; max-width: 60ch; }
+.role { display: inline-flex; background: var(--track); border-radius: 14px; padding: 4px; align-self: flex-start; }
+.role button { padding: 9px 18px; border-radius: 11px; font-size: 15px; color: var(--text); }
+.role button[aria-pressed="true"] { background: var(--surface); color: var(--brand); box-shadow: 0 1px 3px var(--shadow); font-weight: 600; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--page-muted); }
+.tries { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 1.45; }
+.tries li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; }
+.tries li::before { content: ""; width: 8px; height: 8px; margin: 7px 0 0 6px; border-radius: 50%; background: var(--brand); }
+.caveat { font-size: 13px !important; color: var(--page-muted); border-top: 1px solid var(--hairline); padding-top: 14px; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88em; background: var(--track); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+
+/* ---------- phone ---------- */
+.phone { width: 390px; height: 844px; border-radius: 56px; padding: 12px; background: var(--bezel); box-shadow: 0 30px 60px -20px rgba(10,30,50,.35); position: relative; }
+.screen { position: relative; width: 100%; height: 100%; border-radius: 44px; overflow: hidden; background: var(--canvas); color: var(--text); display: flex; flex-direction: column; font-size: 17px; }
+.statusbar { height: 50px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 6px 30px 0 34px; font-size: 16px; font-weight: 600; position: relative; }
+.statusbar .island { position: absolute; left: 50%; top: 11px; transform: translateX(-50%); width: 120px; height: 34px; border-radius: 20px; background: #000; }
+.statusbar .sys { display: flex; gap: 6px; align-items: center; }
+.demo { flex: none; font-size: 13px; font-weight: 500; text-align: center; padding: 6px; background: var(--reward-soft); color: var(--reward-text); }
+.content { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scrollbar-width: none; }
+.content::-webkit-scrollbar { display: none; }
+.navbar { height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; position: sticky; top: 0; background: var(--canvas); z-index: 2; }
+.navbar .t { font-size: 17px; font-weight: 600; position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+.navbtn { color: var(--brand); font-size: 17px; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; }
+.navbtn svg { width: 22px; height: 22px; }
+.page { padding: 0 16px 24px; display: flex; flex-direction: column; gap: 16px; }
+.h-title { font-size: 30px; font-weight: 600; margin: 8px 0 0; letter-spacing: -.01em; }
+.muted { color: var(--text-2); }
+.s16 { font-size: 16px; }
+.tabbar { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--hairline); background: var(--canvas); padding: 7px 0 26px; }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 500; color: #999; position: relative; }
+.tab svg { width: 26px; height: 26px; }
+.tab[aria-selected="true"] { color: var(--brand); }
+.tab .badge { position: absolute; top: -3px; left: calc(50% + 6px); background: #FF3B30; color: #fff; font-size: 12px; min-width: 18px; height: 18px; line-height: 18px; border-radius: 9px; padding: 0 5px; }
+
+.card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 18px; box-shadow: 0 2px 10px var(--shadow); }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tile { padding: 16px; min-height: 104px; display: flex; flex-direction: column; gap: 8px; }
+.tile .v { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tile .l { font-size: 16px; color: var(--text-2); line-height: 1.25; }
+.btn-primary { width: 100%; background: var(--brand); color: #fff; font-weight: 600; padding: 15px; border-radius: 12px; font-size: 17px; }
+.btn-primary:disabled { opacity: .5; cursor: default; }
+.btn-secondary { width: 100%; color: var(--brand); padding: 14px; border-radius: 12px; border: 1px solid var(--hairline); display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 17px; }
+.btn-tertiary { width: 100%; color: var(--brand); background: var(--track); padding: 15px; border-radius: 12px; font-size: 17px; }
+.notice { display: flex; gap: 12px; padding: 16px; border-radius: 12px; background: var(--reward-soft); }
+.notice svg { color: var(--reward-text); width: 20px; height: 20px; margin-top: 2px; }
+.notice b { display: block; font-weight: 600; margin-bottom: 4px; }
+.notice span { font-size: 16px; line-height: 1.35; }
+
+.seg { display: flex; background: var(--track); border-radius: 14px; padding: 4px; }
+.seg button { flex: 1; padding: 12px 0; border-radius: 12px; font-size: 17px; color: var(--text); transition: background .2s, color .2s; }
+.seg button[aria-selected="true"] { background: var(--surface); color: var(--brand); box-shadow: 0 1px 3px var(--shadow); }
+.search { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; flex: 1; min-width: 0; }
+.search svg { color: var(--text-2); width: 19px; height: 19px; }
+.search .clear { color: var(--text-2); display: flex; }
+
+.reco { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.reco-head { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.reco-head .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.reco-head .name { font-size: 22px; font-weight: 600; }
+.reco-head .amount { font-size: 20px; font-weight: 600; color: var(--success-text); white-space: nowrap; }
+.chev { color: var(--text-2); width: 22px; height: 22px; transition: transform .28s; padding-top: 3px; }
+.chev.down { transform: rotate(180deg); }
+.banner { background: var(--success-soft); color: var(--success-text); font-size: 16px; text-align: center; border-radius: 10px; padding: 10px 12px; }
+.steps { display: flex; flex-direction: column; gap: 4px; }
+.step { display: grid; grid-template-columns: 32px 1fr; column-gap: 12px; }
+.step .rail { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.node { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; }
+.node.completed { background: var(--success); color: #fff; }
+.node.completed svg { width: 16px; height: 16px; }
+.node.current { background: var(--surface); box-shadow: inset 0 0 0 3px var(--brand); }
+.node.current::after { content: ""; width: 11px; height: 11px; border-radius: 50%; background: var(--brand); }
+.node.pending { width: 28px; height: 28px; margin: 2px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--pending-ring); }
+.node.pending::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pending-ring); }
+.conn { width: 3px; height: 30px; border-radius: 2px; background: var(--connector-idle); }
+.conn.done { background: var(--success); }
+.step .lbl { min-height: 32px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.step .lbl span.t { flex: 1; min-width: 0; line-height: 1.15; }
+.step .lbl.pending span.t { color: var(--text-2); }
+.reward { display: inline-flex; align-items: center; gap: 5px; background: var(--reward-soft); color: var(--reward-text); font-size: 14px; font-weight: 500; padding: 6px 11px; border-radius: 99px; white-space: nowrap; }
+.reward svg { width: 12px; height: 12px; }
+.bubble-btn { color: var(--brand); display: flex; }
+.bubble-btn svg { width: 22px; height: 22px; }
+.row2 { display: flex; gap: 12px; }
+.empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 56px 0; text-align: center; }
+.empty svg { width: 34px; height: 34px; color: var(--text-2); }
+
+.chips { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding: 1px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { padding: 10px 22px; border-radius: 99px; border: 1px solid var(--hairline); background: var(--surface); white-space: nowrap; font-size: 17px; }
+.chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #fff; }
+.compose { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; color: var(--brand); flex: none; }
+.compose svg { width: 22px; height: 22px; }
+.threads { display: flex; flex-direction: column; }
+.thread { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--hairline); text-align: left; width: 100%; }
+.avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--avatar); display: grid; place-items: center; font-weight: 600; flex: none; color: var(--text); }
+.thread .mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.thread .mid b { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.thread .mid b svg { width: 12px; height: 12px; color: var(--text-2); }
+.thread .mid span { font-size: 16px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thread .end { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: 13px; font-weight: 500; color: var(--text-2); }
+.count { background: var(--brand); color: #fff; padding: 3px 8px; border-radius: 99px; font-size: 13px; }
+.msgs { display: flex; flex-direction: column; gap: 8px; padding: 16px; flex: 1; }
+.msg { display: flex; }
+.msg.mine { justify-content: flex-end; }
+.msg .b { max-width: calc(100% - 56px); padding: 10px 16px; border-radius: 18px; background: var(--track); display: flex; flex-direction: column; gap: 4px; }
+.msg.mine .b { background: var(--brand); color: #fff; align-items: flex-end; }
+.msg .b small { font-size: 11px; color: var(--text-2); }
+.msg.mine .b small { color: rgba(255,255,255,.75); }
+.composer { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; padding: 10px 16px; background: var(--canvas); border-top: 1px solid var(--hairline); }
+.composer .field { flex: 1; border: 1px solid var(--hairline); border-radius: 20px; padding: 9px 14px; }
+.send { width: 36px; height: 36px; border-radius: 50%; background: var(--brand); color: #fff; display: grid; place-items: center; }
+.send:disabled { opacity: .4; }
+.send svg { width: 18px; height: 18px; }
+
+.idcard { display: flex; gap: 16px; align-items: center; padding: 16px; }
+.idcard .avatar { width: 64px; height: 64px; font-size: 22px; }
+.idcard .n { font-size: 22px; font-weight: 600; }
+.console { display: flex; align-items: center; gap: 12px; padding: 16px; width: 100%; text-align: left; }
+.console > svg:first-child { color: var(--brand); width: 22px; height: 22px; }
+.console span { flex: 1; }
+.console > svg:last-child { color: var(--text-2); width: 14px; height: 14px; }
+.billing { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.kv { display: flex; justify-content: space-between; gap: 12px; font-size: 16px; }
+.kv span:first-child { color: var(--text-2); }
+.divider { height: 1px; background: var(--hairline); }
+.ok { display: flex; gap: 8px; align-items: center; font-size: 16px; }
+.ok svg { color: var(--success); width: 20px; height: 20px; }
+.danger { color: var(--destructive); padding: 14px; width: 100%; }
+.line { display: flex; align-items: center; gap: 12px; padding: 16px; }
+.line .l1 { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.line .r1 { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-variant-numeric: tabular-nums; }
+.cap { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.cap.good { color: var(--success-text); }
+.pill { font-size: 13px; font-weight: 500; padding: 3px 9px; border-radius: 99px; background: var(--track); color: var(--text-2); white-space: nowrap; }
+.pill.good { background: var(--success-soft); color: var(--success-text); }
+.pill.warn { background: var(--reward-soft); color: var(--reward-text); }
+
+/* overlays */
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 10; animation: fade .2s; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; top: 58px; z-index: 11; background: var(--canvas); border-radius: 24px 24px 0 0; display: flex; flex-direction: column; animation: up .3s cubic-bezier(.2,.8,.2,1); overflow: hidden; }
+.sheet .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--pending-ring); margin: 6px auto 0; flex: none; }
+.sheet .navbar { position: static; }
+.sheet .body { flex: 1; overflow-y: auto; padding: 8px 16px 32px; display: flex; flex-direction: column; gap: 16px; scrollbar-width: none; }
+.field-l { display: flex; flex-direction: column; gap: 8px; }
+.field-l .box { border: 1px solid var(--hairline); border-radius: 14px; padding: 14px 16px; }
+.toggle-row { display: flex; gap: 12px; align-items: center; padding: 16px; border-radius: 12px; background: var(--track); font-size: 16px; line-height: 1.35; cursor: pointer; }
+.switch { width: 51px; height: 31px; border-radius: 16px; background: var(--pending-ring); position: relative; flex: none; transition: background .2s; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .2s; }
+.switch[aria-checked="true"] { background: var(--brand); }
+.switch[aria-checked="true"]::after { transform: translateX(20px); }
+.warnbox { display: flex; gap: 12px; padding: 16px; border-radius: 12px; font-size: 16px; line-height: 1.35; }
+.warnbox svg { width: 20px; height: 20px; margin-top: 1px; }
+.warnbox.block { background: color-mix(in srgb, var(--destructive) 12%, transparent); }
+.warnbox.block svg { color: var(--destructive); }
+.dialog-wrap { position: absolute; inset: 0; z-index: 12; display: grid; place-items: center; padding: 16px; background: var(--scrim); animation: fade .2s; }
+.dialog { background: var(--surface); border-radius: 24px; padding: 24px; width: 100%; display: flex; flex-direction: column; gap: 16px; align-items: center; animation: pop .22s; }
+.dialog .ic { width: 56px; height: 56px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; }
+.dialog .ic svg { width: 24px; height: 24px; }
+.dialog h3 { font-size: 21px; font-weight: 400; margin: 0; text-align: center; }
+.dialog .msgbox { align-self: stretch; display: flex; flex-direction: column; gap: 8px; }
+.dialog .msgbox div { background: var(--track); border-radius: 12px; padding: 16px; max-height: 300px; overflow-y: auto; white-space: pre-line; line-height: 1.35; }
+.dialog .actions { align-self: stretch; display: flex; justify-content: flex-end; gap: 12px; }
+.dialog .actions button { padding: 14px 28px; border-radius: 12px; font-weight: 600; }
+.b-brand { background: var(--brand); color: #fff; }
+.b-danger { background: var(--destructive); color: #fff; }
+.b-plain { color: var(--brand); }
+.invoice { padding: 20px; display: flex; flex-direction: column; gap: 14px; font-size: 16px; line-height: 1.4; }
+.invoice .num { text-align: center; font-weight: 600; padding: 12px 0; }
+.sigpanel { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.eyebrow { font-size: 13px; font-weight: 500; letter-spacing: 1.1px; color: var(--text-2); }
+.sig { display: flex; align-items: center; gap: 12px; }
+.sig svg { width: 22px; height: 22px; color: var(--pending-ring); }
+.sig.signed svg { color: var(--success); }
+.sig span:nth-child(2) { flex: 1; }
+.legal { white-space: pre-line; font-size: 15px; line-height: 1.5; background: var(--track); border-radius: 12px; padding: 16px; max-height: 360px; overflow-y: auto; }
+.notif { display: flex; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--hairline); }
+.notif .ic { width: 34px; height: 34px; border-radius: 50%; background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--brand); display: grid; place-items: center; flex: none; }
+.notif .ic svg { width: 18px; height: 18px; }
+.notif .tx { display: flex; flex-direction: column; gap: 3px; }
+.signin { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 16px; }
+.toast { position: absolute; left: 16px; right: 16px; bottom: 100px; z-index: 20; background: var(--text); color: var(--canvas); padding: 12px 16px; border-radius: 14px; font-size: 15px; text-align: center; animation: pop .2s; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes up { from { transform: translateY(100%); } }
+@keyframes pop { from { transform: scale(.96); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: 1fr; gap: 28px; justify-items: center; }
+  .notes { padding-top: 0; max-width: 560px; }
+}
+@media (max-width: 460px) {
+  .wrap { padding: 20px 16px 32px; }
+  .phone { width: 100%; height: 760px; padding: 0; border-radius: 28px; background: transparent; box-shadow: none; }
+  .screen { border-radius: 28px; border: 1px solid var(--hairline); }
+  .statusbar { display: none; }
+  .tabbar { padding-bottom: 10px; }
+}
+</style>
+
+<div class="wrap">
+  <div class="phone" aria-label="Aperçu de l'application iPhone">
+    <div class="screen" id="screen"></div>
+  </div>
+
+  <aside class="notes">
+    <div class="brandrow">
+      <svg viewBox="0 0 1024 1024" aria-hidden="true"><rect width="1024" height="1024" fill="#2196D3"/><path d="M420 765A269 269 0 1 1 735 662" fill="none" stroke="#fff" stroke-width="78"/><path fill="#fff" d="M688 660l34 28-30 88 142-78-50-42zM540 283L338 578h148l-51 230 241-358H524l38-162z"/></svg>
+      <div>
+        <h1>Trinity Énergie</h1>
+        <div class="sub">App apporteurs d'affaires · iOS</div>
+      </div>
+    </div>
+    <p>This is the SwiftUI app from branch <code>claude/energy-courtage-app-plan-oj5xmb</code>, redrawn for the browser with its own colours, copy and demo data. It's the same state the simulator opens on with <code>-demo</code>.</p>
+    <div class="label">Voir en tant que</div>
+    <div class="role" role="group" aria-label="Rôle">
+      <button id="role-apporteur" data-role="apporteur" aria-pressed="true">Apporteur</button>
+      <button id="role-admin" data-role="admin" aria-pressed="false">Entreprise</button>
+    </div>
+    <div class="label">À essayer</div>
+    <ul class="tries">
+      <li>Reco: tap the speech bubble next to a stage to read the broker's comment.</li>
+      <li>Switch to Entreprise, open the second card and press Valider l'étape until it reaches Devis signé. The 1000 € reward appears.</li>
+      <li>Accueil: Nouvelle recommandation. Type 06 75 75 75 75 as the phone number to trigger the duplicate check.</li>
+      <li>Voir le contrat: sign the invoice as the second party.</li>
+      <li>Profil: read the mandat de facturation to the end, sign it, and the warning on Accueil goes away.</li>
+      <li>Chat: open a conversation and send a message.</li>
+    </ul>
+    <p class="caveat">This is a browser preview, not the compiled app. The container this was built in has no Swift toolchain, so the iOS build has only been checked by CI on macOS. Nothing here talks to Supabase.</p>
+  </aside>
+</div>
+
+<script>
+(() => {
+  // ---------- icons (SF Symbols stand-ins) ----------
+  const P = {
+    house: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+    reco: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6M9 14h6"/>',
+    chat: '<path d="M4 5h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3v-3H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M17 9h3a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-1v2.5L16 18h-3"/>',
+    person: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3.2"/><path d="M5.8 18.8a7 7 0 0 1 12.4 0"/>',
+    bell: '<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+    chevUp: '<path d="M6 15l6-6 6 6"/>', chevR: '<path d="M9 5l7 7-7 7"/>', chevL: '<path d="M15 5l-7 7 7 7"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    gift: '<rect x="3" y="8" width="18" height="4" rx="1" fill="currentColor"/><rect x="5" y="12" width="14" height="9" rx="1" fill="currentColor"/><path d="M12 8v13M12 8S9 3 7 5s3 3 5 3zm0 0s3-5 5-3-3 3-5 3z"/>',
+    bubble: '<path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4V5a1 1 0 0 1 1-1z"/><path d="M8 9h8M8 12.5h5"/>',
+    doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+    doctext: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+    xcircle: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M9 9l6 6M15 9l-6 6" stroke="var(--canvas)"/>',
+    pencil: '<path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/>',
+    pin: '<path d="M9 3h6l-1 6 4 4H6l4-4z" fill="currentColor"/><path d="M12 13v8"/>',
+    euro: '<circle cx="12" cy="12" r="10"/><path d="M15.5 8.5a4 4 0 1 0 0 7M7 11h6M7 13.5h6"/>',
+    people: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M17.5 14a5 5 0 0 1 4.5 5"/>',
+    lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    logout: '<path d="M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8"/><path d="M10 12h11M17 8l4 4-4 4"/>',
+    refresh: '<path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5"/><path d="M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/>',
+    alert: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M12 7v6M12 16.5v.5" stroke="#fff"/>',
+    octagon: '<path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z" fill="currentColor" stroke="none"/><path d="M12 7v6M12 16.5v.5" stroke="#fff"/>',
+    send: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+    share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/>',
+    checkc: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.5 12.5l3 3 6-6.5" stroke="var(--canvas)"/>',
+    circle: '<circle cx="12" cy="12" r="10"/>',
+    ticket: '<path d="M3 8V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2a2 2 0 0 0 0 4v2a2 2 0 0 0 0 4v0a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a2 2 0 0 0 0-4z"/>',
+    tray: '<path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 13h5l1 3h6l1-3h5"/>',
+    signal: '<path d="M4 18v-2M9 18v-5M14 18v-8M19 18V7" stroke-width="3"/>',
+  };
+  const ic = (n, sw = 2) => `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]}</svg>`;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const euros = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
+  const eurosFlat = n => `${n} €`; // the card shows "1000 €", no grouping — as the source app
+  const hhmm = d => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const now = Date.now(), MIN = 60e3;
+  const relDate = t => {
+    const d = new Date(t), n = new Date();
+    const same = (a, b) => a.toDateString() === b.toDateString();
+    const y = new Date(n); y.setDate(n.getDate() - 1);
+    if (same(d, n)) return `Aujourd'hui à ${hhmm(d)}`;
+    if (same(d, y)) return `Hier à ${hhmm(d)}`;
+    return `${d.toLocaleDateString('fr-FR')} à ${hhmm(d)}`;
+  };
+  const initials = name => name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+  // ---------- SampleData.swift ----------
+  const BANNER = "Contrat signé. Disponible dans l'onglet Documents";
+  const STAGES = [
+    { key: 'a_contacter', label: 'À contacter' },
+    { key: 'rdv_programme', label: 'RDV programmé' },
+    { key: 'proposition_envoyee', label: 'Proposition envoyée' },
+    { key: 'devis_signe', label: 'Devis signé', reward: true, banner: BANNER },
+    { key: 'mission_terminee', label: 'Mission terminée', banner: BANNER },
+  ];
+  const COMMENTS = {
+    a_contacter: "Merci pour la mise en relation. Nous avons bien reçu les coordonnées de {n}. Prochain point après le 1er échange.",
+    rdv_programme: "J'ai contacté {n}. Le rendez-vous est planifié. Je vous tiens informé(e) de la suite.",
+    proposition_envoyee: "J'ai transmis à {n} la proposition. Retour attendu très prochainement.",
+    devis_signe: "{n} a signé le devis. Votre récompense est validée, nous revenons vers vous pour le règlement.",
+    mission_terminee: "Bonjour Johann,\nJe vous informe que nous allons procéder au paiement de vos honoraires. Vous recevrez votre gain très prochainement.\nN'oubliez pas de procéder à votre déclaration de revenu en fin d'année.\nSi vous êtes un apporteur d'affaire occasionnel, vous devez déclarer les sommes perçues au titre des bénéfices non commerciaux (BNC) via votre déclaration de revenus - CERFA 2042 C -\nBonne journée.",
+  };
+  const comment = (key, name) => COMMENTS[key].replaceAll('{n}', name);
+
+  const MANDATE = `Entre les soussignés :
+
+Trinity Énergie, SAS au capital de 10 000 €, dont le siège social est situé à AIX-EN-PEVELE, immatriculée au RCS de Lille sous le numéro 000 000 000, représentée par Pierre-Louis Tettamanti, en qualité de Président,
+
+ci-après « le Mandataire »,
+
+Et : Johann Lefeuvre, micro-entrepreneur, immatriculé sous le numéro SIREN 000 000 000, ci-après « le Mandant ».
+
+Article 1 — Objet
+
+Le Mandant donne mandat au Mandataire d'établir, en son nom et pour son compte, les factures correspondant aux commissions d'apport d'affaires qui lui sont dues au titre des mises en relation qu'il réalise.
+
+Article 2 — Obligations du Mandataire
+
+Le Mandataire s'engage à établir les factures conformément aux mentions obligatoires prévues par l'article 242 nonies A de l'annexe II au CGI, à respecter une numérotation chronologique et continue, à mettre chaque facture à disposition du Mandant préalablement à son émission définitive, et à en conserver un double pendant dix ans.
+
+Article 3 — Obligations du Mandant
+
+Le Mandant s'engage à signaler sans délai tout changement de sa situation, notamment le passage à un régime assujetti à la TVA, à vérifier chaque facture établie en son nom, et à procéder lui-même aux déclarations fiscales et sociales qui lui incombent.
+
+Article 5 — Absence de lien de subordination
+
+Le Mandant exerce son activité en toute indépendance. Le présent mandat ne crée ni lien de subordination, ni exclusivité, ni obligation de résultat.
+
+Article 7 — Signature électronique
+
+Les parties conviennent que la signature électronique apposée via l'application constitue une signature au sens de l'article 1367 du Code civil et vaut preuve de leur consentement.
+
+— Données de démonstration, sans valeur contractuelle —`;
+
+  const PROFILES = {
+    apporteur: { first: 'Johann', last: 'Lefeuvre', email: 'johann@example.test', company: 'Lefeuvre Conseil' },
+    admin: { first: 'Pierre-Louis', last: 'Tettamanti', email: 'pl@trinity-energie.test', company: 'Trinity Énergie' },
+  };
+
+  let uid = 0;
+  const makeState = () => ({
+    role: (window.__role || 'apporteur'),
+    tab: 'home', signedOut: false,
+    mandateSigned: false,
+    unread: 2,
+    recoFilter: 'active', recoQuery: '', expanded: 'r1',
+    recos: [
+      { id: 'r1', first: 'Thomas', last: 'Dubois', phone: '+33 6 75 75 75 75', parrain: 'Johann Lefeuvre',
+        createdAt: now - 8 * 60 * MIN, current: 4, done: [0, 1, 2, 3, 4], rewardAmount: 1000, rewardStatus: 'invoiced',
+        hasContract: true, idle: 0, note: 'Gérant de la boulangerie rue Nationale. Préfère être appelé le matin.' },
+      { id: 'r2', first: 'Thomas', last: 'Dubois', phone: '+33 6 75 75 75 75', parrain: 'Johann Lefeuvre',
+        createdAt: now - 8 * 60 * MIN, current: 1, done: [0], rewardAmount: 1000, rewardStatus: 'pending',
+        hasContract: false, idle: 11, note: '' },
+    ],
+    chatTab: 'discussions', chatFilter: 'Toutes', chatQuery: '', openThread: null, draft: '',
+    threads: [
+      { id: 't1', kind: 'direct', name: 'Pierre-Louis Tettamanti', unread: 1, pinned: false, msgs: [
+        { me: true, body: 'Bonjour, une question sur Thomas Dubois.', at: now - 15 * MIN },
+        { me: false, body: 'Je vous réponds tout de suite.', at: now - 10 * MIN } ] },
+      { id: 't2', kind: 'direct', name: 'Marie Durand', unread: 0, pinned: true, msgs: [
+        { me: true, body: "C'est signé pour Boulangerie Petit.", at: now - 123 * MIN },
+        { me: false, body: 'Merci !', at: now - 120 * MIN } ] },
+      { id: 't3', kind: 'ticket', name: 'Problème de virement', unread: 0, pinned: false, msgs: [
+        { me: true, body: "Je n'ai pas reçu mon paiement.", at: now - 1440 * MIN } ] },
+    ],
+    invoiceSigned: { apporteur: true, entreprise: false },
+    profilePage: null, // 'gains' | 'members' | 'payables'
+    sheet: null, dialog: null, toast: null,
+    form: { first: '', last: '', phone: '', email: '', company: '', consent: false },
+    legalAtEnd: false,
+  });
+  let S = makeState();
+
+  const screen = document.getElementById('screen');
+
+  // ---------- pieces ----------
+  const statusbar = () => `<div class="statusbar"><span>9:41</span><span class="island"></span><span class="sys">${ic('signal', 2)}<svg width="25" height="12" viewBox="0 0 25 12" aria-hidden="true"><rect x=".5" y=".5" width="21" height="11" rx="3" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx=".75" fill="currentColor" opacity=".4"/></svg></span></div>`;
+  const demoBanner = () => `<div class="demo">Données de démonstration — ${S.role === 'admin' ? 'vue entreprise' : 'vue apporteur'}</div>`;
+  const tabbar = () => {
+    const t = [['home', 'house', 'Accueil'], ['reco', 'reco', 'Reco'], ['chat', 'chat', 'Chat'], ['profile', 'person', 'Profil']];
+    return `<nav class="tabbar" role="tablist">${t.map(([k, i, l]) =>
+      `<button class="tab" role="tab" data-a="tab" data-v="${k}" aria-selected="${S.tab === k}">${ic(i, 1.7)}${l}${k === 'home' && S.unread ? `<span class="badge">${S.unread}</span>` : ''}</button>`).join('')}</nav>`;
+  };
+  const seg = (action, value, opts) => `<div class="seg" role="tablist">${opts.map(([v, l]) =>
+    `<button role="tab" data-a="${action}" data-v="${v}" aria-selected="${value === v}">${l}</button>`).join('')}</div>`;
+  const searchField = (id, ph, val) => `<label class="search card">${ic('search')}<input id="${id}" data-in="${id}" placeholder="${ph}" value="${esc(val)}" autocomplete="off">${val ? `<button class="clear" data-a="clear" data-v="${id}" aria-label="Effacer la recherche">${ic('xcircle')}</button>` : ''}</label>`;
+
+  // ---------- Accueil ----------
+  function home() {
+    const p = PROFILES[S.role];
+    const mandate = S.role === 'apporteur' && !S.mandateSigned ? `<div class="notice">${ic('alert')}<div><b>Mandat de facturation à signer</b><span>Tant qu'il n'est pas signé, aucune facture ne peut être émise en votre nom et vos gains ne peuvent pas être réglés.</span></div></div>` : '';
+    const active = S.recos.filter(r => !r.archived).length + 1; // + one in the admin's queue, as DashboardStats in the demo
+    return `<div class="navbar"><span></span><button class="navbtn" data-a="notifs" aria-label="Notifications">${ic('bell', 1.8)}</button></div>
+    <div class="page">
+      <div><h1 class="h-title">Bonjour, ${p.first}</h1><div class="muted s16">Voici où en sont vos recommandations.</div></div>
+      ${mandate}
+      <div class="tiles">
+        <div class="card tile"><div class="v" style="color:var(--brand)">${active}</div><div class="l">Recommandations actives</div></div>
+        <div class="card tile"><div class="v" style="color:var(--brand)">25 %</div><div class="l">Taux de conversion</div></div>
+        <div class="card tile"><div class="v" style="color:var(--text-2)">${euros(1500)}</div><div class="l">En attente</div></div>
+        <div class="card tile"><div class="v" style="color:var(--success-text)">${euros(1300)}</div><div class="l">Gagné</div></div>
+      </div>
+      <button class="btn-primary" data-a="create">Nouvelle recommandation</button>
+    </div>`;
+  }
+
+  // ---------- Reco ----------
+  const stateOf = (r, i) => r.done.includes(i) ? 'completed' : (i === r.current ? 'current' : 'pending');
+  function recoCard(r) {
+    const open = S.expanded === r.id;
+    const amount = r.rewardStatus !== 'pending' ? `<div class="amount">${eurosFlat(r.rewardAmount)}</div>` : '';
+    const name = `${r.first} ${r.last}`;
+    let body = '';
+    if (open) {
+      const reached = Math.max(-1, ...r.done);
+      const banner = reached >= 0 && STAGES[reached].banner ? `<div class="banner">${STAGES[reached].banner}</div>` : '';
+      const steps = STAGES.map((s, i) => {
+        const st = stateOf(r, i), last = i === STAGES.length - 1;
+        return `<div class="step"><div class="rail"><div class="node ${st}">${st === 'completed' ? ic('check', 3) : ''}</div>${last ? '' : `<div class="conn ${st === 'completed' ? 'done' : ''}"></div>`}</div>
+          <div class="lbl ${st}"><span class="t">${s.label}</span>${s.reward ? `<span class="reward">${ic('gift', 1.5)}Récompense</span>` : ''}${r.done.includes(i) ? `<button class="bubble-btn" data-a="comment" data-r="${r.id}" data-v="${i}" aria-label="Commentaire pour l'étape ${s.label}">${ic('bubble', 1.6)}</button>` : ''}</div></div>`;
+      }).join('');
+      const complete = r.done.includes(STAGES.length - 1);
+      const footer = `<button class="btn-secondary" data-a="notes" data-r="${r.id}">${ic('doc', 1.7)}Notes personnelles</button>
+        ${r.hasContract ? `<button class="btn-secondary" data-a="invoice">${ic('doctext', 1.7)}Voir le contrat</button>` : ''}
+        ${S.role === 'admin' && !complete
+          ? `<div class="row2"><button class="btn-tertiary" data-a="detail" data-r="${r.id}">Voir plus</button><button class="btn-primary" data-a="validate" data-r="${r.id}">Valider l'étape</button></div>`
+          : `<button class="btn-tertiary" data-a="detail" data-r="${r.id}">Voir plus</button>`}`;
+      body = `${banner}<div class="steps">${steps}</div><div style="display:flex;flex-direction:column;gap:12px">${footer}</div>`;
+    }
+    return `<article class="card reco"><div class="reco-head" data-a="expand" data-r="${r.id}" role="button" tabindex="0" aria-expanded="${open}">
+      <div class="who"><div class="name">${esc(name)}</div><div class="muted s16">Recommandé par ${esc(r.parrain)}</div><div class="muted s16">${relDate(r.createdAt)}</div></div>
+      ${amount}<span class="chev ${open ? '' : 'down'}">${ic('chevUp', 2.4)}</span></div>${body}</article>`;
+  }
+  function reco() {
+    const q = S.recoQuery.trim().toLowerCase();
+    const list = S.recos.filter(r => (S.recoFilter === 'archived') === !!r.archived)
+      .filter(r => !q || `${r.first} ${r.last} ${r.parrain}`.toLowerCase().includes(q));
+    const empty = `<div class="empty">${ic(q ? 'search' : 'tray', 1.6)}<div>${q ? 'Aucun résultat' : (S.recoFilter === 'active' ? 'Aucune recommandation active' : 'Aucune recommandation archivée')}</div><div class="muted s16">${q ? 'Essayez un autre nom.' : 'Vos recommandations apparaîtront ici dès leur création.'}</div></div>`;
+    return `<div class="page" style="padding-top:8px">
+      <h1 class="h-title">Recommandations</h1>
+      ${seg('recoFilter', S.recoFilter, [['active', 'Actives'], ['archived', 'Archivées']])}
+      ${searchField('recoQuery', 'Rechercher...', S.recoQuery)}
+      ${list.length ? list.map(recoCard).join('') : empty}
+    </div>`;
+  }
+
+  // ---------- Chat ----------
+  function chat() {
+    if (S.openThread) return threadDetail();
+    const q = S.chatQuery.trim().toLowerCase();
+    const filters = ['Toutes', 'Non lues', 'Groupes', 'Épinglées', 'Archivées'];
+    let list = S.threads.filter(t => (S.chatTab === 'tickets') === (t.kind === 'ticket'));
+    list = list.filter(t => ({ 'Toutes': !t.archived, 'Non lues': t.unread > 0, 'Groupes': false, 'Épinglées': t.pinned, 'Archivées': !!t.archived })[S.chatFilter]);
+    if (q) list = list.filter(t => threadName(t).toLowerCase().includes(q));
+    list.sort((a, b) => (b.pinned - a.pinned) || (last(b).at - last(a).at));
+    const rows = list.map(t => `<button class="thread" data-a="openThread" data-v="${t.id}">
+      <span class="avatar">${initials(threadName(t))}</span>
+      <span class="mid"><b>${esc(threadName(t))}${t.pinned ? ic('pin', 1.5) : ''}</b><span>${esc(last(t).body)}</span></span>
+      <span class="end">${hhmm(new Date(last(t).at))}${t.unread ? `<span class="count">${t.unread}</span>` : ''}</span></button>`).join('');
+    return `<div class="page" style="padding-top:8px">
+      <h1 class="h-title">Chat</h1>
+      ${seg('chatTab', S.chatTab, [['discussions', 'Discussions'], ['tickets', 'Tickets']])}
+      <div class="row2">${searchField('chatQuery', 'Rechercher une discussion', S.chatQuery)}<button class="compose card" data-a="compose" aria-label="Nouvelle discussion">${ic('pencil', 1.7)}</button></div>
+      <div class="chips">${filters.map(f => `<button class="chip" data-a="chatFilter" data-v="${f}" aria-pressed="${S.chatFilter === f}">${f}</button>`).join('')}</div>
+      ${list.length ? `<div class="threads">${rows}</div>` : `<div class="empty">${ic(S.chatTab === 'tickets' ? 'ticket' : 'chat', 1.6)}<div>${S.chatTab === 'tickets' ? 'Aucun ticket' : 'Aucune discussion'}</div></div>`}
+    </div>`;
+  }
+  const last = t => t.msgs[t.msgs.length - 1];
+  // A direct thread is named after the other person, so the admin sees Johann.
+  const threadName = t => (S.role === 'admin' && t.id === 't1') ? 'Johann Lefeuvre' : t.name;
+  function threadDetail() {
+    const t = S.threads.find(x => x.id === S.openThread);
+    const mine = m => S.role === 'admin' && t.id === 't1' ? !m.me : m.me;
+    return `<div class="navbar"><button class="navbtn" data-a="closeThread">${ic('chevL', 2.4)}Chat</button><span class="t">${esc(threadName(t))}</span><span></span></div>
+      <div class="msgs">${t.msgs.map(m => `<div class="msg ${mine(m) ? 'mine' : ''}"><div class="b"><span>${esc(m.body)}</span><small>${hhmm(new Date(m.at))}</small></div></div>`).join('')}</div>
+      <form class="composer" data-form="send"><input class="field" id="draft" data-in="draft" placeholder="Message" value="${esc(S.draft)}" autocomplete="off"><button class="send" type="submit" aria-label="Envoyer" ${S.draft.trim() ? '' : 'disabled'}>${ic('send', 2.6)}</button></form>`;
+  }
+
+  // ---------- Profil ----------
+  function profile() {
+    if (S.profilePage === 'gains') return gains();
+    if (S.profilePage === 'members') return members();
+    if (S.profilePage === 'payables') return payables();
+    const p = PROFILES[S.role], full = `${p.first} ${p.last}`;
+    const consoleRow = (a, i, l) => `<button class="card console" data-a="profilePage" data-v="${a}">${ic(i, 1.7)}<span>${l}</span>${ic('chevR', 2.4)}</button>`;
+    const billing = `<div class="card billing"><b>Facturation</b>
+      <div class="kv"><span>Régime de TVA</span><span>Franchise en base (293 B)</span></div><div class="divider"></div>
+      ${S.mandateSigned ? `<div class="ok">${ic('checkc')}Mandat de facturation signé</div>`
+        : `<div class="s16" style="line-height:1.35">Le mandat autorise Trinity Énergie à établir vos factures d'apport d'affaires en votre nom. Il doit être signé avant toute facturation.</div><button class="btn-primary" data-a="mandate">Lire et signer le mandat</button>`}</div>`;
+    return `<div class="page" style="padding-top:8px">
+      <h1 class="h-title">Profil</h1>
+      <div class="card idcard"><span class="avatar">${initials(full)}</span><div><div class="n">${full}</div><div class="muted s16">${p.email}</div><div class="muted s16">${p.company}</div></div></div>
+      ${S.role === 'admin' ? consoleRow('members', 'people', 'Apporteurs') + consoleRow('payables', 'euro', 'À régler') : consoleRow('gains', 'euro', 'Mes gains') + billing}
+      <button class="btn-secondary" data-a="toast" data-v="Conditions générales : ouvertes depuis Supabase dans l'app.">${ic('doctext', 1.7)}Conditions générales</button>
+      <button class="btn-secondary" data-a="toast" data-v="Politique de confidentialité : ouverte depuis Supabase dans l'app.">${ic('lock', 1.7)}Confidentialité</button>
+      <button class="btn-secondary" data-a="signout">${ic('logout', 1.7)}Se déconnecter</button>
+      <button class="danger" data-a="deleteAsk">Supprimer mon compte</button>
+    </div>`;
+  }
+  const subnav = title => `<div class="navbar"><button class="navbtn" data-a="profileBack">${ic('chevL', 2.4)}Profil</button><span class="t">${title}</span><span></span></div>`;
+  function gains() {
+    const lines = [['Thomas Dubois', 'FA-2026-0001', 1000, 'Réglée', true], ['Claire Petit', 'FA-2026-0002', 300, 'Facturée'], ['Luc Martin', null, 750, 'Acquise']];
+    return `${subnav('Mes gains')}<div class="page">
+      <div class="tiles"><div class="card tile"><div class="v" style="color:var(--success-text)">${euros(2050)}</div><div class="l">Acquis</div></div><div class="card tile"><div class="v">${euros(1050)}</div><div class="l">Reste dû</div></div></div>
+      ${lines.map(([n, inv, a, s, paid]) => `<div class="card line"><div class="l1"><span>${n}</span><span class="cap">${inv || 'Pas encore facturée'}</span></div><div class="r1"><b>${euros(a)}</b><span class="cap ${paid ? 'good' : ''}">${s}</span></div></div>`).join('')}
+      <button class="btn-secondary" data-a="toast" data-v="Le relevé s'exporte en texte via la feuille de partage iOS.">${ic('share', 1.7)}Exporter le relevé</button>
+      <div class="cap" style="line-height:1.4">Ces sommes sont à déclarer au titre des bénéfices non commerciaux (BNC), via la déclaration de revenus CERFA 2042 C.</div>
+    </div>`;
+  }
+  function members() {
+    const m = [['Johann Lefeuvre', 'johann@example.test', 'Actif', 'good', '4 actives · 18 au total', 'Mandat signé · RIB reçu'],
+               ['Marie Durand', 'marie@example.test', 'En attente', 'warn', 'Aucune recommandation', 'Mandat manquant · RIB manquant'],
+               ['Paul Riviere', 'paul@example.test', 'Actif', 'good', 'Aucune recommandation', 'Assujetti TVA · RIB manquant']];
+    return `${subnav('Apporteurs')}<div class="page">
+      <button class="btn-primary" data-a="toast" data-v="Code d'invitation créé : K7M2QXPZ (valable 30 jours)">Inviter un apporteur</button>
+      ${m.map(([n, e, s, k, a, b]) => `<div class="card line" style="align-items:flex-start"><span class="avatar" style="width:44px;height:44px;font-size:15px">${initials(n)}</span><div class="l1"><b>${n}</b><span class="cap">${e}</span><span class="cap">${a}</span><span class="cap">${b}</span></div><span class="pill ${k}">${s}</span></div>`).join('')}
+    </div>`;
+  }
+  function payables() {
+    const p = [['FA-2026-0004', 'Johann Lefeuvre', 'Thomas Dubois', 300, true], ['FA-2026-0005', 'Johann Lefeuvre', 'Claire Petit', 750, true], ['FA-2026-0006', 'Paul Riviere', 'Luc Martin', 500, false]];
+    return `${subnav('À régler')}<div class="page">
+      ${p.map(([n, a, f, amt, ok]) => `<div class="card line"><div class="l1"><b>${a}</b><span class="cap">${n} · ${f}</span>${ok ? '' : '<span class="cap" style="color:var(--destructive)">RIB manquant, règlement bloqué</span>'}</div><div class="r1"><b>${euros(amt)}</b></div></div>`).join('')}
+      <button class="btn-primary" data-a="toast" data-v="2 factures marquées réglées (${euros(1050)}).">Marquer 2 factures réglées</button>
+    </div>`;
+  }
+
+  // ---------- sheets ----------
+  const sheetNav = (title, left, right) => `<div class="grab"></div><div class="navbar">${left || '<span></span>'}<span class="t">${title}</span>${right || '<span></span>'}</div>`;
+  const cancelBtn = (l = 'Annuler') => `<button class="navbtn" data-a="closeSheet">${l}</button>`;
+  function sheet() {
+    const s = S.sheet; if (!s) return '';
+    let inner = '';
+    if (s.kind === 'create') {
+      const f = S.form, digits = f.phone.replace(/\D/g, '');
+      const dup = digits.endsWith('675757575');
+      const valid = f.first.trim() && f.last.trim() && digits.length >= 9 && f.consent && !dup;
+      const fld = (id, label, ph, type = 'text') => `<label class="field-l"><span>${label}</span><span class="box"><input id="f-${id}" data-in="form.${id}" type="${type}" placeholder="${ph}" value="${esc(f[id])}" autocomplete="off"></span></label>`;
+      inner = sheetNav('Nouvelle recommandation', cancelBtn()) + `<form class="body" data-form="create">
+        <div class="muted">Qui souhaitez-vous recommander ?</div>
+        ${fld('first', 'Prénom', 'Prénom du filleul')}${fld('last', 'Nom', 'Nom du filleul')}${fld('phone', 'Téléphone', '+33 6 …', 'tel')}
+        ${fld('email', 'Email (facultatif)', 'adresse@exemple.fr', 'email')}${fld('company', 'Société (facultatif)', 'Raison sociale')}
+        ${dup ? `<div class="warnbox block">${ic('octagon')}<span>Vous avez déjà recommandé cette personne. Retrouvez-la dans vos recommandations actives.</span></div>` : ''}
+        <div class="toggle-row" data-a="consent"><span style="flex:1">J'ai informé cette personne que je transmets ses coordonnées et elle en est d'accord.</span><span class="switch" role="switch" aria-checked="${f.consent}" tabindex="0"></span></div>
+        <button class="btn-primary" type="submit" ${valid ? '' : 'disabled'}>Envoyer la recommandation</button></form>`;
+    } else if (s.kind === 'notes') {
+      const r = S.recos.find(x => x.id === s.r);
+      inner = sheetNav('Notes personnelles', cancelBtn(), `<button class="navbtn" data-a="saveNote" style="font-weight:600">Enregistrer</button>`) +
+        `<div class="body"><div class="box card" style="padding:14px 16px;box-shadow:none"><textarea id="note" rows="8" placeholder="Ce que vous voulez retenir sur ${esc(r.first)}…">${esc(r.note)}</textarea></div><div class="muted s16">Ces notes ne sont visibles que par vous.</div></div>`;
+    } else if (s.kind === 'detail') {
+      const r = S.recos.find(x => x.id === s.r);
+      const stale = r.idle > 7;
+      inner = sheetNav(`${r.first} ${r.last}`, cancelBtn('Fermer')) + `<div class="body">
+        ${stale ? `<div class="warnbox" style="background:var(--stale-soft);color:var(--stale-text)">${ic('alert')}<span>Sans activité depuis ${r.idle} jours</span></div>` : `<div class="banner">Mise à jour aujourd'hui</div>`}
+        <div class="card billing"><div class="kv"><span>Téléphone</span><span>${r.phone}</span></div><div class="divider"></div>
+        <div class="kv"><span>Recommandé par</span><span>${r.parrain}</span></div><div class="divider"></div>
+        <div class="kv"><span>Créée</span><span>${relDate(r.createdAt)}</span></div><div class="divider"></div>
+        <div class="kv"><span>Étape</span><span>${STAGES[r.current].label}</span></div><div class="divider"></div>
+        <div class="kv"><span>Récompense</span><span>${euros(r.rewardAmount)} · ${({ pending: 'En attente', earned: 'Acquise', invoiced: 'Facturée', paid: 'Réglée' })[r.rewardStatus]}</span></div></div>
+        ${S.role === 'admin' ? `<button class="btn-secondary" data-a="toast" data-v="Réassigner, rappels, archiver : menu long-press sur la carte.">Réassigner</button>` : ''}
+        <button class="btn-secondary" data-a="notes" data-r="${r.id}">${ic('doc', 1.7)}Notes personnelles</button></div>`;
+    } else if (s.kind === 'invoice') {
+      const sg = S.invoiceSigned, full = sg.apporteur && sg.entreprise;
+      const me = PROFILES[S.role];
+      inner = sheetNav('Facture', cancelBtn('Fermer')) + `<div class="body">
+        <div class="card invoice"><div><b>Pierre-Louis Tettamanti</b><br>Trinity Énergie<br>AIX-EN-PEVELE</div>
+        <div style="text-align:right"><b>Johann Lefeuvre</b></div><div class="num">• Numéro de facture FA-2026-0001</div>
+        <div>Je soussigné : Johann Lefeuvre<br>Atteste avoir mis en relation : Trinity Énergie<br>Avec : Thomas Dubois<br>Pour la prestation suivante : Apport d'affaires - mise en relation<br>Intervenue le : 17.09.2026</div>
+        <div class="divider"></div><div class="kv" style="font-size:17px"><span style="color:var(--text)">Montant de la prestation :</span><b>300.00 EUR</b></div><div class="divider"></div>
+        <div>TVA non applicable – Régime d'exonération de TVA (Article 293B du Code général des impôts)<br>Modalité de règlement : Virement bancaire<br>Fait à : AIX-EN-PEVELE<br>Le : 17.09.2026</div>
+        <div>N'oubliez pas de procéder à votre déclaration de revenu en fin d'année.</div>
+        <div><u>Signatures :</u><div style="text-align:center">Johann Lefeuvre</div><div style="text-align:center">Pierre-Louis Tettamanti</div></div></div>
+        <div class="card sigpanel"><div class="eyebrow">VOUS ALLEZ SIGNER EN TANT QUE</div><div style="font-size:22px;font-weight:600">${me.first} ${me.last}</div><div class="divider"></div>
+        ${[['apporteur', 'Apporteur · Johann Lefeuvre'], ['entreprise', 'Entreprise · Pierre-Louis Tettamanti']].map(([k, l]) => `<div class="sig ${sg[k] ? 'signed' : ''}">${ic(sg[k] ? 'checkc' : 'circle', 1.5)}<span>${l}</span><span class="muted s16">${sg[k] ? 'signé' : 'en attente'}</span></div>`).join('')}
+        ${full ? '' : `<button class="btn-primary" data-a="sign">Signer</button>`}</div>
+        ${full ? `<div class="card sigpanel"><div class="eyebrow">DOCUMENT</div><button class="b-plain" style="display:flex;gap:8px;align-items:center" data-a="toast" data-v="Dans l'app, le PDF signé part par la feuille de partage iOS.">${ic('share', 1.7)}Enregistrer ou envoyer le PDF</button><div class="muted s16">À conserver dix ans : c'est cette facture que vous déclarez.</div></div>` : ''}
+        </div>`;
+    } else if (s.kind === 'notifs') {
+      const n = [['euro', 'Commission acquise', 'Thomas Dubois a signé — 300.00 €', 'il y a 30 min'], ['chat', 'Pierre-Louis Tettamanti', 'Je vous réponds tout de suite.', 'il y a 10 min'], ['doctext', 'Facture à signer', 'Facture FA-2026-0001 — 300.00 EUR', 'hier']];
+      inner = sheetNav('Notifications', '<span></span>', cancelBtn('Fermer')) + `<div class="body" style="gap:0">${n.map(([i, t, b, w], k) => `<div class="notif"><span class="ic">${ic(i, 1.8)}</span><div class="tx"><b style="font-weight:${s.unreadAtOpen && k < 2 ? 600 : 400}">${t}</b><span class="muted s16">${b}</span><span class="cap">${w}</span></div></div>`).join('')}</div>`;
+    } else if (s.kind === 'mandate') {
+      inner = sheetNav('Mandat de facturation', cancelBtn()) + `<div class="body"><div class="cap">Version demo-1 · faites défiler jusqu'à la fin pour signer</div><div class="legal" id="legal">${esc(MANDATE)}</div>
+        <button class="btn-primary" data-a="acceptMandate" ${S.legalAtEnd ? '' : 'disabled'}>J'accepte et je signe</button></div>`;
+    }
+    return `<div class="scrim" data-a="closeSheet"></div><div class="sheet" role="dialog" aria-modal="true">${inner}</div>`;
+  }
+  function dialog() {
+    const d = S.dialog; if (!d) return '';
+    if (d.kind === 'comment') return `<div class="dialog-wrap" data-a="closeDialog" data-self="1"><div class="dialog" role="dialog" aria-modal="true"><div class="ic">${ic('bubble', 1.6)}</div><h3>Commentaire pour l'étape<br>"${d.label}"</h3><div class="msgbox"><span style="font-size:15px">Message</span><div>${esc(d.body)}</div></div><div class="actions"><button class="b-brand" data-a="closeDialog">Fermer</button></div></div></div>`;
+    if (d.kind === 'delete') return `<div class="dialog-wrap" data-a="closeDialog" data-self="1"><div class="dialog" role="alertdialog" aria-modal="true"><h3 style="font-weight:600;font-size:18px">Supprimer définitivement votre compte ?</h3><div class="muted s16" style="text-align:center;line-height:1.35">Vos recommandations et vos factures sont conservées pour des raisons légales, mais votre compte et vos données personnelles seront supprimés.</div><div class="actions"><button class="b-plain" data-a="closeDialog">Annuler</button><button class="b-danger" data-a="deleteDo">Supprimer</button></div></div></div>`;
+    return '';
+  }
+  function signin() {
+    return `<div class="signin"><h1 class="h-title">Connexion</h1>
+      <label class="field-l"><span>Email</span><span class="box"><input id="si-email" value="${PROFILES[S.role].email}"></span></label>
+      <label class="field-l"><span>Mot de passe</span><span class="box"><input id="si-pw" type="password" value="demodemo"></span></label>
+      <button class="btn-primary" data-a="signin">Se connecter</button>
+      <div style="display:flex;justify-content:space-between;color:var(--brand);font-size:16px"><span>Mot de passe oublié ?</span><span>J'ai un code d'invitation</span></div>
+      <div class="muted s16">L'accès est réservé aux apporteurs invités par Trinity Énergie.</div></div>`;
+  }
+
+  // ---------- render ----------
+  function render() {
+    const prev = screen.querySelector('.content');
+    const top = prev ? prev.scrollTop : 0;
+    const focusId = document.activeElement && document.activeElement.id;
+    const caret = document.activeElement && document.activeElement.selectionStart;
+    const legal = screen.querySelector('#legal'); const legalTop = legal ? legal.scrollTop : 0;
+    const bodyEl = screen.querySelector('.sheet .body'); const sheetTop = bodyEl ? bodyEl.scrollTop : 0;
+    let main;
+    if (S.signedOut) main = signin();
+    else main = ({ home, reco, chat, profile })[S.tab === 'reco' ? 'reco' : S.tab]();
+    const chatDetail = !S.signedOut && S.tab === 'chat' && S.openThread;
+    screen.innerHTML = statusbar() + demoBanner() +
+      `<div class="content" ${chatDetail ? 'style="display:flex;flex-direction:column"' : ''}>${main}</div>` +
+      (S.signedOut ? '' : tabbar()) + sheet() + dialog() + (S.toast ? `<div class="toast" role="status">${esc(S.toast)}</div>` : '');
+    const c = screen.querySelector('.content'); if (c && !S._resetScroll) c.scrollTop = top; S._resetScroll = false;
+    if (chatDetail && S._scrollBottom) { c.scrollTop = c.scrollHeight; S._scrollBottom = false; }
+    const lg = screen.querySelector('#legal'); if (lg) lg.scrollTop = legalTop;
+    const sb = screen.querySelector('.sheet .body'); if (sb) sb.scrollTop = sheetTop;
+    if (focusId) { const el = document.getElementById(focusId); if (el && el.focus) { el.focus({ preventScroll: true }); try { if (caret != null) el.setSelectionRange(caret, caret); } catch (e) {} } }
+  }
+  const go = (patch) => { Object.assign(S, patch); render(); };
+  let toastTimer;
+  const toast = msg => { clearTimeout(toastTimer); go({ toast: msg }); toastTimer = setTimeout(() => go({ toast: null }), 2600); };
+
+  // ---------- events ----------
+  screen.addEventListener('click', e => {
+    const el = e.target.closest('[data-a]'); if (!el) return;
+    if (el.dataset.self && e.target !== el) return;
+    const a = el.dataset.a, v = el.dataset.v, r = S.recos.find(x => x.id === el.dataset.r);
+    switch (a) {
+      case 'tab': S._resetScroll = true; return go({ tab: v, openThread: null, profilePage: null });
+      case 'recoFilter': return go({ recoFilter: v });
+      case 'chatTab': return go({ chatTab: v, chatFilter: 'Toutes' });
+      case 'chatFilter': return go({ chatFilter: v });
+      case 'clear': S[v] = ''; return render();
+      case 'expand': return go({ expanded: S.expanded === r.id ? null : r.id });
+      case 'comment': return go({ dialog: { kind: 'comment', label: STAGES[+v].label, body: comment(STAGES[+v].key, `${r.first} ${r.last}`) } });
+      case 'closeDialog': return go({ dialog: null });
+      case 'notes': return go({ sheet: { kind: 'notes', r: r.id } });
+      case 'saveNote': { const t = document.getElementById('note'); S.recos.find(x => x.id === S.sheet.r).note = t.value; S.sheet = null; return toast('Notes enregistrées'); }
+      case 'detail': return go({ sheet: { kind: 'detail', r: r.id } });
+      case 'invoice': return go({ sheet: { kind: 'invoice' } });
+      case 'sign': { const k = S.invoiceSigned.apporteur ? 'entreprise' : 'apporteur'; S.invoiceSigned[k] = true; return render(); }
+      case 'validate': {
+        // Completes the stage in progress and moves the pointer on, as advance_stage does.
+        const i = r.current, lastIdx = STAGES.length - 1;
+        if (!r.done.includes(i)) r.done.push(i);
+        if (i < lastIdx) r.current = i + 1;
+        if (STAGES[i].reward && r.rewardStatus === 'pending') r.rewardStatus = 'earned';
+        if (i === lastIdx) r.hasContract = true;
+        r.idle = 0;
+        return toast(`Étape « ${STAGES[i].label} » validée`);
+      }
+      case 'create': S.form = { first: '', last: '', phone: '', email: '', company: '', consent: false }; return go({ sheet: { kind: 'create' } });
+      case 'consent': S.form.consent = !S.form.consent; return render();
+      case 'closeSheet': return go({ sheet: null });
+      case 'notifs': return go({ sheet: { kind: 'notifs', unreadAtOpen: S.unread > 0 }, unread: 0 });
+      case 'openThread': { const t = S.threads.find(x => x.id === v); t.unread = 0; S._scrollBottom = true; return go({ openThread: v, draft: '' }); }
+      case 'closeThread': return go({ openThread: null });
+      case 'compose': return S.chatTab === 'tickets' ? toast('Nouveau ticket : un administrateur y est affecté dès l\'ouverture.') : (S._scrollBottom = true, go({ openThread: 't1' }));
+      case 'profilePage': S._resetScroll = true; return go({ profilePage: v });
+      case 'profileBack': return go({ profilePage: null });
+      case 'mandate': return go({ sheet: { kind: 'mandate' }, legalAtEnd: false });
+      case 'acceptMandate': S.sheet = null; S.mandateSigned = true; return toast('Mandat de facturation signé');
+      case 'signout': return go({ signedOut: true });
+      case 'signin': return go({ signedOut: false, tab: 'home' });
+      case 'deleteAsk': return go({ dialog: { kind: 'delete' } });
+      case 'deleteDo': S.dialog = null; return toast('Dans la démo, rien n\'est supprimé.');
+      case 'toast': return toast(v);
+    }
+  });
+  screen.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="button"],[role="switch"]')) { e.preventDefault(); e.target.click(); }
+  });
+  screen.addEventListener('input', e => {
+    const k = e.target.dataset.in; if (!k) return;
+    if (k.startsWith('form.')) S.form[k.slice(5)] = e.target.value; else S[k] = e.target.value;
+    render();
+  });
+  screen.addEventListener('scroll', e => {
+    if (e.target.id === 'legal' && !S.legalAtEnd) {
+      const l = e.target;
+      if (l.scrollTop + l.clientHeight >= l.scrollHeight - 8) { S.legalAtEnd = true; render(); }
+    }
+  }, true);
+  screen.addEventListener('submit', e => {
+    e.preventDefault();
+    if (e.target.dataset.form === 'send') {
+      const body = S.draft.trim(); if (!body) return;
+      const t = S.threads.find(x => x.id === S.openThread);
+      const asAdmin = S.role === 'admin' && t.id === 't1';
+      t.msgs.push({ me: !asAdmin, body, at: Date.now() });
+      S._scrollBottom = true; return go({ draft: '' });
+    }
+    if (e.target.dataset.form === 'create') {
+      const f = S.form;
+      S.recos.unshift({ id: 'n' + (++uid), first: f.first.trim(), last: f.last.trim(), phone: f.phone, parrain: 'Johann Lefeuvre',
+        createdAt: Date.now(), current: 0, done: [], rewardAmount: 1000, rewardStatus: 'pending', hasContract: false, idle: 0, note: '' });
+      S._resetScroll = true;
+      go({ sheet: null, tab: 'reco', recoFilter: 'active', recoQuery: '', expanded: S.recos[0].id });
+      toast('Recommandation envoyée');
+    }
+  });
+
+  // ---------- role switch ----------
+  document.querySelectorAll('.role button').forEach(b => b.addEventListener('click', () => {
+    window.__role = b.dataset.role;
+    document.querySelectorAll('.role button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    const keep = { tab: S.tab, mandateSigned: S.mandateSigned, recos: S.recos, invoiceSigned: S.invoiceSigned, threads: S.threads, unread: S.unread };
+    S = Object.assign(makeState(), keep, { role: b.dataset.role, expanded: b.dataset.role === 'admin' ? 'r2' : S.expanded });
+    render();
+  }));
+
+  render();
+})();
+</script>

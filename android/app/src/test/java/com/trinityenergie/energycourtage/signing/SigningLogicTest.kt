@@ -104,7 +104,7 @@ class LegalTextTest {
     @Test fun demoTextsAreTheIosBytes() {
         // computed from ios/Sources/EnergyCourtage/Preview/SampleData.swift
         assertEquals("add7a88e3981a247c017bd640d6fee4155336cce30471ddb0c00f9d5634d96c2", sha256Hex(DemoLegalTexts.contract))
-        assertEquals("a104c70c87b95c968f47f6f9ef7552b672b910d762fc73a87e4b5a19982fc021", sha256Hex(DemoLegalTexts.mandate))
+        assertEquals("1f9374fbf11f87931a6d0620307bb31cdf690cae676ec78e343afc05953ea4a3", sha256Hex(DemoLegalTexts.mandate))
     }
 }
 

@@ -1,0 +1,2 @@
+# Android installer: correct type so phones offer to install it
+AddType application/vnd.android.package-archive .apk

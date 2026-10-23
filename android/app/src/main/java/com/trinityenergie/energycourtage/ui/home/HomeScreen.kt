@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Bolt
@@ -49,7 +50,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.trinityenergie.energycourtage.core.Money
 import com.trinityenergie.energycourtage.data.ProfileRepository
+import com.trinityenergie.energycourtage.model.CommissionCap
 import com.trinityenergie.energycourtage.model.DashboardStats
+import com.trinityenergie.energycourtage.model.Particulier
 import com.trinityenergie.energycourtage.model.Profile
 import com.trinityenergie.energycourtage.model.UserRole
 import com.trinityenergie.energycourtage.ui.components.PrimaryActionButton
@@ -76,12 +79,14 @@ fun HomeScreen(
     refreshKey: Int,
     accessory: @Composable () -> Unit,
     onOpenMandate: (() -> Unit)?,
+    onOpenBilling: (() -> Unit)?,
     onNewRecommendation: () -> Unit,
 ) {
     var stats by remember { mutableStateOf(DashboardStats()) }
     var profile by remember { mutableStateOf<Profile?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var appeared by remember { mutableStateOf(false) }
+    var cap by remember { mutableStateOf<CommissionCap?>(null) }
 
     LaunchedEffect(refreshKey) {
         try {
@@ -94,6 +99,8 @@ fun HomeScreen(
         } catch (e: Exception) {
             error = e.message
         }
+        // the ceiling is a notice, not the dashboard: failing, it just stays away
+        cap = if (profile?.role == UserRole.Apporteur) runCatching { profiles.commissionCap() }.getOrNull() else null
         appeared = true
     }
 
@@ -128,6 +135,7 @@ fun HomeScreen(
             if (p != null && !p.canBeInvoiced && p.role == UserRole.Apporteur) {
                 Rise(appeared, 2) { MandateNotice(onOpenMandate) }
             }
+            cap?.let { c -> c.alert?.let { alert -> Rise(appeared, 2) { CapNotice(c, alert, onOpenBilling) } } }
 
             Column(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 330.dp), verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
@@ -178,6 +186,37 @@ private fun RowScope.StatTile(label: String, value: String, tint: Color, icon: I
                 Text(value, style = Type.statValue, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
+}
+
+/** A particulier nearing or at the 2 400 € a year the contract allows: past
+ *  it, invoices wait for a SIRET. */
+@Composable
+private fun CapNotice(cap: CommissionCap, alert: CommissionCap.Alert, onOpen: (() -> Unit)?) {
+    val shape = RoundedCornerShape(Radius.card)
+    val reached = alert == CommissionCap.Alert.Reached
+    val tint = if (reached) Palette.destructive else Palette.rewardText
+    Row(
+        Modifier.fillMaxWidth()
+            .background(tint.copy(alpha = 0.12f), shape)
+            .border(1.dp, tint.copy(alpha = 0.25f), shape)
+            .then(if (onOpen != null) Modifier.clickable(onClickLabel = "Renseigner mon SIRET", onClick = onOpen) else Modifier)
+            .padding(horizontal = Spacing.l, vertical = Spacing.m),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+    ) {
+        Box(Modifier.size(34.dp).background(tint.copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Info, null, tint = tint, modifier = Modifier.size(16.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(if (reached) "Plafond atteint" else "Plafond de ${Particulier.CAP_LABEL} par an", style = Type.label, color = Palette.textPrimary)
+            Text(
+                if (reached) "Vos commissions de ${cap.year} ont atteint ${Particulier.CAP_LABEL}. Pour recevoir les suivantes, renseignez votre SIRET (société ou micro-entreprise)."
+                else "Vous avez reçu ${Money.euros(java.math.BigDecimal.valueOf(cap.total), cents = cap.total % 1.0 != 0.0)} de commissions en ${cap.year}. Au-delà de ${Particulier.CAP_LABEL} par année civile, vous devez exercer en société ou en micro-entreprise et renseigner votre SIRET.",
+                style = Type.caption, color = Palette.textSecondary,
+            )
+        }
+        if (onOpen != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = tint)
     }
 }
 

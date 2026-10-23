@@ -307,7 +307,7 @@ public struct ProfileView: View {
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.Palette.textPrimary)
                     Text(contractMessage
-                         ?? "\(contract.signedAt.formatted(date: .abbreviated, time: .omitted)) · \(contract.businessStatus.label) · \(contract.reference)")
+                         ?? "\(contract.signedAt.formatted(date: .abbreviated, time: .omitted)) · \(contract.businessStatus.shortLabel) · \(contract.reference)")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Palette.textSecondary)
                 }

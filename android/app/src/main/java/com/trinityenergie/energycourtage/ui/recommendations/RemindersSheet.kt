@@ -1,5 +1,10 @@
 package com.trinityenergie.energycourtage.ui.recommendations
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import com.trinityenergie.energycourtage.data.RemindersRepository
 import com.trinityenergie.energycourtage.model.Reminder
 import com.trinityenergie.energycourtage.reminders.ReminderAlarms
@@ -82,6 +88,14 @@ fun RemindersSheet(recommendationId: String, filleulName: String, repository: Re
     var completing by remember { mutableStateOf<String?>(null) }
     var pickingDate by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
+    // Asked when a reminder is scheduled, as on iOS: without it, Android 13
+    // and later drop the "Relance" without a word.
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun askForNotifications() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     suspend fun load() {
         reminders = try { repository.reminders(recommendationId) } catch (e: Exception) { error = e.message; reminders ?: emptyList() }
@@ -154,6 +168,7 @@ fun RemindersSheet(recommendationId: String, filleulName: String, repository: Re
                     val reminder = repository.schedule(recommendationId, text, due)
                     // mirrored onto the phone, so the relance fires with the app closed
                     ReminderAlarms.schedule(context, reminder.id, text, reminder.dueAt, recommendationId)
+                    askForNotifications()
                     label = ""
                     error = null
                     load()

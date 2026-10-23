@@ -61,6 +61,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.common.moduleinstall.ModuleInstall
+import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -85,6 +87,25 @@ import java.time.Instant
  *  again in this run. */
 private object Scanner {
     var failed = false
+    private var prefetched = false
+
+    val options: GmsDocumentScannerOptions = GmsDocumentScannerOptions.Builder()
+        .setGalleryImportAllowed(false)
+        .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+        .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+        .build()
+
+    /** The scanner is a Play services module downloaded on first use, behind
+     *  a Google screen that fails without a connection. Fetching it as soon
+     *  as Documents shows means the first scan opens at once. */
+    fun prefetch(context: Context) {
+        if (prefetched) return
+        prefetched = true
+        runCatching {
+            val request = ModuleInstallRequest.newBuilder().addApi(GmsDocumentScanning.getClient(options)).build()
+            ModuleInstall.getClient(context).installModules(request)
+        }
+    }
 
     fun isAvailable(context: Context): Boolean = !failed &&
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) &&
@@ -114,6 +135,7 @@ fun AddDocumentButton(
     var menu by remember { mutableStateOf(false) }
     var reading by remember { mutableStateOf(false) }
     val scannerAvailable = remember { Scanner.isAvailable(context) }
+    LaunchedEffect(scannerAvailable) { if (scannerAvailable) Scanner.prefetch(context.applicationContext) }
 
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(5)) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
@@ -158,12 +180,7 @@ fun AddDocumentButton(
 
     fun startScanner() {
         val activity = context.activity() ?: run { Scanner.failed = true; onError("Le scanner n'est pas disponible sur ce téléphone."); return }
-        val options = GmsDocumentScannerOptions.Builder()
-            .setGalleryImportAllowed(false)
-            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
-            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
-            .build()
-        GmsDocumentScanning.getClient(options).getStartScanIntent(activity)
+        GmsDocumentScanning.getClient(Scanner.options).getStartScanIntent(activity)
             .addOnSuccessListener { sender -> scanner.launch(IntentSenderRequest.Builder(sender).build()) }
             .addOnFailureListener {
                 Scanner.failed = true

@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { PDFDocument } from "npm:pdf-lib@1.17.1";
 import { Deps, retainContract } from "./handler.ts";
-import { ContractDocument, groupedSiret, parseLegalText, reference, renderContractPdf } from "../_shared/contract_pdf.ts";
+import { ContractDocument, groupedSiret, parseLegalText, reference, renderContractPdf, statusLabel } from "../_shared/contract_pdf.ts";
 import { Mail } from "../_shared/email.ts";
 
 export const sample: ContractDocument = {
@@ -48,6 +48,20 @@ Deno.test("the PDF holds the contract, its annex and the certificate, titled for
   assertEquals(reference(sample.id), "CT-5F0C2A1E");
   assertEquals(groupedSiret("12345678900012"), "123 456 789 00012");
   await Deno.writeFile(Deno.env.get("CONTRACT_PDF_SAMPLE") ?? "/dev/null", bytes).catch(() => {});
+});
+
+Deno.test("a particulier signs with no SIRET, and the PDF says so rather than printing an empty one", async () => {
+  const particulier: ContractDocument = {
+    ...sample, business_status: "independant",
+    signer: { ...sample.signer, company: null, legal_form: "Particulier", siret: null },
+  };
+  assertEquals(statusLabel(particulier), "Particulier");
+  assertEquals(statusLabel(sample), "Société");
+  assertEquals(statusLabel({ ...sample, signer: { ...sample.signer, legal_form: "Micro-entrepreneur" } }), "Micro-entrepreneur");
+  assertEquals(statusLabel({ ...particulier, signer: { ...particulier.signer, siret: "12345678900012" } }), "Indépendant",
+    "who signed as indépendant before it meant particulier gave a SIRET, and stays so");
+  const pdf = await PDFDocument.load(await renderContractPdf(particulier, { creationDate: new Date("2026-10-27T10:00:00Z") }));
+  assert(pdf.getPageCount() >= 3);
 });
 
 function fakeDeps(over: Partial<Deps> = {}, log: string[] = [], mails: Mail[] = []): Deps {

@@ -224,7 +224,8 @@ public struct RootView: View {
         })) {
             NavigationStack {
                 // the bell sits in the header row, beside the wordmark
-                HomeView(model: HomeViewModel(profiles: dependencies.profiles),
+                HomeView(model: HomeViewModel(profiles: dependencies.profiles,
+                                               commissions: dependencies.commissions),
                          accessory: AnyView(bell),
                          onOpenMandate: { showsMandate = true },
                          refreshToken: homeRefresh) {

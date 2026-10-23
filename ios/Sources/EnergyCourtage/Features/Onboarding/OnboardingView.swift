@@ -66,14 +66,38 @@ public final class OnboardingModel {
 
     @MainActor
     public func choose(_ status: BusinessStatus) {
-        let changed = self.status != status
         self.status = status
-        // a form that belongs to the other status would read wrong
-        if changed, var draft, !status.legalForms.contains(draft.legalForm ?? "") {
-            draft.legalForm = status.legalForms.first
-            if status == .independant { draft.companyName = nil }
-            self.draft = draft
+        if let draft { self.draft = Self.fitted(draft, to: status) }
+    }
+
+    /// The draft as the status has it. A particulier has no SIRET and no
+    /// company, and the server stores "Particulier" as their form; a company
+    /// keeps a form of its own -- one of the other status's would read wrong
+    /// -- or gets the first, preselected, so a SASU taps nothing.
+    static func fitted(_ draft: Profile, to status: BusinessStatus) -> Profile {
+        var draft = draft
+        switch status {
+        case .independant:
+            draft.siret = nil
+            draft.companyName = nil
+            draft.legalForm = BusinessStatus.particulierForm
+        case .societe:
+            if !status.legalForms.contains(draft.legalForm ?? "") {
+                draft.legalForm = status.legalForms.first
+            }
         }
+        return draft
+    }
+
+    /// A micro-entrepreneur or sole trader may leave the company name empty.
+    public var companyNameIsOptional: Bool {
+        !BusinessStatus.needsCompanyName(legalForm: draft?.legalForm)
+    }
+
+    /// "Société ou entreprise · SASU", "Indépendant · Particulier".
+    public var statusSummary: String {
+        [status?.label, draft?.legalForm].compactMap { $0 }.filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     @MainActor
@@ -96,8 +120,11 @@ public final class OnboardingModel {
     public var detailsProblem: String? {
         guard let draft, let status else { return "Choisissez votre statut." }
         func empty(_ s: String?) -> Bool { (s ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
-        if status == .societe && empty(draft.companyName) { return "Indiquez la raison sociale." }
-        if (draft.siret ?? "").filter(\.isNumber).count != 14 { return "Le SIRET compte 14 chiffres." }
+        // a particulier gives an address and nothing more
+        if status == .societe {
+            if !companyNameIsOptional && empty(draft.companyName) { return "Indiquez la raison sociale." }
+            if (draft.siret ?? "").filter(\.isNumber).count != 14 { return "Le SIRET compte 14 chiffres." }
+        }
         if empty(draft.address) { return "Indiquez l'adresse." }
         if (draft.postalCode ?? "").filter(\.isNumber).count != 5 { return "Le code postal compte 5 chiffres." }
         if empty(draft.city) { return "Indiquez la ville." }
@@ -106,9 +133,10 @@ public final class OnboardingModel {
 
     @MainActor
     public func saveDetails() async {
-        guard detailsProblem == nil, var draft else { return }
+        guard detailsProblem == nil, let status, let current = draft else { return }
         isWorking = true
         defer { isWorking = false }
+        var draft = Self.fitted(current, to: status)
         draft.siret = draft.siret?.filter(\.isNumber)
         draft.postalCode = draft.postalCode?.filter(\.isNumber)
         draft.businessStatus = status
@@ -442,6 +470,8 @@ private struct DetailsStep: View {
 
     private enum Field: Hashable { case company, siret, address, postalCode, city }
 
+    private var isParticulier: Bool { model.status == .independant }
+
     private func binding(_ keyPath: WritableKeyPath<Profile, String?>) -> Binding<String> {
         Binding(get: { model.draft?[keyPath: keyPath] ?? "" },
                 set: { model.draft?[keyPath: keyPath] = $0 })
@@ -452,7 +482,7 @@ private struct DetailsStep: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(model.status == .societe ? "Votre société" : "Votre activité")
+                        Text(isParticulier ? "Vos coordonnées" : "Votre activité")
                             .font(Theme.Typography.screenTitle)
                             .foregroundStyle(Theme.Palette.textPrimary)
                         Text("Ces informations figurent sur votre contrat et vos factures.")
@@ -462,27 +492,31 @@ private struct DetailsStep: View {
                     .padding(.top, Theme.Spacing.l)
 
                     VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                        if model.status == .societe {
+                        // a particulier has no company, no form to choose and
+                        // no SIRET: only where they live
+                        if !isParticulier {
+                            // the form first: it decides whether a name is needed
+                            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                                Text("Forme juridique")
+                                    .font(Theme.Typography.caption)
+                                    .foregroundStyle(Theme.Palette.textSecondary)
+                                FormChips(options: model.status?.legalForms ?? [],
+                                          selection: binding(\.legalForm))
+                            }
                             LabelledField("Raison sociale") {
-                                TextField("Lefeuvre Conseil", text: binding(\.companyName))
+                                TextField(model.companyNameIsOptional ? "Nom commercial (facultatif)" : "Lefeuvre Conseil",
+                                          text: binding(\.companyName))
                                     .textContentType(.organizationName)
                                     .focused($focus, equals: .company)
                                     .submitLabel(.next)
                                     .onSubmit { focus = .siret }
                             }
-                        }
-                        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                            Text(model.status == .societe ? "Forme juridique" : "Régime")
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(Theme.Palette.textSecondary)
-                            FormChips(options: model.status?.legalForms ?? [],
-                                      selection: binding(\.legalForm))
-                        }
-                        LabelledField("SIRET") {
-                            TextField("14 chiffres", text: binding(\.siret))
-                                .keyboardType(.numberPad)
-                                .focused($focus, equals: .siret)
-                                .monospacedDigit()
+                            LabelledField("SIRET") {
+                                TextField("14 chiffres", text: binding(\.siret))
+                                    .keyboardType(.numberPad)
+                                    .focused($focus, equals: .siret)
+                                    .monospacedDigit()
+                            }
                         }
                         LabelledField("Adresse") {
                             TextField("Numéro et rue", text: binding(\.address))
@@ -510,6 +544,8 @@ private struct DetailsStep: View {
                     }
                     .padding(Theme.Spacing.cardPadding)
                     .cardSurface()
+
+                    if isParticulier { CapNote() }
                 }
                 .padding(.horizontal, Theme.Spacing.gutter)
                 .padding(.bottom, Theme.Spacing.l)
@@ -541,11 +577,31 @@ private struct DetailsStep: View {
             .animation(.smooth, value: model.detailsProblem)
         }
         .onAppear {
-            // the first form preselected, so a micro-entrepreneur taps nothing
-            if (model.draft?.legalForm ?? "").isEmpty || !(model.status?.legalForms ?? []).contains(model.draft?.legalForm ?? "") {
-                model.draft?.legalForm = model.status?.legalForms.first
-            }
+            // the draft as the status has it: a form preselected for a
+            // company, nothing left over from a SIRET for a particulier
+            if let status = model.status { model.choose(status) }
         }
+    }
+}
+
+/// The particulier's ceiling, said before they sign the contract that sets it.
+private struct CapNote: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.m) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(Theme.Palette.brand)
+            Text("Sachez qu'au-delà de 2\u{00A0}400\u{00A0}€ de commissions par année civile, vous devez exercer en société ou en micro-entreprise et renseigner votre SIRET. Cette règle figure dans votre contrat.")
+                .font(Theme.Typography.secondary)
+                .foregroundStyle(Theme.Palette.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Theme.Spacing.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .fill(Theme.Palette.brandSoft)
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -679,9 +735,11 @@ private struct ContractStep: View {
         let draft = model.draft
         let lines: [(String, String)] = [
             ("Signataire", draft?.fullName ?? ""),
-            ("Statut", [model.status?.label, draft?.legalForm].compactMap { $0 }.joined(separator: " · ")),
-            model.status == .societe ? ("Société", draft?.companyName ?? "") : nil,
-            ("SIRET", Self.grouped(draft?.siret ?? "")),
+            ("Statut", model.statusSummary),
+            model.status == .societe && !(draft?.companyName ?? "").isEmpty
+                ? ("Société", draft?.companyName ?? "") : nil,
+            // a particulier has none
+            (draft?.siret ?? "").isEmpty ? nil : ("SIRET", Self.grouped(draft?.siret ?? "")),
             ("Adresse", [draft?.address, [draft?.postalCode, draft?.city].compactMap { $0 }.joined(separator: " ")]
                 .compactMap { $0 }.joined(separator: ", ")),
         ].compactMap { $0 }
@@ -805,7 +863,7 @@ private struct DoneStep: View {
 
             if let signed = model.signed {
                 VStack(spacing: Theme.Spacing.s) {
-                    row("Statut", signed.businessStatus.label)
+                    row("Statut", model.statusSummary.isEmpty ? signed.businessStatus.label : model.statusSummary)
                     row("Signé le", signed.signedAt.formatted(.dateTime.day().month(.wide).year().hour().minute()))
                     row("Signature", signed.otpVerified ? "Code SMS vérifié\(signed.otpPhone.map { " · \($0)" } ?? "")" : "Depuis votre compte")
                     row("Référence", signed.reference)

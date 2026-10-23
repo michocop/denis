@@ -20,7 +20,8 @@ export interface ContractDocument {
     email: string;
     company?: string | null;
     legal_form?: string | null;
-    siret: string;
+    /** None for a particulier. */
+    siret?: string | null;
     address: string;
     postal_code: string;
     city: string;
@@ -80,8 +81,15 @@ export function groupedSiret(siret: string): string {
   return d.length === 14 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6, 9)} ${d.slice(9)}` : siret;
 }
 
-export function statusLabel(status: ContractDocument["business_status"]): string {
-  return status === "societe" ? "Société" : "Indépendant";
+const soleTrader = ["Micro-entrepreneur", "Entreprise individuelle"];
+
+/** "Particulier" for an indépendant without a SIRET; those who signed as
+ *  indépendant before that meant particulier gave one, and stay "Indépendant".
+ *  A micro-entrepreneur or sole trader signs as société and reads as such. */
+export function statusLabel(doc: Pick<ContractDocument, "business_status" | "signer">): string {
+  const { legal_form, siret } = doc.signer;
+  if (doc.business_status === "independant") return siret ? "Indépendant" : "Particulier";
+  return legal_form && soleTrader.includes(legal_form) ? legal_form : "Société";
 }
 
 /** A short reference to quote on the phone: the first block of the id. */
@@ -230,7 +238,7 @@ function keyFacts(L: Layout, doc: ContractDocument) {
   const { page, fonts } = L;
   const facts: [string, string][] = [
     ["SIGNÉ LE", parisDateTime(doc.signed_at).replace(/:\d\d$/, "")],
-    ["STATUT", statusLabel(doc.business_status)],
+    ["STATUT", statusLabel(doc)],
     ["SIGNATURE", doc.evidence.sms_verified ? "Code SMS vérifié" : "Session authentifiée"],
   ];
   const column = CONTENT / facts.length;
@@ -259,10 +267,10 @@ function signerLines(doc: ContractDocument): { name: string; lines: string[] } {
   const s = doc.signer;
   const company = doc.business_status === "societe"
     ? [s.company, s.legal_form].filter(Boolean).join(", ")
-    : ["Indépendant", s.legal_form].filter(Boolean).join(" · ");
+    : s.siret ? ["Indépendant", s.legal_form].filter(Boolean).join(" · ") : "Particulier, sans SIRET";
   return {
     name: s.name,
-    lines: [company, s.address, `${s.postal_code} ${s.city}`, `SIRET ${groupedSiret(s.siret)}`, s.email]
+    lines: [company, s.address, `${s.postal_code} ${s.city}`, s.siret ? `SIRET ${groupedSiret(s.siret)}` : null, s.email]
       .filter((l): l is string => !!l && l.trim() !== ""),
   };
 }
@@ -345,9 +353,9 @@ function certificate(L: Layout, doc: ContractDocument) {
   const rows: [string, string][] = [
     ["Signataire", s.name],
     ["Statut", doc.business_status === "societe"
-      ? `Société${s.company ? ` — ${s.company}` : ""}${s.legal_form ? ` (${s.legal_form})` : ""}`
-      : `Indépendant${s.legal_form ? ` — ${s.legal_form}` : ""}`],
-    ["SIRET", groupedSiret(s.siret)],
+      ? `${statusLabel(doc)}${s.company ? ` — ${s.company}` : ""}${s.legal_form && statusLabel(doc) === "Société" ? ` (${s.legal_form})` : ""}`
+      : s.siret ? `Indépendant${s.legal_form ? ` — ${s.legal_form}` : ""}` : "Particulier, sans SIRET"],
+    ...(s.siret ? [["SIRET", groupedSiret(s.siret)] as [string, string]] : []),
     ["Adresse", `${s.address}, ${s.postal_code} ${s.city}`],
     ["E-mail du compte", s.email],
     ["Date et heure", `${parisDateTime(doc.signed_at)} (heure de Paris)`],

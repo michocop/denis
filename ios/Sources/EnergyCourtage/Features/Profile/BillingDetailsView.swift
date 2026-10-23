@@ -35,7 +35,7 @@ public struct BillingDetailsView: View {
                             .textContentType(.organizationName)
                     }
                     LabelledField("Statut (facultatif)") {
-                        TextField("Micro-entreprise, SASU, particulier…", text: binding(\.legalForm))
+                        TextField("Micro-entreprise, SASU…", text: binding(\.legalForm))
                     }
                     LabelledField("SIRET (facultatif)") {
                         TextField("14 chiffres", text: binding(\.siret))

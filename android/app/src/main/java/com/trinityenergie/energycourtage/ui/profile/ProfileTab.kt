@@ -100,6 +100,8 @@ fun ProfileTab(
     onOpenMandate: () -> Unit,
     onVerifyPhone: () -> Unit,
     onOpenContract: (profileId: String) -> Unit,
+    opensBilling: Boolean = false,
+    onBillingOpened: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -114,6 +116,8 @@ fun ProfileTab(
     var deleting by remember { mutableStateOf(false) }
     var confirmsDeletion by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<ProfileSheet?>(null) }
+    // Accueil's ceiling notice leads straight to the SIRET
+    LaunchedEffect(opensBilling) { if (opensBilling) { sheet = ProfileSheet.Billing; onBillingOpened() } }
 
     suspend fun load() {
         try {

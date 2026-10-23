@@ -39,6 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CheckBox
@@ -91,6 +92,7 @@ import com.trinityenergie.energycourtage.data.smsDemoHint
 import com.trinityenergie.energycourtage.model.BusinessStatus
 import com.trinityenergie.energycourtage.model.explanation
 import com.trinityenergie.energycourtage.model.label
+import com.trinityenergie.energycourtage.model.Particulier
 import com.trinityenergie.energycourtage.model.legalForms
 import com.trinityenergie.energycourtage.ui.components.Files
 import com.trinityenergie.energycourtage.ui.components.LabelledField
@@ -271,7 +273,7 @@ private fun ColumnScope.DetailsStep(model: OnboardingModel) {
     Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.gutter),
         verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
         Column(Modifier.padding(top = Spacing.l), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(if (societe) "Votre société" else "Votre activité", style = Type.screenTitle, color = Palette.textPrimary)
+            Text(if (societe) "Votre activité" else "Vos coordonnées", style = Type.screenTitle, color = Palette.textPrimary)
             Text("Ces informations figurent sur votre contrat et vos factures.", style = Type.secondary, color = Palette.textSecondary)
         }
         if (d == null) {
@@ -282,13 +284,8 @@ private fun ColumnScope.DetailsStep(model: OnboardingModel) {
             } else LoadingBlock()
         } else {
             Column(Modifier.fillMaxWidth().cardSurface().padding(Spacing.cardPadding), verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
-                if (societe) {
-                    LabelledField("Raison sociale", d.companyName ?: "", { model.draft = d.copy(companyName = it) },
-                        placeholder = "Lefeuvre Conseil",
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next))
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                    Text(if (societe) "Forme juridique" else "Régime", style = Type.caption, color = Palette.textSecondary,
+                if (societe) Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                    Text("Forme juridique", style = Type.caption, color = Palette.textSecondary,
                         modifier = Modifier.padding(start = 4.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
                         (model.status?.legalForms ?: emptyList()).forEach { option ->
@@ -302,8 +299,14 @@ private fun ColumnScope.DetailsStep(model: OnboardingModel) {
                         }
                     }
                 }
-                LabelledField("SIRET", d.siret ?: "", { v -> model.draft = d.copy(siret = v.filter { it.isDigit() || it == ' ' }.let { t -> var n = 0; t.takeWhile { c -> if (c.isDigit()) n++; n <= 14 } }) },
-                    placeholder = "14 chiffres", keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next))
+                if (societe) {
+                    LabelledField(if (model.companyNameOptional) "Nom commercial (facultatif)" else "Raison sociale",
+                        d.companyName ?: "", { model.draft = d.copy(companyName = it) },
+                        placeholder = "Lefeuvre Conseil",
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next))
+                    LabelledField("SIRET", d.siret ?: "", { v -> model.draft = d.copy(siret = v.filter { it.isDigit() || it == ' ' }.let { t -> var n = 0; t.takeWhile { c -> if (c.isDigit()) n++; n <= 14 } }) },
+                        placeholder = "14 chiffres", keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next))
+                }
                 LabelledField("Adresse", d.address ?: "", { model.draft = d.copy(address = it) }, placeholder = "Numéro et rue",
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = false, imeAction = ImeAction.Next))
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
@@ -316,6 +319,7 @@ private fun ColumnScope.DetailsStep(model: OnboardingModel) {
                         keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { focus.clearFocus() }))
                 }
             }
+            if (!societe) ParticulierNotice()
         }
         Spacer(Modifier.height(Spacing.s))
     }
@@ -401,6 +405,18 @@ private fun ColumnScope.ContractStep(model: OnboardingModel) {
     }
 }
 
+/** What the particulier signs up to, said before the contract says it. */
+@Composable
+private fun ParticulierNotice() {
+    Row(
+        Modifier.fillMaxWidth().background(Palette.brandSoft, RoundedCornerShape(Radius.card)).padding(Spacing.l),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+    ) {
+        Icon(Icons.Filled.Info, null, tint = Palette.brand, modifier = Modifier.size(18.dp).padding(top = 2.dp))
+        Text(Particulier.NOTICE, style = Type.secondary, color = Palette.textPrimary)
+    }
+}
+
 /** Who is signing, as what: read back before the text, so a typo in the
  *  SIRET is caught here rather than on the PDF. */
 @Composable
@@ -409,8 +425,8 @@ private fun Summary(model: OnboardingModel) {
     val lines = listOfNotNull(
         "Signataire" to (d?.fullName ?: ""),
         "Statut" to listOfNotNull(model.status?.label, d?.legalForm).joinToString(" · "),
-        if (model.status == BusinessStatus.Societe) "Société" to (d?.companyName ?: "") else null,
-        "SIRET" to groupedSiret(d?.siret ?: ""),
+        if (model.status == BusinessStatus.Societe && !d?.companyName.isNullOrBlank()) "Société" to (d?.companyName ?: "") else null,
+        if (!d?.siret.isNullOrBlank()) "SIRET" to groupedSiret(d?.siret ?: "") else null,
         "Adresse" to listOfNotNull(d?.address, listOfNotNull(d?.postalCode, d?.city).joinToString(" ")).joinToString(", "),
     )
     Column(Modifier.fillMaxWidth().cardSurface().padding(Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
@@ -458,7 +474,7 @@ private fun ColumnScope.DoneStep(model: OnboardingModel, onFinished: () -> Unit)
         model.signed?.let { signed ->
             Column(Modifier.padding(top = Spacing.xl).fillMaxWidth().alpha(reveal).cardSurface().padding(Spacing.l),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                DoneRow("Statut", signed.businessStatus.label)
+                DoneRow("Statut", if (signed.businessStatus == BusinessStatus.Independant) "Indépendant · Particulier" else signed.businessStatus.label)
                 DoneRow("Signé le", signedAtFormat.format(signed.signedAt.atZone(ZoneId.systemDefault())))
                 DoneRow("Signature", if (signed.otpVerified) "Code SMS vérifié" + (signed.otpPhone?.let { " · $it" } ?: "") else "Depuis votre compte")
                 DoneRow("Référence", signed.reference)

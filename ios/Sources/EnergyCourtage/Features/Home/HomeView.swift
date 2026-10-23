@@ -5,16 +5,30 @@ import Observation
 public final class HomeViewModel {
     public private(set) var stats = DashboardStats()
     public private(set) var profile: Profile?
+    /// A particulier's standing against the ceiling; nil when it could not be
+    /// read, which only hides the card.
+    public private(set) var cap: CommissionCap?
     public private(set) var errorMessage: String?
     public var isLoading = false
 
     private let profiles: ProfileRepository
-    public init(profiles: ProfileRepository) { self.profiles = profiles }
+    private let commissions: CommissionsRepository?
+    public init(profiles: ProfileRepository, commissions: CommissionsRepository? = nil) {
+        self.profiles = profiles
+        self.commissions = commissions
+    }
+
+    /// What Accueil warns about, for an apporteur only.
+    public var capAlert: CommissionCap? {
+        guard profile?.role == .apporteur, let cap, cap.alert != nil else { return nil }
+        return cap
+    }
 
     @MainActor
     public func load() async {
         isLoading = true
         defer { isLoading = false }
+        async let capTask = try? commissions?.commissionCap()
         do {
             async let statsTask = profiles.dashboardStats()
             async let profileTask = profiles.currentProfile()
@@ -24,6 +38,14 @@ public final class HomeViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        cap = await capTask
+    }
+
+    /// From the ceiling card: a SIRET given, the card goes.
+    @MainActor
+    public func save(_ updated: Profile) async throws {
+        profile = try await profiles.save(updated)
+        cap = try? await commissions?.commissionCap()
     }
 }
 
@@ -35,6 +57,7 @@ public struct HomeView: View {
     private let accessory: AnyView
     private let onOpenMandate: (() -> Void)?
     private let refreshToken: Int
+    @State private var showsBillingDetails = false
 
     public init(model: HomeViewModel, accessory: AnyView = AnyView(EmptyView()),
                 onOpenMandate: (() -> Void)? = nil, refreshToken: Int = 0,
@@ -94,6 +117,13 @@ public struct HomeView: View {
                         .staggeredAppear(index: 2, when: appeared)
                 }
 
+                // a particulier nearing the 2 400 € a year their contract
+                // allows learns it here, before an invoice waits for a SIRET
+                if let cap = model.capAlert {
+                    CapNotice(cap: cap) { showsBillingDetails = true }
+                        .staggeredAppear(index: 2, when: appeared)
+                }
+
                 VStack(spacing: Theme.Spacing.m) {
                     HStack(spacing: Theme.Spacing.m) {
                         StatTile(label: "Recommandations actives",
@@ -145,6 +175,11 @@ public struct HomeView: View {
             await model.load()
             // each part rises in on its own step of the cascade
             appeared = true
+        }
+        .sheet(isPresented: $showsBillingDetails) {
+            if let profile = model.profile {
+                BillingDetailsView(profile: profile) { try await model.save($0) }
+            }
         }
     }
 
@@ -261,5 +296,59 @@ struct MandateNotice: View {
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .stroke(Theme.Palette.rewardText.opacity(0.25), lineWidth: 1)
         )
+    }
+}
+
+/// The particulier's ceiling, from 1 800 € of the year's commissions: what
+/// it is, and the way past it -- a SIRET, in the billing details.
+struct CapNotice: View {
+    let cap: CommissionCap
+    let onOpen: () -> Void
+
+    private var reached: Bool { cap.alert == .reached }
+    private var tint: Color { reached ? Theme.Palette.staleText : Theme.Palette.rewardText }
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(alignment: .top, spacing: Theme.Spacing.m) {
+                Image(systemName: reached ? "exclamationmark.triangle.fill" : "gauge.with.needle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 34, height: 34)
+                    .background(tint.opacity(0.14), in: Circle())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(cap.title)
+                        .font(Theme.Typography.label.weight(.semibold))
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text(cap.message)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 4) {
+                        Text("Renseigner mon SIRET")
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .font(Theme.Typography.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .padding(.top, 2)
+                }
+                .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Theme.Spacing.l)
+            .padding(.vertical, Theme.Spacing.m)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .fill(reached ? Theme.Palette.staleSoft : Theme.Palette.rewardSoft)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .stroke(tint.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Ouvre vos informations de facturation")
     }
 }

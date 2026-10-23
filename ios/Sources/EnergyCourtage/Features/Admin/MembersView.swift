@@ -279,7 +279,7 @@ struct MemberRow: View {
                 HStack(spacing: 6) {
                     Image(systemName: "signature").font(.system(size: 13))
                     Text("Contrat signé le \(signedAt.formatted(date: .abbreviated, time: .omitted))"
-                         + (member.businessStatus.map { " · \($0.label)" } ?? ""))
+                         + (member.businessStatus.map { " · \($0.shortLabel)" } ?? ""))
                         .font(Theme.Typography.caption)
                     Spacer(minLength: Theme.Spacing.s)
                     if isOpeningContract {

@@ -1,6 +1,8 @@
 package com.trinityenergie.energycourtage
 
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
@@ -33,6 +35,7 @@ import com.trinityenergie.energycourtage.model.Route
 import com.trinityenergie.energycourtage.push.Push
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /** One activity; what it shows is AppModel's phase (iOS AppRootView). A
  *  FragmentActivity, because BiometricPrompt needs one. */
@@ -41,6 +44,14 @@ class MainActivity : FragmentActivity() {
     /** A notification tapped -- cold start or while open -- waiting for the
      *  tabs to open what it is about. */
     private val pendingRoute = MutableStateFlow<Route?>(null)
+
+    /** French whatever the phone's language, as every word of the app is:
+     *  the date and time pickers and the system's own labels would
+     *  otherwise turn up in English inside a French screen. */
+    override fun attachBaseContext(newBase: Context) {
+        val french = Configuration(newBase.resources.configuration).apply { setLocale(Locale.FRANCE) }
+        super.attachBaseContext(newBase.createConfigurationContext(french))
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
