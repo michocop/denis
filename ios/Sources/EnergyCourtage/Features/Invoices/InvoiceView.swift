@@ -735,7 +735,7 @@ public struct InvoiceView: View {
             Button("Signer") { Task { await model.startSigning(asCompany: isAdmin) } }
             Button("Annuler", role: .cancel) {}
         } message: {
-            Text("Votre signature électronique vaut accord sur ce document, pour un montant de \(doc.amount.ttc) \(doc.amount.currency) TTC. Elle ne pourra pas être retirée.")
+            Text("Votre signature électronique vaut accord sur ce document, pour un montant de \(Decimal(string: doc.amount.ttc).map { Money.euros($0, cents: true) } ?? "\(doc.amount.ttc) \(doc.amount.currency)") TTC. Elle ne pourra pas être retirée.")
         }
     }
 

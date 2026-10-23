@@ -73,6 +73,12 @@ internal class PdfFonts(val body: Face, val bold: Face, val display: Face) {
 /** One style of text: a face, a size in points, a colour, a tracking in points. */
 internal class Ink(face: Face, val size: Float, color: Int, kern: Float = 0f, italic: Boolean = false) {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // A PDF point is one canvas unit, so body text is 7-9 units tall. At
+        // that size Android hints each advance to a whole unit, and a space
+        // rounds down to nothing: "Session authentifiée" came out
+        // "Sessionauthentifiée". Linear, subpixel text keeps exact advances.
+        isLinearText = true
+        isSubpixelText = true
         typeface = face.typeface
         textSize = size
         this.color = color

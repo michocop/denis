@@ -302,7 +302,7 @@ private fun ColumnScope.DetailsStep(model: OnboardingModel) {
                         }
                     }
                 }
-                LabelledField("SIRET", d.siret ?: "", { v -> model.draft = d.copy(siret = v.filter { it.isDigit() || it == ' ' }.take(17)) },
+                LabelledField("SIRET", d.siret ?: "", { v -> model.draft = d.copy(siret = v.filter { it.isDigit() || it == ' ' }.let { t -> var n = 0; t.takeWhile { c -> if (c.isDigit()) n++; n <= 14 } }) },
                     placeholder = "14 chiffres", keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next))
                 LabelledField("Adresse", d.address ?: "", { model.draft = d.copy(address = it) }, placeholder = "Numéro et rue",
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = false, imeAction = ImeAction.Next))

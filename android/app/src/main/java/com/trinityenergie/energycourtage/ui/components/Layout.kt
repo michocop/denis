@@ -131,6 +131,25 @@ fun FullScreenSheet(
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
             dismissOnBackPress = onDismiss != null, dismissOnClickOutside = false),
     ) {
+        // A dialog gets its own window, which by default stops at the system
+        // bars and paints them flat: draw under them, as the activity does,
+        // so the brand glow reaches the top edge and the icons stay light.
+        val view = androidx.compose.ui.platform.LocalView.current
+        androidx.compose.runtime.SideEffect {
+            ((view as? androidx.compose.ui.window.DialogWindowProvider) ?: (view.parent as? androidx.compose.ui.window.DialogWindowProvider))?.window?.let { w ->
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(w, false)
+                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                w.setDimAmount(0f)
+                w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                @Suppress("DEPRECATION") run {
+                    w.statusBarColor = android.graphics.Color.TRANSPARENT
+                    w.navigationBarColor = android.graphics.Color.TRANSPARENT
+                }
+                androidx.core.view.WindowCompat.getInsetsController(w, view).apply {
+                    isAppearanceLightStatusBars = false; isAppearanceLightNavigationBars = false
+                }
+            }
+        }
         BrandBackground {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.s, vertical = Spacing.s), verticalAlignment = Alignment.CenterVertically) {

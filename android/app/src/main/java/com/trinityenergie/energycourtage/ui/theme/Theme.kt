@@ -130,6 +130,20 @@ val BrandGradient = Brush.horizontalGradient(listOf(Color(0xFF4F95FF), Color(0xF
 
 @Composable
 fun TrinityTheme(content: @Composable () -> Unit) {
+    // The app is dark whatever the phone's setting. Everything that asks
+    // "is the system dark?" -- bottom sheets choosing their status-bar icons,
+    // date pickers -- gets yes, so nothing turns dark-on-dark on a light phone.
+    val base = androidx.compose.ui.platform.LocalConfiguration.current
+    val night = android.content.res.Configuration(base).apply {
+        uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalConfiguration provides night) {
+        TrinityMaterial(content)
+    }
+}
+
+@Composable
+private fun TrinityMaterial(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = Palette.brandFill,

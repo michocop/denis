@@ -112,8 +112,11 @@ data class Recommendation(
         if (status.isArchived) return "Archivée"
         if (isFailed(pipeline)) return "Non abouti"
         val ordered = pipeline.sortedBy { it.position }
+        if (progress(pipeline) >= 1.0) return "Terminée"
+        // the stage being worked on, or -- right after one was validated, when
+        // none is open yet -- the last one reached, rather than no label at all
         return ordered.firstOrNull { state(it) == StageState.Current }?.label
-            ?: if (progress(pipeline) >= 1.0) "Terminée" else null
+            ?: ordered.lastOrNull { state(it) == StageState.Completed }?.label
     }
 
     enum class Tint { Brand, Success, Destructive }

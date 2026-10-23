@@ -141,7 +141,7 @@ fun InvoiceSheet(deps: Dependencies, invoiceId: String, onDismiss: () -> Unit) {
     if (confirmsSigning && doc != null) {
         ConfirmDialog(
             title = "Signer la facture ${doc.number} ?",
-            message = "Votre signature électronique vaut accord sur ce document, pour un montant de ${doc.amount.ttc} ${doc.amount.currency} TTC. Elle ne pourra pas être retirée.",
+            message = "Votre signature électronique vaut accord sur ce document, pour un montant de ${doc.amount.ttc.toBigDecimalOrNull()?.let { com.trinityenergie.energycourtage.core.Money.euros(it, cents = true) } ?: "${doc.amount.ttc} ${doc.amount.currency}"} TTC. Elle ne pourra pas être retirée.",
             confirm = "Signer",
             onConfirm = { confirmsSigning = false; scope.launch { model.startSigning(asCompany = isAdmin) } },
             onDismiss = { confirmsSigning = false },
