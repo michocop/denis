@@ -24,6 +24,19 @@ fun xcconfig(): Map<String, String> {
 }
 val config = xcconfig()
 
+// Release signing: the upload key in android/signing/ (git-ignored), its
+// password in the macOS Keychain, or in ANDROID_UPLOAD_KEY_PASSWORD on a CI.
+// Asked for only when a release is being built, never for a debug build.
+val signing = Properties().apply {
+    File(rootDir, "keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val buildingRelease = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+fun uploadKeyPassword(): String? = System.getenv("ANDROID_UPLOAD_KEY_PASSWORD")
+    ?: runCatching {
+        ProcessBuilder("security", "find-generic-password", "-s", "trinity-android-upload-key", "-w")
+            .start().inputStream.bufferedReader().readText().trim()
+    }.getOrNull()?.takeIf { it.isNotEmpty() }
+
 // Push (FCM) without the google-services plugin: the four values Firebase
 // gives for the Android app, from android/firebase.properties (git-ignored;
 // firebase.properties.example says where each one is). Missing, they are
@@ -39,12 +52,12 @@ fun firebaseField(name: String) = "\"${(firebase.getProperty(name) ?: "").trim()
 
 android {
     namespace = "com.trinityenergie.energycourtage"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.trinityenergie.energycourtage"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
         buildConfigField("String", "SUPABASE_URL", "\"${config["SUPABASE_URL"] ?: ""}\"")
@@ -56,8 +69,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("upload") {
+            val store = signing.getProperty("storeFile")?.let { File(rootDir, it) }
+            if (buildingRelease && store != null && store.exists()) {
+                val password = uploadKeyPassword() ?: error("Upload key password not found (Keychain item trinity-android-upload-key)")
+                storeFile = store
+                storePassword = password
+                keyAlias = signing.getProperty("keyAlias")
+                keyPassword = password
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("upload").takeIf { it.storeFile != null }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

@@ -285,3 +285,97 @@ on conflict (key, version) do update
   where not exists (
     select 1 from legal_acceptances a
      where a.key = legal_documents.key and a.version = legal_documents.version);
+
+-- The same policy once the Android app is out: notifications reach Android
+-- phones through Google (Firebase Cloud Messaging). Inserted inactive; publish
+-- it when the Android app goes live, which asks everyone to accept it again:
+--   update legal_documents set active = (version = '2026-10-23') where key = 'confidentialite';
+insert into legal_documents (key, version, title, body, sha256, active)
+values ('confidentialite', '2026-10-23', 'Politique de confidentialité', '**Responsable de traitement :** TRINITY ENERGIE, SAS, 945 rue du Général de
+Gaulle, 59310 Aix-en-Pévèle, SIREN 102 470 705.
+**Contact :** pierrelouis@trinity-energie.fr. **Délégué à la protection des
+données :** non désigné ; toute demande est traitée à l''adresse ci-dessus.
+
+## 1. Données concernant les apporteurs
+
+Identité (nom, prénom, email, téléphone), données professionnelles (raison
+sociale, SIREN, régime de TVA), coordonnées bancaires, documents justificatifs,
+historique des recommandations et des rémunérations.
+
+**Base légale :** exécution du contrat d''apport d''affaires et obligations
+légales (facturation, comptabilité).
+
+## 2. Données concernant les prospects (« filleuls »)
+
+Nom, prénom, téléphone, email, et le cas échéant raison sociale, adresse et
+facture d''énergie, transmis par un apporteur.
+
+**Base légale :** intérêt légitime de TRINITY ENERGIE à proposer ses services de
+courtage en énergie aux personnes recommandées, l''apporteur ayant
+préalablement informé la personne et recueilli son accord.
+
+L''apporteur confirme dans l''application avoir informé la personne concernée et
+recueilli son accord avant toute transmission. Cette confirmation est
+horodatée et conservée.
+
+**Information de la personne concernée :** TRINITY ENERGIE informe la personne
+lors de son premier contact, et au plus tard dans un délai d''un mois, de
+l''origine de ses données, des finalités du traitement et de ses droits
+(article 14 du RGPD). Elle peut s''opposer à tout moment au traitement.
+
+## 3. Destinataires
+
+Les données sont accessibles :
+
+- à l''apporteur, pour ses seules recommandations ;
+- aux collaborateurs habilités de TRINITY ENERGIE ;
+- à nos sous-traitants techniques : Supabase (hébergement, Paris, Union
+  européenne) et Brevo (envoi des emails et des SMS de vérification, France) ;
+- à Apple et à Google, qui acheminent les notifications vers l''iPhone et vers
+  les téléphones Android : le titre et le texte d''une notification (par
+  exemple le nom d''un filleul et l''étape de son dossier) transitent par leurs
+  serveurs, qui peuvent être situés hors de l''Union européenne ;
+- le cas échéant, aux fournisseurs d''énergie sollicités, avec l''accord de la
+  personne concernée.
+
+Aucune donnée n''est vendue ni utilisée à des fins publicitaires.
+
+## 4. Durées de conservation
+
+| Donnée | Durée |
+|---|---|
+| Compte apporteur | Durée de la relation, puis 3 ans |
+| Recommandation aboutie | 5 ans à compter de la fin de la prestation |
+| Recommandation non aboutie | 3 ans après le dernier contact, puis anonymisation automatique |
+| Factures et pièces comptables | 10 ans (obligation légale) |
+| Codes SMS de vérification | 10 minutes de validité ; seule une empreinte est conservée |
+| Journaux techniques | 12 mois |
+
+## 5. Vos droits
+
+Accès, rectification, effacement, limitation, opposition et portabilité, à
+exercer auprès de pierrelouis@trinity-energie.fr. Réponse sous un mois.
+
+Un apporteur peut exporter ses données et supprimer son compte directement dans
+l''application (Profil). Les factures et les recommandations qui s''y
+rattachent sont conservées au titre des obligations comptables, mais les
+données personnelles du compte sont effacées.
+
+Réclamation possible auprès de la CNIL : www.cnil.fr.
+
+## 6. Sécurité
+
+Chaque apporteur n''accède qu''à ses propres recommandations, restriction
+appliquée au niveau de la base de données et non seulement dans l''application.
+Les échanges sont chiffrés en transit. Les signatures sont confirmées par un
+code à usage unique envoyé par SMS. L''accès administrateur est nominatif et
+journalisé.
+
+## 7. Modifications
+
+Toute modification sera notifiée dans l''application. Version du 23 octobre 2026.', '', false)
+on conflict (key, version) do update
+  set title = excluded.title, body = excluded.body
+  where not exists (
+    select 1 from legal_acceptances a
+     where a.key = legal_documents.key and a.version = legal_documents.version);
