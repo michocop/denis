@@ -18,6 +18,26 @@ demo mode, like iOS.
 Toolchain lives in `.devtools/` (git-ignored): JDK 17, Android SDK, Gradle.
 `source scripts/android_env.sh` puts them on PATH.
 
+## Status (23 Oct 2026)
+
+Lots 1–4 are built, merged on `feat/android`, and walked through on the
+emulator in demo mode, as apporteur and as company: sign-in, onboarding and
+contract by SMS, Home, recommendations (list, stages, detail, create with the
+duplicate check, notes, reminders, documents from file/photo/scanner, admin
+actions), invoices (both signatures, the PDF), chat, notifications and their
+routing, profile, members and invitations, payouts, commissions. 128 unit tests.
+
+Still open:
+- Never yet signed in against the real project with a real account.
+- Push (lot 5): the code is in, it needs a Firebase project (see
+  `android/firebase.properties.example`, then `scripts/link_fcm.sh`).
+- Google Play: a developer account, a release signing key, then internal
+  testing; put the install link in `ANDROID_INSTALL_URL` (ui/admin/AdminLogic.kt)
+  and in the invitation email (supabase/functions/auth-email, INSTALL_URL).
+
+Run it: `source scripts/android_env.sh`, `cd android && ./gradlew :app:installDebug`
+(an emulator: `.devtools/avd`, `emulator -avd trinity -no-window`).
+
 ## Lots
 
 1. **Foundation** — project, theme (colours, Sora/Manrope, card surface,
