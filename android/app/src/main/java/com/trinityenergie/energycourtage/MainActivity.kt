@@ -1,5 +1,6 @@
 package com.trinityenergie.energycourtage
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
@@ -27,12 +28,23 @@ import com.trinityenergie.energycourtage.ui.root.LaunchIntro
 import com.trinityenergie.energycourtage.ui.root.RootScreen
 import com.trinityenergie.energycourtage.ui.theme.BrandBackground
 import com.trinityenergie.energycourtage.ui.theme.TrinityTheme
+import com.trinityenergie.energycourtage.model.Route
+import com.trinityenergie.energycourtage.push.Push
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /** One activity; what it shows is AppModel's phase (iOS AppRootView). A
  *  FragmentActivity, because BiometricPrompt needs one. */
 class MainActivity : FragmentActivity() {
     private val model: AppModel by viewModels()
+    /** A notification tapped -- cold start or while open -- waiting for the
+     *  tabs to open what it is about. */
+    private val pendingRoute = MutableStateFlow<Route?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        Push.routeFrom(intent)?.let { pendingRoute.value = it }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -40,6 +52,7 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         super.onCreate(savedInstanceState)
 
+        if (savedInstanceState == null) Push.routeFrom(intent)?.let { pendingRoute.value = it }
         if (intent.hasExtra("demo")) model.startDemo(asAdmin = intent.getBooleanExtra("admin", false))
 
         setContent {
@@ -71,7 +84,10 @@ class MainActivity : FragmentActivity() {
                         AppModel.Phase.Locked -> LockedScreen {
                             scope.launch { if (BiometricGate.unlock(this@MainActivity)) model.onUnlocked() }
                         }
-                        is AppModel.Phase.Ready -> RootScreen(p, onSignOut = model::signOut)
+                        is AppModel.Phase.Ready -> {
+                            val route by pendingRoute.collectAsStateWithLifecycle()
+                            RootScreen(p, route, onRouteHandled = { pendingRoute.value = null }, onSignOut = model::signOut)
+                        }
                     }
                 }
             }
