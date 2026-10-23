@@ -153,6 +153,9 @@ fun RootScreen(
     }
     LaunchedEffect(route) { route?.let { open(it); onRouteHandled() } }
 
+    // Back from another tab returns to Accueil before it leaves the app
+    androidx.activity.compose.BackHandler(enabled = tab != Tab.Home.ordinal) { tab = Tab.Home.ordinal; homeRefresh++ }
+
     // asked here, once the app is in use: a prompt on the first screen is the
     // one people decline
     if (!deps.isDemo) Push.RequestNotificationPermission()

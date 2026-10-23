@@ -360,7 +360,11 @@ private fun SwipeableThreadRow(thread: ChatThread, onOpen: () -> Unit, onToggleP
             }
         },
     ) {
-        ThreadRow(thread, Modifier.background(Palette.night).clickable(onClick = onOpen))
+        // opaque only while it is being swiped, to hide the action behind it;
+        // at rest the brand background shows through like everywhere else
+        ThreadRow(thread, Modifier
+            .background(if (state.dismissDirection != SwipeToDismissBoxValue.Settled) Palette.night else Color.Transparent)
+            .clickable(onClick = onOpen))
     }
 }
 

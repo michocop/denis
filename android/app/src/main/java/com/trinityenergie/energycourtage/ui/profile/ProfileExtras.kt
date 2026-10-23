@@ -57,7 +57,13 @@ object DemoProfileExtras : ProfileExtras {
 
     fun markPhoneVerified(masked: String) { maskedPhone = masked }
 
-    override suspend fun smsStatus() = SmsStatus(smsRequired = true, phoneVerified = maskedPhone != null, maskedPhone = maskedPhone)
+    // the demo's SMS store is the one the code screens verify against: a
+    // number proven there (onboarding, an invoice) is verified here too
+    override suspend fun smsStatus(): SmsStatus {
+        val sms = com.trinityenergie.energycourtage.data.DemoSms.status()
+        return if (sms.phoneVerified) SmsStatus(smsRequired = sms.smsRequired, phoneVerified = true, maskedPhone = sms.maskedPhone)
+               else SmsStatus(smsRequired = sms.smsRequired, phoneVerified = maskedPhone != null, maskedPhone = maskedPhone)
+    }
 
     override suspend fun contract(profile: Profile): ContractSummary? = profile.contractSignedAt?.let {
         ContractSummary("5f0c2a1e-0000-0000-0000-000000000000", it, profile.businessStatus ?: BusinessStatus.Societe)

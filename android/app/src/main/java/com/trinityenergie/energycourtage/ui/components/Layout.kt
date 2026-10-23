@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -112,10 +113,37 @@ fun SearchField(placeholder: String, text: String, onTextChange: (String) -> Uni
 }
 
 /**
+ * Where full-screen sheets are drawn: above everything, in the activity's
+ * own window. A Dialog would give each sheet a window of its own, which gets
+ * neither the keyboard's resize nor the system-bar insets the activity has:
+ * the keyboard panned the whole sheet off the top and the composer sat under
+ * the gesture bar. Installed once, at the root (MainActivity).
+ */
+class SheetHostState {
+    internal val sheets = androidx.compose.runtime.mutableStateListOf<SheetEntry>()
+}
+
+internal class SheetEntry(val key: Any, val content: @Composable () -> Unit)
+
+val LocalSheetHost = androidx.compose.runtime.staticCompositionLocalOf<SheetHostState?> { null }
+
+@Composable
+fun SheetHost(content: @Composable () -> Unit) {
+    val host = androidx.compose.runtime.remember { SheetHostState() }
+    androidx.compose.runtime.CompositionLocalProvider(LocalSheetHost provides host) {
+        Box(Modifier.fillMaxSize()) {
+            content()
+            // in the order they were opened: a sheet opened from a sheet sits on top
+            host.sheets.forEach { entry -> androidx.compose.runtime.key(entry.key) { entry.content() } }
+        }
+    }
+}
+
+/**
  * A screen presented over the tabs -- iOS's sheets and pushed views. Full
  * screen, the brand background, a title bar with a close (or back) control,
- * content that scrolls unless [scrolls] is false. Dismissed by the system back
- * gesture too.
+ * content that scrolls unless [scrolls] is false. The system back gesture
+ * dismisses it too, unless [onDismiss] is null (a required document).
  */
 @Composable
 fun FullScreenSheet(
@@ -126,31 +154,46 @@ fun FullScreenSheet(
     actions: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = { onDismiss?.invoke() },
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
-            dismissOnBackPress = onDismiss != null, dismissOnClickOutside = false),
+    val body: @Composable () -> Unit = {
+        SheetBody(title, onDismiss, back, scrolls, actions, content)
+    }
+    val host = LocalSheetHost.current
+    if (host == null) {
+        // no host (a preview): a plain dialog
+        Dialog(onDismissRequest = { onDismiss?.invoke() },
+            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = onDismiss != null,
+                dismissOnClickOutside = false)) { body() }
+        return
+    }
+    val latest = androidx.compose.runtime.rememberUpdatedState(body)
+    val entry = androidx.compose.runtime.remember { SheetEntry(Any()) { latest.value() } }
+    androidx.compose.runtime.DisposableEffect(host, entry) {
+        host.sheets.add(entry)
+        onDispose { host.sheets.remove(entry) }
+    }
+}
+
+@Composable
+private fun SheetBody(
+    title: String,
+    onDismiss: (() -> Unit)?,
+    back: Boolean,
+    scrolls: Boolean,
+    actions: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    androidx.activity.compose.BackHandler(enabled = true) { onDismiss?.invoke() }
+    // rises in from below, as a sheet does
+    val shown = androidx.compose.runtime.remember { androidx.compose.animation.core.MutableTransitionState(false).apply { targetState = true } }
+    androidx.compose.animation.AnimatedVisibility(
+        shown,
+        enter = androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(280)) { it / 8 } +
+            androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)),
     ) {
-        // A dialog gets its own window, which by default stops at the system
-        // bars and paints them flat: draw under them, as the activity does,
-        // so the brand glow reaches the top edge and the icons stay light.
-        val view = androidx.compose.ui.platform.LocalView.current
-        androidx.compose.runtime.SideEffect {
-            ((view as? androidx.compose.ui.window.DialogWindowProvider) ?: (view.parent as? androidx.compose.ui.window.DialogWindowProvider))?.window?.let { w ->
-                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(w, false)
-                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-                w.setDimAmount(0f)
-                w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
-                @Suppress("DEPRECATION") run {
-                    w.statusBarColor = android.graphics.Color.TRANSPARENT
-                    w.navigationBarColor = android.graphics.Color.TRANSPARENT
-                }
-                androidx.core.view.WindowCompat.getInsetsController(w, view).apply {
-                    isAppearanceLightStatusBars = false; isAppearanceLightNavigationBars = false
-                }
-            }
-        }
-        BrandBackground {
+        BrandBackground(
+            // nothing behind a sheet can be touched through it
+            Modifier.pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
+        ) {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.s, vertical = Spacing.s), verticalAlignment = Alignment.CenterVertically) {
                     if (onDismiss != null) {

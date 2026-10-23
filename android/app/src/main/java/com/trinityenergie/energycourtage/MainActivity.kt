@@ -28,6 +28,7 @@ import com.trinityenergie.energycourtage.ui.root.LaunchIntro
 import com.trinityenergie.energycourtage.ui.root.RootScreen
 import com.trinityenergie.energycourtage.ui.theme.BrandBackground
 import com.trinityenergie.energycourtage.ui.theme.TrinityTheme
+import com.trinityenergie.energycourtage.ui.components.SheetHost
 import com.trinityenergie.energycourtage.model.Route
 import com.trinityenergie.energycourtage.push.Push
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,13 +57,13 @@ class MainActivity : FragmentActivity() {
         if (intent.hasExtra("demo")) model.startDemo(asAdmin = intent.getBooleanExtra("admin", false))
 
         setContent {
-            TrinityTheme {
+            TrinityTheme { SheetHost {
                 val phase by model.phase.collectAsStateWithLifecycle()
                 val scope = rememberCoroutineScope()
                 var introDone by rememberSaveable { mutableStateOf(false) }
                 if (!introDone) {
                     LaunchIntro(sessionKnown = phase !is AppModel.Phase.Launching) { introDone = true }
-                    return@TrinityTheme
+                    return@SheetHost
                 }
                 AnimatedContent(
                     targetState = phase,
@@ -90,7 +91,7 @@ class MainActivity : FragmentActivity() {
                         }
                     }
                 }
-            }
+            } }
         }
     }
 }

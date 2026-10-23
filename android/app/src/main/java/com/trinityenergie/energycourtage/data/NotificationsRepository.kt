@@ -47,8 +47,8 @@ class SupabaseNotificationsRepository(private val client: SupabaseClient) : Noti
  *  PreviewNotificationsRepository). Each one leads somewhere: the message to
  *  the demo's support conversation. */
 object DemoNotificationsRepository : NotificationsRepository {
-    const val demoRecommendationId = "bbbbbbbb-0000-0000-0000-000000000001"
-    const val demoInvoiceId = "cccccccc-0000-0000-0000-000000000001"
+    const val demoRecommendationId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"  // DemoSamples: the finished lead
+    const val demoInvoiceId = "dddddddd-dddd-dddd-dddd-dddddddddddd"  // DemoSamples.invoiceId
 
     @Volatile private var readAll = false
     private val created = Instant.now()

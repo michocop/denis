@@ -53,7 +53,23 @@ class SupabaseProfileRepository(private val client: SupabaseClient) : ProfileRep
 class DemoProfileRepository(private val role: UserRole) : ProfileRepository {
     private var saved: Profile? = null
 
-    override suspend fun currentProfile(): Profile = saved ?: Profile(
+    /** What the demo has signed shows on the profile, as the server's
+     *  acceptance sets billing_mandate_signed_at and contract_signed_at: the
+     *  mandate, read from its sheet or annexed to the contract, and the
+     *  contract from the onboarding. */
+    override suspend fun currentProfile(): Profile {
+        val base = baseProfile()
+        if (role.isAdmin) return base
+        val contract = DemoContracts.contract(Demo.me)
+        val mandate = DemoLegal.isAccepted("mandat_facturation")
+        return base.copy(
+            billingMandateSignedAt = base.billingMandateSignedAt ?: if (mandate) (contract?.signedAt ?: Instant.now()) else null,
+            contractSignedAt = contract?.signedAt ?: base.contractSignedAt,
+            businessStatus = contract?.businessStatus ?: base.businessStatus,
+        )
+    }
+
+    private fun baseProfile(): Profile = saved ?: Profile(
         id = if (role.isAdmin) Demo.them else Demo.me,
         role = role,
         firstName = if (role.isAdmin) "Pierre-Louis" else "Johann",
