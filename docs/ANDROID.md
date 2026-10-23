@@ -23,9 +23,11 @@ Toolchain lives in `.devtools/` (git-ignored): JDK 17, Android SDK, Gradle.
 Lots 1–4 are built, merged on `feat/android`, and walked through on the
 emulator in demo mode, as apporteur and as company: sign-in, onboarding and
 contract by SMS, Home, recommendations (list, stages, detail, create with the
-duplicate check, notes, reminders, documents from file/photo/scanner, admin
+duplicate check, notes, reminders, a document added from a file, admin
 actions), invoices (both signatures, the PDF), chat, notifications and their
 routing, profile, members and invitations, payouts, commissions. 128 unit tests.
+Not tried yet: the photo picker and the document scanner (built, need a real
+phone with a camera), and a reminder notification actually firing.
 
 Still open:
 - Never yet signed in against the real project with a real account.
