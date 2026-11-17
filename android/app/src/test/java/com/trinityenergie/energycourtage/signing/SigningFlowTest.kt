@@ -1,5 +1,6 @@
 package com.trinityenergie.energycourtage.signing
 
+import com.trinityenergie.energycourtage.model.CommissionCap
 import com.trinityenergie.energycourtage.core.sha256Hex
 import com.trinityenergie.energycourtage.data.ContractRepository
 import com.trinityenergie.energycourtage.data.DemoInvoices
@@ -138,6 +139,7 @@ private class FakeProfiles(var profile: Profile) : ProfileRepository {
     override suspend fun dashboardStats() = DashboardStats()
     override suspend fun deleteAccount() {}
     override suspend fun exportMyData() = "{}"
+    override suspend fun commissionCap() = CommissionCap()
 }
 
 private class FakeLegal(val docs: MutableList<LegalDocument>) : LegalRepository {
@@ -193,28 +195,66 @@ class OnboardingFlowTest {
         assertNull(m.detailsProblem)
     }
 
-    @Test fun switchingToIndependantDropsTheCompany() = runTest {
+    @Test fun aMicroEntrepreneurNeedsNoCompanyNameButASiret() = runTest {
         val m = model()
         m.load()
         m.choose(BusinessStatus.Societe)
-        m.draft = m.draft!!.copy(companyName = "Lefeuvre Conseil")
+        m.draft = m.draft!!.copy(legalForm = "Micro-entrepreneur", companyName = null,
+            address = "12 rue des Lilas", postalCode = "59000", city = "Lille")
+        assertTrue(m.companyNameOptional)
+        assertEquals("Le SIRET compte 14 chiffres.", m.detailsProblem)
+        m.draft = m.draft!!.copy(siret = "123 456 789 00011")
+        assertNull(m.detailsProblem)
+    }
+
+    @Test fun aParticulierNeedsNoSiretAndKeepsNone() = runTest {
+        val m = model()
+        m.load()
+        m.choose(BusinessStatus.Societe)
+        m.draft = m.draft!!.copy(companyName = "Lefeuvre Conseil", siret = "12345678900011")
         m.choose(BusinessStatus.Independant)
-        assertEquals("Micro-entrepreneur", m.draft!!.legalForm)
+        assertEquals("Particulier", m.draft!!.legalForm)
         assertNull(m.draft!!.companyName)
-        assertNull(m.detailsProblem.takeIf { it == "Indiquez la raison sociale." })
+        assertNull(m.draft!!.siret)
+        m.draft = m.draft!!.copy(address = "12 rue des Lilas", postalCode = "59000", city = "Lille")
+        assertNull(m.detailsProblem)
     }
 
     @Test fun savingTheDetailsCleansThemAndMovesOn() = runTest {
         val profiles = FakeProfiles(me)
         val m = model(profiles = profiles)
         m.load()
-        m.choose(BusinessStatus.Independant)
+        m.choose(BusinessStatus.Societe)
         m.next()
-        m.draft = m.draft!!.copy(siret = "123 456 789 00011", address = "12 rue", postalCode = "59000", city = "Lille")
+        m.draft = m.draft!!.copy(companyName = " Lefeuvre Conseil ", siret = "123 456 789 00011",
+            address = "12 rue", postalCode = "59000", city = "Lille")
         m.saveDetails()
         assertEquals(OnboardingModel.Step.Contract, m.step)
         assertEquals("12345678900011", profiles.profile.siret)
+        assertEquals("Lefeuvre Conseil", profiles.profile.companyName)
+        assertEquals(BusinessStatus.Societe, profiles.profile.businessStatus)
+    }
+
+    @Test fun aParticulierIsSavedWithoutSiret() = runTest {
+        val profiles = FakeProfiles(me.copy(siret = "12345678900011", companyName = "Ancienne SARL"))
+        val m = model(profiles = profiles)
+        m.load()
+        m.choose(BusinessStatus.Independant)
+        m.next()
+        m.draft = m.draft!!.copy(address = "12 rue", postalCode = "59000", city = "Lille")
+        m.saveDetails()
+        assertEquals(OnboardingModel.Step.Contract, m.step)
+        assertNull(profiles.profile.siret)
+        assertNull(profiles.profile.companyName)
+        assertEquals("Particulier", profiles.profile.legalForm)
         assertEquals(BusinessStatus.Independant, profiles.profile.businessStatus)
+    }
+
+    @Test fun theCeilingAlertsFrom1800AndIsReachedAt2400() {
+        assertNull(CommissionCap(particulier = false, year = 2026, total = 5000.0).alert)
+        assertNull(CommissionCap(particulier = true, year = 2026, total = 1799.99).alert)
+        assertEquals(CommissionCap.Alert.Approaching, CommissionCap(particulier = true, year = 2026, total = 1800.0).alert)
+        assertEquals(CommissionCap.Alert.Reached, CommissionCap(particulier = true, year = 2026, total = 2400.0).alert)
     }
 
     @Test fun signsWithTheDigestsOfTheTextsShown() = runTest {

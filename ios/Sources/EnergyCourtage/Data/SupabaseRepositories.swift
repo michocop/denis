@@ -36,6 +36,7 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         let hasNote: Bool
         let pendingReminders: Int
         let apporteurComment: String?
+        let appointmentAt: Date?
     }
 
     public func loadPipeline() async throws -> [Stage] {
@@ -104,7 +105,8 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
             daysSinceActivity: row.daysSinceActivity,
             hasNote: row.hasNote,
             pendingReminders: row.pendingReminders,
-            apporteurComment: row.apporteurComment
+            apporteurComment: row.apporteurComment,
+            appointmentAt: row.appointmentAt
         )
     }
 
@@ -154,6 +156,9 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
         if !draft.email.isEmpty { values["filleul_email"] = AnyEncodable(draft.email) }
         if !draft.company.isEmpty { values["filleul_company"] = AnyEncodable(draft.company) }
         if let comment = draft.trimmedComment { values["apporteur_comment"] = AnyEncodable(comment) }
+        if let appointment = draft.appointmentAt {
+            values["appointment_at"] = AnyEncodable(appointment.ISO8601Format())
+        }
         // The server refuses a lead without it, and records its own clock
         // rather than this one: what is sent is the "yes", not the time.
         if draft.consentConfirmed {
@@ -166,6 +171,30 @@ public struct SupabaseRecommendationsRepository: RecommendationsRepository {
             throw SupabaseError.decoding("insert returned no row")
         }
         return try await reload(id)
+    }
+
+    public func appointments() async throws -> [Recommendation] {
+        let pipeline = try await loadPipeline()
+        let rows: [FeedRow] = try await client.get("recommendation_feed", query: [
+            URLQueryItem(name: "appointment_at", value: "not.is.null"),
+            URLQueryItem(name: "status", value: "eq.active"),
+            URLQueryItem(name: "order", value: "appointment_at.asc")
+        ])
+        return rows.map { row in map(row, pipeline: pipeline) }
+    }
+
+    public func setAppointment(recommendationID: UUID, at date: Date?) async throws -> Recommendation {
+        struct Updated: Decodable { let id: UUID }
+        // A written null, not a missing key: leaving it out would change nothing.
+        let updated: [Updated] = try await client.update(
+            "recommendations",
+            values: ["appointment_at": date.map { AnyEncodable($0.ISO8601Format()) }
+                                       ?? AnyEncodable(nilLiteral: ())],
+            match: [URLQueryItem(name: "id", value: "eq.\(recommendationID.uuidString)")]
+        )
+        // RLS answers a refused PATCH with no rows rather than with an error.
+        guard !updated.isEmpty else { throw SupabaseError.http(status: 403, message: "") }
+        return try await reload(recommendationID)
     }
 
     public func reassign(recommendationID: UUID, to adminID: UUID) async throws {

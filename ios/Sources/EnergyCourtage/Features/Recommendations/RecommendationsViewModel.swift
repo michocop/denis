@@ -31,6 +31,10 @@ public protocol RecommendationsRepository: Sendable {
     func recommendation(id: UUID) async throws -> Recommendation?
     /// A prospect who asked to be forgotten. Admin only.
     func eraseFilleul(recommendationID: UUID) async throws
+    /// Every meeting on a lead still in progress, soonest first. Admin only.
+    func appointments() async throws -> [Recommendation]
+    /// Fixes, moves or, with nil, removes the meeting. Admin only.
+    func setAppointment(recommendationID: UUID, at date: Date?) async throws -> Recommendation
 }
 
 /// Deliberately says only *that* a lead is held, never by whom: an apporteur
@@ -66,6 +70,8 @@ public struct RecommendationDraft: Hashable, Sendable {
     public var company: String = ""
     /// Free text for the company: when to call, the current supplier, who decides.
     public var comment: String = ""
+    /// A meeting already fixed with the filleul; nil for most leads.
+    public var appointmentAt: Date?
     public var consentConfirmed: Bool = false
 
     /// The database refuses more; the form stops the typing there instead.

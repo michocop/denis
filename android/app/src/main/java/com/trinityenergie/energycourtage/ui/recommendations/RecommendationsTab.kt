@@ -52,6 +52,7 @@ private sealed interface RecoSheet {
     data class Detail(val reco: Recommendation) : RecoSheet
     data class Actions(val reco: Recommendation) : RecoSheet
     data class Reminders(val reco: Recommendation) : RecoSheet
+    data class Appointment(val reco: Recommendation) : RecoSheet
 }
 
 /**
@@ -122,6 +123,7 @@ fun RecommendationsTab(
             // reassigning needs a person picked: the detail owns that choice
             RecoAction.Reassign -> { sheet = RecoSheet.Detail(reco); return }
             RecoAction.Reminders -> { sheet = RecoSheet.Reminders(reco); return }
+            RecoAction.Appointment -> { sheet = RecoSheet.Appointment(reco); return }
             else -> sheet = null
         }
         scope.launch {
@@ -273,6 +275,11 @@ fun RecommendationsTab(
             recommendationId = presented.reco.id,
             filleulName = presented.reco.filleulName,
             repository = reminders,
+            onDismiss = { sheet = null },
+        )
+        is RecoSheet.Appointment -> AppointmentSheet(
+            recommendation = presented.reco,
+            save = { at -> repository.setAppointment(presented.reco.id, at); model.refresh() },
             onDismiss = { sheet = null },
         )
     }

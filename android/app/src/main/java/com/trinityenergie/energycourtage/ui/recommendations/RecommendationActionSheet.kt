@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.outlined.CompareArrows
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.NotificationsNone
@@ -61,7 +62,7 @@ import com.trinityenergie.energycourtage.ui.theme.Type
 
 /** The admin's powers over one recommendation. */
 enum class RecoAction {
-    Reassign, Reminders, Reset, ArchiveWon, ArchiveLost, Delete, IssueInvoice, EraseFilleul;
+    Reassign, Reminders, Appointment, Reset, ArchiveWon, ArchiveLost, Delete, IssueInvoice, EraseFilleul;
 
     /** The confirmation each irreversible action asks first, in the iOS copy. */
     val confirmTitle get() = when (this) {
@@ -141,6 +142,7 @@ fun RecommendationActionSheet(recommendation: Recommendation, onDismiss: () -> U
                     }
                 }
                 InfoRow(Icons.Outlined.CalendarToday, RecoDates.relativeDate(recommendation.createdAt))
+                recommendation.appointmentAt?.let { InfoRow(Icons.Outlined.Event, "Rendez-vous ${RecoDates.appointment(it)}") }
                 recommendation.apporteurComment?.takeIf { it.isNotEmpty() }?.let { comment ->
                     Row(Modifier.semantics(mergeDescendants = true) { contentDescription = "Commentaire de l'apporteur : $comment" },
                         horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
@@ -157,6 +159,7 @@ fun RecommendationActionSheet(recommendation: Recommendation, onDismiss: () -> U
                     if (recommendation.canIssueInvoice) add(Triple(RecoAction.IssueInvoice, "Établir la facture", Icons.AutoMirrored.Outlined.NoteAdd))
                     add(Triple(RecoAction.Reassign, "Réassigner", Icons.AutoMirrored.Outlined.CompareArrows))
                     add(Triple(RecoAction.Reminders, "Rappels", Icons.Outlined.NotificationsNone))
+                    add(Triple(RecoAction.Appointment, "Rendez-vous", Icons.Outlined.Event))
                     add(Triple(RecoAction.Reset, "Remettre à zéro", Icons.Outlined.RestartAlt))
                     add(Triple(RecoAction.ArchiveWon, "Affaire gagnée", Icons.Outlined.Verified))
                     add(Triple(RecoAction.ArchiveLost, "Affaire perdue", Icons.Outlined.Archive))
@@ -172,7 +175,7 @@ fun RecommendationActionSheet(recommendation: Recommendation, onDismiss: () -> U
                     ActionRow(title, icon, tint) {
                         when (action) {
                             // no confirmation: these open another screen
-                            RecoAction.Reassign, RecoAction.Reminders -> onAction(action)
+                            RecoAction.Reassign, RecoAction.Reminders, RecoAction.Appointment -> onAction(action)
                             else -> confirming = action
                         }
                     }

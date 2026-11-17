@@ -117,6 +117,20 @@ class RepositoryRequestTest {
         assertEquals("Engie", b["apporteur_comment"]!!.jsonPrimitive.content)
     }
 
+    @Test fun aMeetingGoesOutOnlyWhenThereIsOne() = runBlocking {
+        val at = Instant.parse("2026-11-10T13:30:00Z")
+        runCatching { SupabaseRecommendationsRepository(client).create(RecommendationDraft(
+            firstName = "Thomas", lastName = "Dubois", phone = "+33 6 75 75 75 75", appointmentAt = at, consentConfirmed = true)) }
+        assertEquals("2026-11-10T13:30:00Z", json(find("/rest/v1/recommendations").second)["appointment_at"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun removingAMeetingSendsANull() = runBlocking {
+        runCatching { SupabaseRecommendationsRepository(client).setAppointment("r1", null) }
+        val (req, body) = find("/rest/v1/recommendations")
+        assertEquals("PATCH", req.method)
+        assertEquals(kotlinx.serialization.json.JsonNull, json(body)["appointment_at"])
+    }
+
     @Test fun theCommissionGoesOutAsANumber() = runBlocking {
         SupabaseRecommendationsRepository(client).setRewardAmount("r1", BigDecimal("1000.50"))
         val b = json(find("/rest/v1/rpc/set_reward_amount").second)

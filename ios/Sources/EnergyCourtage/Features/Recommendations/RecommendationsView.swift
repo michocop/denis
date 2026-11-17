@@ -31,6 +31,7 @@ public struct RecommendationsView: View {
         case detail(Recommendation)
         case actions(Recommendation)
         case reminders(Recommendation)
+        case appointment(Recommendation)
 
         var id: String {
             switch self {
@@ -39,6 +40,7 @@ public struct RecommendationsView: View {
             case .detail(let r):     return "detail-\(r.id)"
             case .actions(let r):    return "actions-\(r.id)"
             case .reminders(let r):  return "reminders-\(r.id)"
+            case .appointment(let r): return "appointment-\(r.id)"
             }
         }
     }
@@ -157,6 +159,13 @@ public struct RecommendationsView: View {
                 RemindersView(recommendationID: reco.id,
                               filleulName: reco.filleulName,
                               repository: dependencies.reminders)
+
+            case .appointment(let reco):
+                AppointmentSheet(recommendation: reco) { date in
+                    _ = try await dependencies.recommendations.setAppointment(
+                        recommendationID: reco.id, at: date)
+                    await model.load()
+                }
             }
         }
         .animation(.snappy(duration: 0.25), value: model.hasStaleData)
@@ -199,6 +208,9 @@ public struct RecommendationsView: View {
                 return
             case .reminders:
                 sheet = .reminders(reco)
+                return
+            case .appointment:
+                sheet = .appointment(reco)
                 return
             case .reset:
                 try await repository.resetPipeline(recommendationID: reco.id)

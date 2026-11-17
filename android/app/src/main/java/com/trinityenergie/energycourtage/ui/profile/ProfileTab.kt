@@ -1,5 +1,7 @@
 package com.trinityenergie.energycourtage.ui.profile
 
+import com.trinityenergie.energycourtage.data.recommendations
+import com.trinityenergie.energycourtage.ui.admin.AppointmentsScreen
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Draw
+import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.EuroSymbol
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Group
@@ -100,6 +103,8 @@ fun ProfileTab(
     onOpenMandate: () -> Unit,
     onVerifyPhone: () -> Unit,
     onOpenContract: (profileId: String) -> Unit,
+    opensBilling: Boolean = false,
+    onBillingOpened: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -114,6 +119,8 @@ fun ProfileTab(
     var deleting by remember { mutableStateOf(false) }
     var confirmsDeletion by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<ProfileSheet?>(null) }
+    // Accueil's ceiling notice leads straight to the SIRET
+    LaunchedEffect(opensBilling) { if (opensBilling) { sheet = ProfileSheet.Billing; onBillingOpened() } }
 
     suspend fun load() {
         try {
@@ -178,6 +185,7 @@ fun ProfileTab(
                 if (p.role.isAdmin) {
                     ConsoleRow("Apporteurs", Icons.Outlined.Group) { sheet = ProfileSheet.Members }
                     ConsoleRow("À régler", Icons.Outlined.EuroSymbol) { sheet = ProfileSheet.Payables }
+                    ConsoleRow("Rendez-vous", Icons.Outlined.Event) { sheet = ProfileSheet.Appointments }
                 } else {
                     ConsoleRow("Mes gains", Icons.Outlined.EuroSymbol) { sheet = ProfileSheet.Commissions }
                     Billing(p, onEdit = { sheet = ProfileSheet.Billing }, onOpenMandate = onOpenMandate)
@@ -250,6 +258,7 @@ fun ProfileTab(
     when (sheet) {
         ProfileSheet.Members -> MembersScreen(remember(deps) { deps.admin() }, onOpenContract, close)
         ProfileSheet.Payables -> PayablesScreen(remember(deps) { deps.admin() }, close)
+        ProfileSheet.Appointments -> AppointmentsScreen(remember(deps) { deps.recommendations() }, close)
         ProfileSheet.Commissions -> CommissionsScreen(remember(deps) { deps.commissions() }, profile?.fullName ?: deps.fullName, close)
         ProfileSheet.Billing -> profile?.let { p ->
             BillingDetailsScreen(p, save = { draft ->
@@ -261,7 +270,7 @@ fun ProfileTab(
     }
 }
 
-private enum class ProfileSheet { Members, Payables, Commissions, Billing }
+private enum class ProfileSheet { Members, Payables, Appointments, Commissions, Billing }
 
 @Composable
 private fun Identity(p: Profile) {

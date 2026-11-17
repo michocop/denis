@@ -9,7 +9,7 @@ public struct RecommendationActionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     public enum Action: Hashable {
-        case reassign, reminders, reset, archiveWon, archiveLost, delete, issueInvoice, eraseFilleul
+        case reassign, reminders, appointment, reset, archiveWon, archiveLost, delete, issueInvoice, eraseFilleul
     }
 
     private let recommendation: Recommendation
@@ -106,6 +106,11 @@ public struct RecommendationActionSheet: View {
             detailRow(icon: "calendar",
                       text: RecommendationCard.relativeDate(recommendation.createdAt))
 
+            if let appointment = recommendation.appointmentAt {
+                detailRow(icon: "calendar.badge.clock",
+                          text: "Rendez-vous le \(RecommendationCard.appointmentDate(appointment))")
+            }
+
             if let comment = recommendation.apporteurComment, !comment.isEmpty {
                 HStack(alignment: .top, spacing: Theme.Spacing.m) {
                     Image(systemName: "text.bubble").foregroundStyle(Theme.Palette.textSecondary)
@@ -153,6 +158,8 @@ public struct RecommendationActionSheet: View {
             actionRow("Réassigner", icon: "arrow.left.arrow.right") { onAction(.reassign); dismiss() }
             Divider().padding(.leading, 56)
             actionRow("Rappels", icon: "bell") { onAction(.reminders); dismiss() }
+            Divider().padding(.leading, 56)
+            actionRow("Rendez-vous", icon: "calendar") { onAction(.appointment); dismiss() }
             Divider().padding(.leading, 56)
             actionRow("Remettre à zéro", icon: "arrow.counterclockwise") { confirming = .reset }
             Divider().padding(.leading, 56)

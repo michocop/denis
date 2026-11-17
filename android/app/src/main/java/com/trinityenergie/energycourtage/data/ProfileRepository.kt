@@ -1,5 +1,7 @@
 package com.trinityenergie.energycourtage.data
 
+import com.trinityenergie.energycourtage.model.CommissionCap
+import com.trinityenergie.energycourtage.model.BusinessStatus
 import com.trinityenergie.energycourtage.core.SupabaseClient
 import com.trinityenergie.energycourtage.model.DashboardStats
 import com.trinityenergie.energycourtage.model.Profile
@@ -19,6 +21,8 @@ interface ProfileRepository {
     suspend fun dashboardStats(): DashboardStats
     suspend fun deleteAccount()
     suspend fun exportMyData(): String
+    /** Where a particulier stands against the yearly ceiling. */
+    suspend fun commissionCap(): CommissionCap
 }
 
 class SupabaseProfileRepository(private val client: SupabaseClient) : ProfileRepository {
@@ -46,6 +50,7 @@ class SupabaseProfileRepository(private val client: SupabaseClient) : ProfileRep
     override suspend fun dashboardStats(): DashboardStats = client.decode(client.rpc("dashboard_stats"))
     override suspend fun deleteAccount() = client.rpcVoid("request_account_deletion")
     override suspend fun exportMyData(): String = client.rpc("export_my_data").toString()
+    override suspend fun commissionCap(): CommissionCap = client.decode(client.rpc("commission_cap"))
 }
 
 /** Sample data for the demo: the same figures as the iPhone app's
@@ -90,6 +95,14 @@ class DemoProfileRepository(private val role: UserRole) : ProfileRepository {
 
     override suspend fun deleteAccount() {}
     override suspend fun exportMyData() = "{\"demo\": true}"
+
+    /** A demo apporteur who signed as particulier stands where the "Gagné"
+     *  tile says: short of the alert. */
+    override suspend fun commissionCap(): CommissionCap {
+        val p = currentProfile()
+        val particulier = p.businessStatus == BusinessStatus.Independant && p.siret.isNullOrBlank()
+        return CommissionCap(particulier, java.time.Year.now().value, 1300.0)
+    }
 }
 
 /** Stable ids for the demo's two people, so chat bubbles land on the right side. */

@@ -104,6 +104,7 @@ fun RecommendationDetailSheet(
         }
 
         DetailSection("Suivi") {
+            recommendation.appointmentAt?.let { DetailRow("Rendez-vous", RecoDates.appointment(it)) }
             DetailRow("Recommandé par", recommendation.parrainName)
             DetailRow("Créée le", RecoDates.relativeDate(recommendation.createdAt))
             DetailRow("Étape", pipeline.firstOrNull { it.id == recommendation.currentStageId }?.label ?: "—")

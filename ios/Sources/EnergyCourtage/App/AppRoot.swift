@@ -63,7 +63,8 @@ public final class AppModel {
                 notifications: PreviewNotificationsRepository(),
                 legal: PreviewLegalRepository(),
                 sms: PreviewSmsRepository(required: true),
-                contracts: PreviewContractRepository()
+                contracts: PreviewContractRepository(),
+                signedContracts: PreviewSignedContractsRepository(hasAccess: asAdmin)
             ),
             asAdmin ? .admin : .apporteur,
             asAdmin ? "Pierre-Louis Tettamanti" : "Johann Lefeuvre",
@@ -275,7 +276,8 @@ public final class AppModel {
                         changeMonitor: PollingChangeMonitor(client: client),
                         documents: SupabaseDocumentsRepository(client: client),
                         sms: SupabaseSmsRepository(client: client),
-                        contracts: SupabaseContractRepository(client: client)
+                        contracts: SupabaseContractRepository(client: client),
+                        signedContracts: SupabaseSignedContractsRepository(client: client)
                     ),
                     account.role ?? .apporteur,
                     account.fullName ?? "",

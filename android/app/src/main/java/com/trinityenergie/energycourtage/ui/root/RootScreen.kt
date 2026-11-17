@@ -110,6 +110,7 @@ fun RootScreen(
     var showsNotifications by remember { mutableStateOf(false) }
     var showsCreate by remember { mutableStateOf(false) }
     var showsMandate by remember { mutableStateOf(false) }
+    var opensBilling by remember { mutableStateOf(false) }
     var showsPhone by remember { mutableStateOf(false) }
     var legalKey by remember { mutableStateOf<String?>(null) }
     var requiredKey by remember { mutableStateOf<String?>(null) }
@@ -208,6 +209,7 @@ fun RootScreen(
                         refreshKey = homeRefresh,
                         accessory = { Bell(unread) { showsNotifications = true } },
                         onOpenMandate = { showsMandate = true },
+                        onOpenBilling = { opensBilling = true; tab = Tab.Profile.ordinal },
                         onNewRecommendation = { showsCreate = true },
                     )
                     Tab.Recommendations -> RecommendationsTab(
@@ -223,6 +225,8 @@ fun RootScreen(
                         onOpenLegal = { legalKey = it },
                         onOpenMandate = { showsMandate = true },
                         onVerifyPhone = { showsPhone = true },
+                        opensBilling = opensBilling,
+                        onBillingOpened = { opensBilling = false },
                         onOpenContract = { profileId ->
                             scope.launch {
                                 val pdf = runCatching { deps.contractPdf(profileId) }.getOrNull()

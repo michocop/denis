@@ -42,8 +42,8 @@ ci-après « **le Mandataire** »,
 **Et :**
 
 l''apporteur d''affaires titulaire du compte depuis lequel le présent mandat est
-signé, dont l''identité, le statut, l''adresse et le numéro SIREN sont ceux
-renseignés dans son profil au jour de la signature et reproduits sur chaque
+signé, dont l''identité, le statut, l''adresse et, le cas échéant, le numéro SIREN
+sont ceux renseignés dans son profil au jour de la signature et reproduits sur chaque
 facture,
 
 ci-après « **le Mandant** ».

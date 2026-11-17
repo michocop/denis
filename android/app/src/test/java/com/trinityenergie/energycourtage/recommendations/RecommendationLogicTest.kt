@@ -1,5 +1,6 @@
 package com.trinityenergie.energycourtage.recommendations
 
+import com.trinityenergie.energycourtage.model.AppointmentAgenda
 import com.trinityenergie.energycourtage.core.SupabaseJson
 import com.trinityenergie.energycourtage.data.DemoSamples
 import com.trinityenergie.energycourtage.model.DocumentUpload
@@ -153,7 +154,8 @@ class RecommendationLogicTest {
              "events":[{"stage_key":"a_contacter","stage_label":"À contacter","position":1,"comment":"Bonjour","completed_at":"2026-10-20T11:00:00+00:00"},
                        {"stage_key":"inconnu","completed_at":"2026-10-20T11:00:00+00:00"}],
              "has_contract":false,"invoice_number":null,"invoice_id":null,"days_since_activity":2,
-             "has_note":true,"pending_reminders":1,"apporteur_comment":"Joignable après 18 h","new_column":42}
+             "has_note":true,"pending_reminders":1,"apporteur_comment":"Joignable après 18 h",
+             "appointment_at":"2026-11-10T13:30:00+00:00","new_column":42}
         """.trimIndent()
         val reco = SupabaseJson.decodeFromString<FeedRow>(json).toRecommendation(stages)
         assertEquals(stages[1].id, reco.currentStageId)
@@ -162,6 +164,24 @@ class RecommendationLogicTest {
         assertEquals(BigDecimal("450.00"), reco.displayedAmount)
         assertEquals(Instant.parse("2026-10-20T10:15:30.123456Z"), reco.createdAt)
         assertEquals("LM", reco.initials)
+        assertEquals(Instant.parse("2026-11-10T13:30:00Z"), reco.appointmentAt)
+    }
+
+    @Test fun meetingsReadNextFirstThenTheLatestGoneBy() {
+        val now = Instant.parse("2026-11-05T12:00:00Z")
+        fun meeting(id: String, hours: Long?) = DemoSamples.inProgress().copy(id = id, appointmentAt = hours?.let { now.plusSeconds(it * 3600) })
+        val agenda = AppointmentAgenda.of(listOf(meeting("later", 48), meeting("old", -48), meeting("next", 2),
+            meeting("recent", -2), meeting("none", null)), now)
+        assertEquals(listOf("next", "later"), agenda.upcoming.map { it.id })
+        assertEquals(listOf("recent", "old"), agenda.past.map { it.id })
+    }
+
+    @Test fun aMeetingIsSaidInFullAndStartsTomorrowAtTen() {
+        val paris = java.time.ZoneId.of("Europe/Paris")
+        val now = Instant.parse("2026-11-05T12:00:00Z")
+        assertEquals("mardi 10 novembre à 14:30", RecoDates.appointment(Instant.parse("2026-11-10T13:30:00Z"), now, paris))
+        assertEquals("lundi 11 janvier 2027 à 09:00", RecoDates.appointment(Instant.parse("2027-01-11T08:00:00Z"), now, paris))
+        assertEquals(Instant.parse("2026-11-06T09:00:00Z"), RecoDates.defaultAppointment(now, paris))
     }
 
     @Test fun actionConfirmationsKeepTheIosCopy() {

@@ -134,10 +134,25 @@ internal object DemoLegalTexts {
         "facture établie en son nom, et à procéder lui-même aux déclarations\n" +
         "fiscales et sociales qui lui incombent.\n" +
         "\n" +
+        "Article 4 — Régime de TVA\n" +
+        "\n" +
+        "Le régime de TVA applicable est celui que le Mandant déclare dans son profil :\n" +
+        "franchise en base (article 293 B du CGI) ou régime réel, avec son numéro de TVA\n" +
+        "intracommunautaire. Il figure sur chaque facture. Tout changement de régime\n" +
+        "doit être signalé sans délai ; les factures ultérieures seront établies en\n" +
+        "conséquence.\n" +
+        "\n" +
         "Article 5 — Absence de lien de subordination\n" +
         "\n" +
         "Le Mandant exerce son activité en toute indépendance. Le présent mandat ne\n" +
         "crée ni lien de subordination, ni exclusivité, ni obligation de résultat.\n" +
+        "\n" +
+        "Article 6 — Durée et résiliation\n" +
+        "\n" +
+        "Le présent mandat prend effet à la date de sa signature et est conclu pour une\n" +
+        "durée indéterminée. Chaque partie peut y mettre fin à tout moment moyennant un\n" +
+        "préavis de 30 jours notifié par écrit. Les factures établies avant la\n" +
+        "résiliation demeurent valables.\n" +
         "\n" +
         "Article 7 — Signature électronique\n" +
         "\n" +

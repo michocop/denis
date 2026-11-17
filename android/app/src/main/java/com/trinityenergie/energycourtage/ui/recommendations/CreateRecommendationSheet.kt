@@ -1,5 +1,7 @@
 package com.trinityenergie.energycourtage.ui.recommendations
 
+import java.time.Instant
+import com.trinityenergie.energycourtage.model.RecoDates
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -122,6 +124,8 @@ fun CreateRecommendationSheet(deps: Dependencies, onDismiss: () -> Unit, onCreat
 
         CommentField(draft.comment) { draft = draft.copy(comment = it.take(RecommendationDraft.COMMENT_LIMIT)) }
 
+        AppointmentBlock(draft.appointmentAt) { draft = draft.copy(appointmentAt = it) }
+
         // the filleul's bill
         Column(Modifier.fillMaxWidth().cardSurface().padding(Spacing.cardPadding), verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
             Text("Facture d'énergie du filleul", style = Type.body.copy(fontWeight = FontWeight.SemiBold), color = Palette.textPrimary)
@@ -214,6 +218,25 @@ private fun CommentField(value: String, onChange: (String) -> Unit) {
                 color = if (value.length >= RecommendationDraft.COMMENT_LIMIT) Palette.destructive else Palette.textSecondary,
                 modifier = Modifier.fillMaxWidth())
         }
+    }
+}
+
+/** Off by default: most leads are simply called back. */
+@Composable
+private fun AppointmentBlock(value: Instant?, onChange: (Instant?) -> Unit) {
+    Column(Modifier.fillMaxWidth().cardSurface().padding(Spacing.cardPadding), verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Rendez-vous (facultatif)", style = Type.body.copy(fontWeight = FontWeight.SemiBold), color = Palette.textPrimary)
+                Text("À renseigner seulement si un rendez-vous est nécessaire ou déjà fixé.", style = Type.secondary, color = Palette.textSecondary)
+            }
+            Switch(checked = value != null, onCheckedChange = { onChange(if (it) RecoDates.defaultAppointment() else null) },
+                modifier = Modifier.semantics { contentDescription = "Ajouter un rendez-vous" },
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = Palette.brandFill, checkedThumbColor = androidx.compose.ui.graphics.Color.White,
+                    uncheckedTrackColor = Palette.track, uncheckedBorderColor = Palette.hairline, uncheckedThumbColor = Palette.textSecondary))
+        }
+        if (value != null) AppointmentFields(value, onChange)
     }
 }
 

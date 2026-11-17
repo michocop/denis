@@ -93,7 +93,59 @@ public struct CommissionLine: Identifiable, Hashable, Codable, Sendable {
     public var id: UUID { recommendationId }
 }
 
+/// Where an apporteur stands against the particulier's ceiling (the
+/// `commission_cap` RPC): a particulier may be invoiced 2 400 € of
+/// commissions a calendar year, and past it no invoice is issued until they
+/// give a SIRET. Home warns from 1 800 €.
+public struct CommissionCap: Hashable, Codable, Sendable {
+    public var particulier: Bool
+    public var year: Int
+    /// What this year's invoices come to, credit notes deducted.
+    public var total: Decimal
+    public var cap: Decimal
+    public var alertFrom: Decimal
+
+    public init(particulier: Bool, year: Int, total: Decimal,
+                cap: Decimal = 2400, alertFrom: Decimal = 1800) {
+        self.particulier = particulier; self.year = year; self.total = total
+        self.cap = cap; self.alertFrom = alertFrom
+    }
+
+    public enum Alert: Equatable, Sendable {
+        /// Close to the ceiling: said before an invoice is refused.
+        case approaching
+        /// At it: the next commissions wait for a SIRET.
+        case reached
+    }
+
+    /// Nothing to say below the alert, or to anyone with a SIRET.
+    public var alert: Alert? {
+        guard particulier, total >= alertFrom else { return nil }
+        return total >= cap ? .reached : .approaching
+    }
+
+    public var title: String {
+        alert == .reached ? "Plafond atteint" : "Plafond de \(Self.euros(cap)) par an"
+    }
+
+    public var message: String {
+        alert == .reached
+            ? "Vos commissions de \(year) ont atteint \(Self.euros(cap)). Pour recevoir les suivantes, renseignez votre SIRET (société ou micro-entreprise)."
+            : "Vous avez reçu \(Self.euros(total)) de commissions en \(year). Au-delà de \(Self.euros(cap)) par année civile, vous devez exercer en société ou en micro-entreprise et renseigner votre SIRET."
+    }
+
+    /// Cents only when there are some: "1 850 €", "1 850,50 €". Rounded to
+    /// the euro, 2 399,60 € would read as the ceiling it has not reached.
+    static func euros(_ amount: Decimal) -> String {
+        var value = amount, whole = Decimal()
+        NSDecimalRound(&whole, &value, 0, .down)
+        return Money.euros(amount, cents: whole != amount)
+    }
+}
+
 public protocol CommissionsRepository: Sendable {
     func statement(year: Int?) async throws -> [CommissionLine]
+    /// The signed-in apporteur's standing against the particulier's ceiling.
+    func commissionCap() async throws -> CommissionCap
 }
 

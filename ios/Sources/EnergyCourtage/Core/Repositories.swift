@@ -60,6 +60,8 @@ public struct Dependencies: Sendable {
     public let documents: DocumentsRepository
     public let sms: SmsRepository
     public let contracts: ContractRepository
+    /// The owner's private book of signed energy contracts.
+    public let signedContracts: SignedContractsRepository
 
     public init(recommendations: RecommendationsRepository,
                 chat: ChatRepository,
@@ -73,7 +75,8 @@ public struct Dependencies: Sendable {
                 changeMonitor: ChangeMonitor = InertChangeMonitor(),
                 documents: DocumentsRepository = PreviewDocumentsRepository(),
                 sms: SmsRepository = PreviewSmsRepository(),
-                contracts: ContractRepository = PreviewContractRepository()) {
+                contracts: ContractRepository = PreviewContractRepository(),
+                signedContracts: SignedContractsRepository = PreviewSignedContractsRepository(hasAccess: false)) {
         self.recommendations = recommendations
         self.chat = chat
         self.profiles = profiles
@@ -87,5 +90,6 @@ public struct Dependencies: Sendable {
         self.documents = documents
         self.sms = sms
         self.contracts = contracts
+        self.signedContracts = signedContracts
     }
 }

@@ -61,6 +61,7 @@ public struct CreateRecommendationView: View {
                         TextField("Raison sociale", text: $draft.company)
                     }
                     commentField
+                    appointmentCard
 
                     if documents != nil { attachmentsCard }
 
@@ -125,6 +126,39 @@ public struct CreateRecommendationView: View {
                 draft.comment = String(text.prefix(RecommendationDraft.commentLimit))
             }
         }
+    }
+
+    /// Off for most leads, which are simply called back: the date only
+    /// exists while the switch is on, so off can never send one by accident.
+    private var appointmentCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            Toggle(isOn: Binding(
+                get: { draft.appointmentAt != nil },
+                set: { draft.appointmentAt = $0 ? AppointmentSchedule.defaultDate() : nil }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Rendez-vous (facultatif)")
+                        .font(Theme.Typography.body.weight(.semibold))
+                        .foregroundStyle(Theme.Palette.textPrimary)
+                    Text("À renseigner seulement si un rendez-vous est nécessaire ou déjà fixé.")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Theme.Palette.brand)
+
+            if let date = draft.appointmentAt {
+                AppointmentPicker(selection: Binding(
+                    get: { draft.appointmentAt ?? date },
+                    set: { draft.appointmentAt = $0 }
+                ), earliest: .now)
+            }
+        }
+        .padding(Theme.Spacing.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
+        .animation(.snappy(duration: 0.2), value: draft.appointmentAt != nil)
     }
 
     private var consentToggle: some View {

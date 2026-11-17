@@ -99,6 +99,9 @@ public struct Recommendation: Identifiable, Hashable, Codable, Sendable {
     /// What the apporteur wrote when filing the lead, for the company to read.
     /// Not a personal note: those stay private to their author.
     public var apporteurComment: String?
+    /// A meeting already fixed with the filleul. Most leads have none: they
+    /// are simply called back.
+    public var appointmentAt: Date?
 
     public var filleulName: String { "\(filleulFirstName) \(filleulLastName)" }
 
@@ -109,7 +112,8 @@ public struct Recommendation: Identifiable, Hashable, Codable, Sendable {
                 status: RecommendationStatus = .active, hasContract: Bool = false,
                 invoiceNumber: String? = nil, invoiceID: UUID? = nil,
                 daysSinceActivity: Int = 0, hasNote: Bool = false,
-                pendingReminders: Int = 0, apporteurComment: String? = nil) {
+                pendingReminders: Int = 0, apporteurComment: String? = nil,
+                appointmentAt: Date? = nil) {
         self.id = id
         self.filleulFirstName = filleulFirstName
         self.filleulLastName = filleulLastName
@@ -128,6 +132,7 @@ public struct Recommendation: Identifiable, Hashable, Codable, Sendable {
         self.hasNote = hasNote
         self.pendingReminders = pendingReminders
         self.apporteurComment = apporteurComment
+        self.appointmentAt = appointmentAt
     }
 
     /// A week of silence is the threshold at which a lead starts going cold.

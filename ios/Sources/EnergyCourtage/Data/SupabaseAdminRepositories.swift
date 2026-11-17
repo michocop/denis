@@ -72,6 +72,10 @@ public struct SupabaseCommissionsRepository: CommissionsRepository {
         return try await client.get("commission_statement", query: query)
     }
 
+    public func commissionCap() async throws -> CommissionCap {
+        // no argument: the server answers for the signed-in person
+        try await client.rpc("commission_cap")
+    }
 }
 
 /// Reads `notification_feed`, which renders the title and body in SQL so the

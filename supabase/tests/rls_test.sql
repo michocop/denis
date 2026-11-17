@@ -3284,4 +3284,231 @@ end $$;
 
 reset role;
 \echo ''
+\echo '=== 55. A particulier signs without a SIRET, up to 2 400 € a year ==='
+insert into edge_hooks (name, url, secret)
+values ('send-sms', 'https://project.supabase.co/functions/v1/send-sms', 'sms-secret'),
+       ('contract-pdf', 'https://project.supabase.co/functions/v1/contract-pdf', 'pdf-secret')
+on conflict (name) do update set enabled = true;
+insert into auth.users (id, email) values ('aaaaaaaa-0000-0000-0000-000000000056', 'noa@example.test');
+insert into profiles (id, role, status, first_name, last_name, email, siret, legal_form)
+values ('aaaaaaaa-0000-0000-0000-000000000056', 'apporteur', 'active', 'Noa', 'Petit',
+        'noa@example.test', '12345678900099', 'SASU');
+set role authenticated;
+do $$
+declare
+  v_noa      uuid := 'aaaaaaaa-0000-0000-0000-000000000056';
+  v_pierre   uuid := '33333333-3333-3333-3333-333333333333';
+  v_contract text := (select sha256 from legal_documents where key = 'contrat_apporteur' and active);
+  v_mandate  text := (select sha256 from legal_documents where key = 'mandat_facturation' and active);
+  v_row      apporteur_contracts%rowtype;
+  v_inv      invoices%rowtype;
+  v_cap      jsonb;
+  v_text     text;
+  v_hint     text;
+  v_reco     uuid;
+begin
+  perform assert(fr_euros(4500) = '4 500 €' and fr_euros(1234.5) = '1 234,50 €'
+                 and fr_euros(0) = '0 €',
+    'amounts are written the French way');
+  perform assert((select version = '2026-10-2' and body like '%2 400 € par année civile%'
+                    from legal_documents where key = 'contrat_apporteur' and active),
+    'the contract in force sets the particulier''s ceiling');
+
+  perform login(v_noa);
+  perform assert_denied(v_noa,
+    format('select sign_apporteur_contract(''independant'', %L, %L)', v_contract, v_mandate),
+    'a particulier still needs an address');
+  update profiles set address = '8 rue Solférino', postal_code = '59000', city = 'Lille'
+   where id = v_noa;
+  perform request_sms_code('sign_contract', null, '06 11 22 33 56');
+  perform confirm_sms_code('sign_contract', test_last_sms_code());
+  select * into v_row from sign_apporteur_contract('independant', v_contract, v_mandate);
+  perform assert(v_row.siret is null and v_row.legal_form = 'Particulier'
+                 and v_row.business_status = 'independant' and v_row.company_name is null,
+    'a particulier signs with no SIRET, and the record says so');
+  perform assert((select siret is null and legal_form = 'Particulier' and contract_signed_at is not null
+                    from profiles where id = v_noa),
+    'a SIRET typed before choosing particulier is not kept');
+  v_cap := commission_cap();
+  perform assert((v_cap ->> 'particulier')::boolean and (v_cap ->> 'total')::numeric = 0
+                 and (v_cap ->> 'cap')::numeric = 2400 and (v_cap ->> 'alert_from')::numeric = 1800,
+    'the app learns where the particulier stands');
+
+  perform login(v_pierre);
+  select * into v_inv from issue_invoice(test_reco_at_reward(v_noa, v_pierre, 1500, 'PartA'));
+  perform assert(v_inv.vat_rate = 0
+                 and v_inv.legal_mentions like '%particulier non assujetti à la TVA%',
+    'a particulier''s invoice says why there is no VAT');
+  perform issue_invoice(test_reco_at_reward(v_noa, v_pierre, 900, 'PartB'));
+  perform assert((commission_cap(v_noa) ->> 'total')::numeric = 2400,
+    'up to the ceiling exactly, invoices are issued');
+  v_reco := test_reco_at_reward(v_noa, v_pierre, 100, 'PartC');
+  perform login(v_pierre);
+  begin
+    perform issue_invoice(v_reco);
+    perform assert(false, 'past 2 400 € in a year, no invoice for a particulier');
+  exception when others then
+    get stacked diagnostics v_text = message_text, v_hint = pg_exception_hint;
+    perform assert(v_hint = 'particulier_cap'
+                   and v_text like 'Noa Petit est particulier : ses commissions sont limitées à 2 400 € par année civile, et 2 400 € sont déjà facturés en %',
+      'past 2 400 € in a year, no invoice for a particulier, and the admin is told why');
+  end;
+  perform assert((select reward_status = 'earned' from recommendations where id = v_reco),
+    'the commission stays earned, waiting');
+
+  perform login(v_noa);
+  perform assert_denied(v_noa, format('select commission_cap(%L)', v_pierre),
+    'an apporteur sees only where they stand');
+  update profiles set siret = '98765432100012' where id = v_noa;
+  perform assert((select legal_form is null from profiles where id = v_noa),
+    'with a SIRET, "Particulier" is no longer printed as a legal form');
+  update profiles set legal_form = 'Micro-entrepreneur' where id = v_noa;
+  perform assert(not (commission_cap() ->> 'particulier')::boolean,
+    'with a SIRET, the ceiling no longer applies');
+
+  perform login(v_pierre);
+  select * into v_inv from issue_invoice(v_reco);
+  perform assert(v_inv.amount_ht = 100 and v_inv.legal_mentions like '%293B%',
+    'the waiting commission is invoiced once the SIRET is in, under the 293 B exemption');
+end $$;
+reset role;
+delete from edge_hooks where name in ('send-sms', 'contract-pdf');
+
+\echo '=== 56. A fixed appointment travels with the lead, in date order ==='
+set role authenticated;
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_marie  uuid := '22222222-2222-2222-2222-222222222222';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_first  uuid;
+  v_second uuid;
+  v_plain  uuid;
+  v_order  uuid[];
+  v_export jsonb;
+begin
+  perform login(v_johann);
+  insert into recommendations (filleul_first_name, filleul_last_name, filleul_phone, parrain_id,
+                               consent_confirmed_at, appointment_at)
+  values ('Rdv', 'Tard', '+33600000561', v_johann, now(), now() + interval '9 days')
+  returning id into v_second;
+  insert into recommendations (filleul_first_name, filleul_last_name, filleul_phone, parrain_id,
+                               consent_confirmed_at, appointment_at)
+  values ('Rdv', 'Tot', '+33600000562', v_johann, now(), now() + interval '2 days')
+  returning id into v_first;
+  insert into recommendations (filleul_first_name, filleul_last_name, filleul_phone, parrain_id,
+                               consent_confirmed_at)
+  values ('Sans', 'Rdv', '+33600000563', v_johann, now())
+  returning id into v_plain;
+
+  perform assert((select appointment_at is null from recommendation_feed where id = v_plain),
+    'the appointment is optional');
+
+  perform login(v_pierre);
+  select array_agg(id order by appointment_at) into v_order
+    from recommendation_feed
+   where appointment_at is not null and id in (v_first, v_second, v_plain);
+  perform assert(v_order = array[v_first, v_second], 'the company reads the meetings soonest first');
+
+  update recommendations set appointment_at = now() + interval '12 days' where id = v_first;
+  perform assert((select appointment_at > now() + interval '11 days' from recommendation_feed where id = v_first),
+    'the company moves a meeting');
+  update recommendations set appointment_at = null where id = v_plain;
+
+  perform login(v_marie);
+  perform assert((select count(*) from recommendation_feed where id = v_first) = 0,
+    'another apporteur does not see the meeting');
+
+  perform login(v_pierre);
+  v_export := filleul_data_export('+33600000561', null);
+  perform assert(v_export -> 0 ->> 'appointment_at' is not null, 'an access request returns the appointment');
+  perform erase_filleul(v_second);
+  perform assert((select appointment_at is null from recommendations where id = v_second),
+    'erasing the filleul erases the appointment');
+end $$;
+
+
+\echo '=== 57. The signed-contracts book belongs to the owner alone ======'
+reset role;
+insert into contract_book_members (profile_id) values ('33333333-3333-3333-3333-333333333333');
+set role authenticated;
+do $$
+declare
+  v_johann uuid := '11111111-1111-1111-1111-111111111111';
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_late   uuid;
+  v_soon   uuid;
+  v_order  uuid[];
+begin
+  perform login(v_pierre);
+  perform assert(has_contract_book(), 'the owner has the book');
+  insert into signed_contracts (client_name, energy, delivery_point, previous_supplier, ends_on)
+  values ('Boulangerie Late', 'gaz', 'GI123456', 'Ancien Fournisseur', current_date + 400)
+  returning id into v_late;
+  insert into signed_contracts (client_name, client_kind, ends_on)
+  values ('Mme Soon', 'particulier', current_date + 30)
+  returning id into v_soon;
+  insert into signed_contracts (client_name) values ('Sans échéance');
+  select array_agg(id order by ends_on nulls last) into v_order
+    from signed_contracts where ends_on is not null;
+  perform assert(v_order = array[v_soon, v_late], 'the échéances read soonest first');
+  perform assert((select created_by from signed_contracts where id = v_late) = v_pierre,
+    'the book records who typed the contract');
+  update signed_contracts set notes = 'Rappeler en mars' where id = v_late;
+  perform assert((select notes from signed_contracts where id = v_late) = 'Rappeler en mars',
+    'the owner edits a contract');
+
+  perform login(v_johann);
+  perform assert(not has_contract_book(), 'an apporteur has no book');
+  perform assert((select count(*) from signed_contracts) = 0, 'an apporteur reads no contract');
+end $$;
+
+select assert_denied('11111111-1111-1111-1111-111111111111',
+  $q$insert into signed_contracts (client_name) values ('Intrus')$q$,
+  'an apporteur cannot add a contract');
+select assert_denied('11111111-1111-1111-1111-111111111111',
+  $q$delete from signed_contracts$q$,
+  'an apporteur cannot delete a contract');
+select assert_denied('11111111-1111-1111-1111-111111111111',
+  $q$insert into contract_book_members (profile_id) values ('11111111-1111-1111-1111-111111111111')$q$,
+  'nobody grants themselves the book');
+
+-- An admin who is not the owner is refused too.
+reset role;
+insert into auth.users (id, email) values ('44444444-0000-0000-0000-000000000057', 'autre-admin@example.test');
+insert into profiles (id, role, status, first_name, last_name, email)
+values ('44444444-0000-0000-0000-000000000057', 'admin', 'active', 'Autre', 'Admin', 'autre-admin@example.test');
+set role authenticated;
+do $$
+begin
+  perform login('44444444-0000-0000-0000-000000000057');
+  perform assert(not has_contract_book(), 'another admin has no book');
+  perform assert((select count(*) from signed_contracts) = 0, 'another admin reads no contract');
+end $$;
+select assert_denied('44444444-0000-0000-0000-000000000057',
+  $q$update signed_contracts set notes = 'x'$q$,
+  'another admin cannot edit a contract');
+
+do $$
+begin
+  perform login('33333333-3333-3333-3333-333333333333');
+  delete from signed_contracts where client_name = 'Sans échéance';
+  perform assert((select count(*) from signed_contracts where client_name = 'Sans échéance') = 0,
+    'the owner deletes a contract');
+end $$;
+
+-- A suspended owner loses it.
+reset role;
+update profiles set status = 'suspended' where id = '33333333-3333-3333-3333-333333333333';
+set role authenticated;
+do $$
+begin
+  perform login('33333333-3333-3333-3333-333333333333');
+  perform assert((select count(*) from signed_contracts) = 0, 'a suspended owner reads nothing');
+end $$;
+reset role;
+update profiles set status = 'active' where id = '33333333-3333-3333-3333-333333333333';
+
+reset role;
+\echo ''
 \echo '=== ALL ASSERTIONS PASSED ========================================='

@@ -5,6 +5,7 @@ import com.trinityenergie.energycourtage.core.SupabaseException
 import com.trinityenergie.energycourtage.model.DuplicateCheck
 import com.trinityenergie.energycourtage.model.FeedRow
 import com.trinityenergie.energycourtage.model.Profile
+import com.trinityenergie.energycourtage.model.RecoDates
 import com.trinityenergie.energycourtage.model.Recommendation
 import com.trinityenergie.energycourtage.model.RecommendationCursor
 import com.trinityenergie.energycourtage.model.RecommendationDraft
@@ -46,6 +47,11 @@ interface RecommendationsRepository {
     suspend fun resetPipeline(recommendationId: String)
     suspend fun softDelete(recommendationId: String)
     suspend fun loadAdmins(): List<Profile>
+
+    /** Every live lead with a meeting fixed, soonest first. */
+    suspend fun appointments(): List<Recommendation>
+    /** Sets, moves or (with null) removes a meeting. */
+    suspend fun setAppointment(recommendationId: String, at: Instant?): Recommendation
 
     /** Warns before a second apporteur claims a lead someone already holds. */
     suspend fun checkDuplicate(phone: String, email: String): DuplicateCheck
@@ -127,12 +133,25 @@ class SupabaseRecommendationsRepository(private val client: SupabaseClient) : Re
             if (draft.email.isNotEmpty()) put("filleul_email", draft.email)
             if (draft.company.isNotEmpty()) put("filleul_company", draft.company)
             draft.trimmedComment?.let { put("apporteur_comment", it) }
+            draft.appointmentAt?.let { put("appointment_at", it.toString()) }
             // the server records its own clock: what is sent is the "yes"
             if (draft.consentConfirmed) put("consent_confirmed_at", Instant.now().toString())
         }
         val created: List<Created> = client.decode(client.insert("recommendations", values))
         val id = created.firstOrNull()?.id ?: throw SupabaseException.Decoding("insert returned no row")
         return reload(id)
+    }
+
+    override suspend fun appointments(): List<Recommendation> {
+        val pipeline = loadPipeline()
+        val rows: List<FeedRow> = client.decode(client.select("recommendation_feed",
+            "appointment_at=not.is.null&status=eq.active&order=appointment_at.asc"))
+        return rows.map { it.toRecommendation(pipeline) }
+    }
+
+    override suspend fun setAppointment(recommendationId: String, at: Instant?): Recommendation {
+        client.update("recommendations", buildJsonObject { put("appointment_at", at?.toString()) }, "id=eq.$recommendationId")
+        return reload(recommendationId)
     }
 
     override suspend fun reassign(recommendationId: String, adminId: String) =
@@ -249,14 +268,16 @@ object DemoSamples {
         filleulFirstName = "Thomas", filleulLastName = "Dubois",
         filleulPhone = "+33 6 75 75 75 75",
         parrainName = "Johann Lefeuvre",
-        createdAt = Instant.now().minusSeconds(8 * 3600),
+        // created 12 days ago, last moved 11 days ago: "Sans activité depuis 11 jours" holds
+        createdAt = Instant.now().minusSeconds(12 * 86_400),
         currentStageId = stages[1].id,
-        events = listOf(event("a_contacter", 60)),
+        events = listOf(event("a_contacter", 11 * 1440)),
         rewardAmount = BigDecimal(1000),
         rewardStatus = RewardStatus.Pending,
         // deliberately stale, so the staleness banner has something to show
         daysSinceActivity = 11,
         apporteurComment = "Contrat chez Engie jusqu'en mars. Joignable après 18 h, c'est son associé qui signe.",
+        appointmentAt = RecoDates.defaultAppointment(Instant.now().plusSeconds(2 * 86_400)),
     )
 }
 
@@ -318,9 +339,20 @@ object DemoRecommendationsRepository : RecommendationsRepository {
             createdAt = Instant.now(),
             currentStageId = DemoSamples.stages[0].id,
             apporteurComment = draft.trimmedComment,
+            appointmentAt = draft.appointmentAt,
         )
         synchronized(lock) { store().add(0, reco) }
         return reco
+    }
+
+    override suspend fun appointments(): List<Recommendation> {
+        delay(DELAY)
+        return synchronized(lock) { store().filter { it.appointmentAt != null }.sortedBy { it.appointmentAt } }
+    }
+
+    override suspend fun setAppointment(recommendationId: String, at: Instant?): Recommendation {
+        delay(DELAY)
+        return update(recommendationId) { it.copy(appointmentAt = at) }
     }
 
     override suspend fun reassign(recommendationId: String, adminId: String) { delay(DELAY) }
@@ -381,7 +413,7 @@ object DemoRecommendationsRepository : RecommendationsRepository {
     override suspend fun eraseFilleul(recommendationId: String) {
         delay(DELAY)
         update(recommendationId) {
-            it.copy(filleulFirstName = "Personne", filleulLastName = "effacée", filleulPhone = null, apporteurComment = null)
+            it.copy(filleulFirstName = "Personne", filleulLastName = "effacée", filleulPhone = null, apporteurComment = null, appointmentAt = null)
         }
         DemoDocumentsRepository.removeAll(recommendationId)
     }

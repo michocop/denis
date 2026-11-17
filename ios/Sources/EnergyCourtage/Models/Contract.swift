@@ -3,15 +3,27 @@ import Foundation
 import UIKit
 #endif
 
-/// How an apporteur works: through a company, or on their own. It decides
-/// what the contract and every invoice say about them.
+/// How an apporteur works: through a company or a registered business, with
+/// a SIRET, or as a private individual without one. It decides what the
+/// contract and every invoice say about them.
 public enum BusinessStatus: String, Codable, Sendable, CaseIterable, Identifiable {
     case societe
+    /// A particulier: recommends now and then, has no SIRET, and may earn up
+    /// to 2 400 € of commissions a calendar year. Those who signed as
+    /// indépendant before that gave a SIRET, and are not particuliers.
     case independant
 
     public var id: String { rawValue }
 
     public var label: String {
+        switch self {
+        case .societe: "Société ou entreprise"
+        case .independant: "Indépendant"
+        }
+    }
+
+    /// For a line that already says a lot: "Contrat signé le … · Société".
+    public var shortLabel: String {
         switch self {
         case .societe: "Société"
         case .independant: "Indépendant"
@@ -20,8 +32,8 @@ public enum BusinessStatus: String, Codable, Sendable, CaseIterable, Identifiabl
 
     public var explanation: String {
         switch self {
-        case .societe: "SAS, SASU, SARL, EURL… Vos commissions sont facturées au nom de votre société."
-        case .independant: "Micro-entrepreneur ou entreprise individuelle, en votre nom propre."
+        case .societe: "SAS, SARL, micro-entrepreneur… Vos commissions sont facturées sous votre SIRET."
+        case .independant: "Particulier, sans SIRET\u{00A0}: jusqu'à 2\u{00A0}400\u{00A0}€ de commissions par an."
         }
     }
 
@@ -32,12 +44,22 @@ public enum BusinessStatus: String, Codable, Sendable, CaseIterable, Identifiabl
         }
     }
 
-    /// The forms offered to choose from; the first is preselected.
+    /// The forms offered to choose from; the first is preselected. A
+    /// particulier has none to choose: theirs is `particulierForm`.
     public var legalForms: [String] {
         switch self {
-        case .societe: ["SASU", "SAS", "EURL", "SARL", "SA", "SNC"]
-        case .independant: ["Micro-entrepreneur", "Entreprise individuelle"]
+        case .societe: ["SASU", "SAS", "EURL", "SARL", "Micro-entrepreneur", "Entreprise individuelle", "SA", "SNC"]
+        case .independant: []
         }
+    }
+
+    /// The legal form the server stores for a particulier.
+    public static let particulierForm = "Particulier"
+
+    /// A micro-entrepreneur or a sole trader trades under their own name: a
+    /// company name is theirs to give or not.
+    public static func needsCompanyName(legalForm: String?) -> Bool {
+        !["Micro-entrepreneur", "Entreprise individuelle"].contains(legalForm ?? "")
     }
 }
 

@@ -58,8 +58,8 @@ android {
         applicationId = "com.trinityenergie.energycourtage"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1"
         buildConfigField("String", "SUPABASE_URL", "\"${config["SUPABASE_URL"] ?: ""}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${config["SUPABASE_ANON_KEY"] ?: ""}\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", firebaseField("FIREBASE_PROJECT_ID"))
@@ -126,6 +126,8 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging:24.1.2")
     // lead documents: the system document scanner (edge detection, perspective, PDF out)
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
+    // ModuleInstall, to fetch the scanner before its first use
+    implementation("com.google.android.gms:play-services-base:18.5.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

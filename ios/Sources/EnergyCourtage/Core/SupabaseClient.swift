@@ -379,6 +379,15 @@ public actor SupabaseClient: SupabaseTransport {
         return try await perform(request)
     }
 
+    /// Deletes the rows matched, as RLS allows: a refused row is simply not
+    /// matched, so callers that must know read it back.
+    public func delete(_ table: String, match: [URLQueryItem]) async throws {
+        var request = URLRequest(url: restURL(table, query: match))
+        request.httpMethod = "DELETE"
+        applyHeaders(to: &request)
+        _ = try await performRaw(request)
+    }
+
     public func rpc<T: Decodable>(_ function: String,
                                   body: [String: AnyEncodable] = [:]) async throws -> T {
         var request = URLRequest(url: restURL("rpc/\(function)"))

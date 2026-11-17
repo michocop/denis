@@ -81,6 +81,8 @@ public struct ProfileView: View {
     @State private var contractURL: URL?
     @State private var isOpeningContract = false
     @State private var contractMessage: String?
+    /// Only the accounts the database lists see the contracts book.
+    @State private var hasContractBook = false
     private let dependencies: Dependencies
     private let onSignOut: () -> Void
 
@@ -122,6 +124,20 @@ public struct ProfileView: View {
                                     repository: dependencies.admin))
                             } label: {
                                 consoleRow("À régler", icon: "eurosign.circle")
+                            }
+                            NavigationLink {
+                                AppointmentsView(model: AppointmentsViewModel(
+                                    repository: dependencies.recommendations))
+                            } label: {
+                                consoleRow("Rendez-vous", icon: "calendar")
+                            }
+                            if hasContractBook {
+                                NavigationLink {
+                                    SignedContractsView(model: SignedContractsViewModel(
+                                        repository: dependencies.signedContracts))
+                                } label: {
+                                    consoleRow("Contrats signés", icon: "signature")
+                                }
                             }
                         } else {
                             NavigationLink {
@@ -217,6 +233,9 @@ public struct ProfileView: View {
             if let profile = model.profile, !profile.role.isAdmin {
                 contract = try? await dependencies.contracts.contract(for: profile.id)
             }
+            if let profile = model.profile, profile.role.isAdmin {
+                hasContractBook = (try? await dependencies.signedContracts.hasAccess()) ?? false
+            }
         }
         .quickLookPreview($contractURL)
         .sheet(isPresented: $verifiesPhone) {
@@ -307,7 +326,7 @@ public struct ProfileView: View {
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.Palette.textPrimary)
                     Text(contractMessage
-                         ?? "\(contract.signedAt.formatted(date: .abbreviated, time: .omitted)) · \(contract.businessStatus.label) · \(contract.reference)")
+                         ?? "\(contract.signedAt.formatted(date: .abbreviated, time: .omitted)) · \(contract.businessStatus.shortLabel) · \(contract.reference)")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Palette.textSecondary)
                 }

@@ -51,6 +51,8 @@ private class PagedRepository(val all: List<Recommendation>) : RecommendationsRe
     override suspend fun resetPipeline(recommendationId: String) {}
     override suspend fun softDelete(recommendationId: String) {}
     override suspend fun loadAdmins() = emptyList<Profile>()
+    override suspend fun appointments() = emptyList<Recommendation>()
+    override suspend fun setAppointment(recommendationId: String, at: Instant?) = error("unused")
     override suspend fun checkDuplicate(phone: String, email: String) = DuplicateCheck()
     override suspend fun note(recommendationId: String) = ""
     override suspend fun saveNote(recommendationId: String, body: String) {}

@@ -66,7 +66,8 @@ public enum SampleData {
             invoiceNumber: "FA-2026-0001",
             invoiceID: UUID(uuidString: "dddddddd-dddd-dddd-dddd-dddddddddddd")!,
             daysSinceActivity: 0,
-            hasNote: true
+            hasNote: true,
+            appointmentAt: Date().addingTimeInterval(-60 * 60 * 6)
         )
     }
 
@@ -78,16 +79,21 @@ public enum SampleData {
             filleulFirstName: "Thomas", filleulLastName: "Dubois",
             filleulPhone: "+33 6 75 75 75 75",
             parrainName: "Johann Lefeuvre",
-            createdAt: Date().addingTimeInterval(-60 * 60 * 8),
+            // created 12 days ago, last moved 11 days ago: "Sans activité depuis 11 jours" holds
+            createdAt: Date().addingTimeInterval(-60 * 60 * 24 * 12),
             currentStageID: stages[1].id,
-            events: [event("a_contacter", minutesAgo: 60)],
+            events: [event("a_contacter", minutesAgo: 11 * 1440)],
             rewardAmount: 1000,
             rewardStatus: .pending,
             hasContract: false,
             // Deliberately stale, so the staleness banner has something to show.
             daysSinceActivity: 11,
             apporteurComment: "Contrat chez Engie jusqu'en mars. Joignable après 18 h, "
-                + "c'est son associé qui signe."
+                + "c'est son associé qui signe.",
+            appointmentAt: Calendar.current.date(
+                byAdding: .day, value: 3,
+                to: Calendar.current.date(bySettingHour: 14, minute: 30, second: 0, of: Date())!
+            )
         )
     }
 }
@@ -156,7 +162,8 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
             parrainName: "Johann Lefeuvre",
             createdAt: .now,
             currentStageID: SampleData.stages[0].id,
-            apporteurComment: draft.trimmedComment
+            apporteurComment: draft.trimmedComment,
+            appointmentAt: draft.appointmentAt
         )
         await store.insert(reco)
         return reco
@@ -180,6 +187,17 @@ public struct PreviewRecommendationsRepository: RecommendationsRepository {
 
     public func softDelete(recommendationID: UUID) async throws {
         await store.remove(recommendationID)
+    }
+
+    public func appointments() async throws -> [Recommendation] {
+        try? await Task.sleep(for: delay)
+        return await store.items
+            .filter { $0.status == .active && $0.appointmentAt != nil }
+            .sorted { $0.appointmentAt! < $1.appointmentAt! }
+    }
+
+    public func setAppointment(recommendationID: UUID, at date: Date?) async throws -> Recommendation {
+        try await store.update(recommendationID) { $0.appointmentAt = date }
     }
 
     enum PreviewError: Error { case notFound }
@@ -597,6 +615,14 @@ public struct PreviewCommissionsRepository: CommissionsRepository {
         ]
     }
 
+    /// The demo's invoices come to 1 300 €, short of the alert: Accueil shows
+    /// nothing, even for a demo apporteur who signed as a particulier.
+    public func commissionCap() async throws -> CommissionCap {
+        let saved = await DemoProfileStore.shared.saved
+        return CommissionCap(particulier: saved?.businessStatus == .independant
+                                 && (saved?.siret ?? "").isEmpty,
+                             year: Calendar.current.component(.year, from: .now), total: 1300)
+    }
 }
 
 /// Demo notifications that clear when you open them, so the badge behaves.
@@ -742,10 +768,25 @@ public struct PreviewLegalRepository: LegalRepository {
     facture établie en son nom, et à procéder lui-même aux déclarations
     fiscales et sociales qui lui incombent.
 
+    Article 4 — Régime de TVA
+
+    Le régime de TVA applicable est celui que le Mandant déclare dans son profil :
+    franchise en base (article 293 B du CGI) ou régime réel, avec son numéro de TVA
+    intracommunautaire. Il figure sur chaque facture. Tout changement de régime
+    doit être signalé sans délai ; les factures ultérieures seront établies en
+    conséquence.
+
     Article 5 — Absence de lien de subordination
 
     Le Mandant exerce son activité en toute indépendance. Le présent mandat ne
     crée ni lien de subordination, ni exclusivité, ni obligation de résultat.
+
+    Article 6 — Durée et résiliation
+
+    Le présent mandat prend effet à la date de sa signature et est conclu pour une
+    durée indéterminée. Chaque partie peut y mettre fin à tout moment moyennant un
+    préavis de 30 jours notifié par écrit. Les factures établies avant la
+    résiliation demeurent valables.
 
     Article 7 — Signature électronique
 

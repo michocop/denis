@@ -104,8 +104,10 @@ class ReminderReceiver : BroadcastReceiver() {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
 
+        // SINGLE_TOP: an open app gets onNewIntent rather than being torn down
+        // and rebuilt, which would lock it again and lose the screen (as push)
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             ?.putExtra(ReminderAlarms.EXTRA_RECOMMENDATION_ID, recommendationId)
         val tap = launch?.let {
             PendingIntent.getActivity(context, id.hashCode(), it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)

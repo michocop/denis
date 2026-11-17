@@ -60,7 +60,7 @@ internal fun BillingDetailsScreen(profile: Profile, save: suspend (Profile) -> U
         LabelledField("Raison sociale (facultatif)", draft.companyName.orEmpty(), { draft = draft.copy(companyName = it) },
             placeholder = "Nom de votre entreprise", keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
         LabelledField("Statut (facultatif)", draft.legalForm.orEmpty(), { draft = draft.copy(legalForm = it) },
-            placeholder = "Micro-entreprise, SASU, particulier…")
+            placeholder = "Micro-entreprise, SASU…")
         LabelledField("SIRET (facultatif)", draft.siret.orEmpty(), { draft = draft.copy(siret = it) },
             placeholder = "14 chiffres", keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         LabelledField("Adresse", draft.address.orEmpty(), { draft = draft.copy(address = it) },

@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -117,7 +119,11 @@ fun SignInScreen(
     val trimmed = email.trim()
     val validEmail = trimmed.contains("@") && trimmed.substringAfter("@").contains(".") && !trimmed.contains(" ")
     val secondsBeforeResend = ((resendAt - now + 999) / 1000).coerceAtLeast(0)
-    val typing = emailFocused || codeFor != null
+    // Back closes the keyboard but leaves the field focused: what is hidden
+    // while typing comes back with the keyboard gone.
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    val keyboardUp = WindowInsets.isImeVisible
+    val typing = (emailFocused && keyboardUp) || codeFor != null
 
     fun send(again: Boolean = false) {
         if (!validEmail || sending) return

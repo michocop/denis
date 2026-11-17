@@ -121,6 +121,9 @@ public struct RecommendationDetailView: View {
                     section("Suivi") {
                         row("Recommandé par", recommendation.parrainName)
                         row("Créée le", RecommendationCard.relativeDate(recommendation.createdAt))
+                        if let appointment = recommendation.appointmentAt {
+                            row("Rendez-vous", RecommendationCard.appointmentDate(appointment))
+                        }
                         row("Étape", currentStageLabel)
                         row("Statut", statusLabel)
                     }

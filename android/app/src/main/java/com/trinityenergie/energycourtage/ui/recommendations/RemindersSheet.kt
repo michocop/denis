@@ -1,5 +1,10 @@
 package com.trinityenergie.energycourtage.ui.recommendations
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,18 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDefaults
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.TimePickerDefaults
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,7 +39,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import com.trinityenergie.energycourtage.data.RemindersRepository
 import com.trinityenergie.energycourtage.model.Reminder
 import com.trinityenergie.energycourtage.reminders.ReminderAlarms
@@ -59,10 +55,7 @@ import com.trinityenergie.energycourtage.ui.theme.Type
 import com.trinityenergie.energycourtage.ui.theme.cardSurface
 import kotlinx.coroutines.launch
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
-import java.time.ZoneOffset
 
 /**
  * "Rappels" from the action sheet (iOS RemindersView): a quick preset, a real
@@ -82,6 +75,14 @@ fun RemindersSheet(recommendationId: String, filleulName: String, repository: Re
     var completing by remember { mutableStateOf<String?>(null) }
     var pickingDate by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
+    // Asked when a reminder is scheduled, as on iOS: without it, Android 13
+    // and later drop the "Relance" without a word.
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun askForNotifications() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     suspend fun load() {
         reminders = try { repository.reminders(recommendationId) } catch (e: Exception) { error = e.message; reminders ?: emptyList() }
@@ -154,6 +155,7 @@ fun RemindersSheet(recommendationId: String, filleulName: String, repository: Re
                     val reminder = repository.schedule(recommendationId, text, due)
                     // mirrored onto the phone, so the relance fires with the app closed
                     ReminderAlarms.schedule(context, reminder.id, text, reminder.dueAt, recommendationId)
+                    askForNotifications()
                     label = ""
                     error = null
                     load()
@@ -165,75 +167,9 @@ fun RemindersSheet(recommendationId: String, filleulName: String, repository: Re
         }
     }
 
-    if (pickingDate) {
-        val zone = ZoneId.systemDefault()
-        val today = LocalDate.now(zone)
-        val state = rememberDatePickerState(
-            initialSelectedDateMillis = dueAt.atZone(zone).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-            selectableDates = object : SelectableDates {
-                override fun isSelectableDate(utcTimeMillis: Long) =
-                    !Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).toLocalDate().isBefore(today)
-                override fun isSelectableYear(year: Int) = year >= today.year
-            },
-        )
-        DatePickerDialog(
-            onDismissRequest = { pickingDate = false },
-            confirmButton = {
-                TextButton({
-                    state.selectedDateMillis?.let { millis ->
-                        val day = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
-                        val time = dueAt.atZone(zone).toLocalTime()
-                        dueAt = clampFuture(day.atTime(time).atZone(zone).toInstant())
-                    }
-                    pickingDate = false
-                }) { Text("OK", style = Type.label, color = Palette.brand) }
-            },
-            dismissButton = { TextButton({ pickingDate = false }) { Text("Annuler", style = Type.label, color = Palette.textSecondary) } },
-            colors = DatePickerDefaults.colors(containerColor = Palette.surface),
-        ) {
-            DatePicker(state, colors = DatePickerDefaults.colors(
-                containerColor = Palette.surface,
-                selectedDayContainerColor = Palette.brandFill,
-                todayDateBorderColor = Palette.brand,
-                todayContentColor = Palette.brand,
-            ))
-        }
-    }
-
-    if (pickingTime) {
-        val zone = ZoneId.systemDefault()
-        val current = dueAt.atZone(zone)
-        val state = rememberTimePickerState(current.hour, current.minute, is24Hour = true)
-        Dialog(onDismissRequest = { pickingTime = false }) {
-            Column(
-                Modifier.background(Palette.surface, RoundedCornerShape(Radius.modal)).padding(Spacing.xl),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Spacing.l),
-            ) {
-                Text("Heure de l'échéance", style = Type.label, color = Palette.textSecondary, modifier = Modifier.fillMaxWidth())
-                TimePicker(state, colors = TimePickerDefaults.colors(
-                    clockDialColor = Palette.track,
-                    selectorColor = Palette.brandFill,
-                    timeSelectorSelectedContainerColor = Palette.brandSoft,
-                    timeSelectorSelectedContentColor = Palette.textPrimary,
-                    timeSelectorUnselectedContainerColor = Palette.track,
-                    timeSelectorUnselectedContentColor = Palette.textSecondary,
-                ))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton({ pickingTime = false }) { Text("Annuler", style = Type.label, color = Palette.textSecondary) }
-                    TextButton({
-                        val day = dueAt.atZone(zone).toLocalDate()
-                        dueAt = clampFuture(day.atTime(LocalTime.of(state.hour, state.minute)).atZone(zone).toInstant())
-                        pickingTime = false
-                    }) { Text("OK", style = Type.label, color = Palette.brand) }
-                }
-            }
-        }
-    }
+    if (pickingDate) FutureDateDialog(dueAt, { dueAt = it }) { pickingDate = false }
+    if (pickingTime) FutureTimeDialog("Heure de l'échéance", dueAt, { dueAt = it }) { pickingTime = false }
 }
-
-/** The picker allows nothing before now, as iOS's `in: Date.now...`. */
-private fun clampFuture(i: Instant): Instant = if (i.isBefore(Instant.now())) Instant.now().plusSeconds(60) else i
 
 @Composable
 private fun ReminderRow(reminder: Reminder, completing: Boolean, onComplete: () -> Unit) {

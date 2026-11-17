@@ -77,6 +77,8 @@ data class Recommendation(
     val pendingReminders: Int = 0,
     /** What the apporteur wrote when filing the lead, for the company to read. */
     val apporteurComment: String? = null,
+    /** A meeting already fixed with the filleul, when there is one. */
+    val appointmentAt: Instant? = null,
 ) {
     val filleulName get() = "$filleulFirstName $filleulLastName"
 
@@ -189,6 +191,7 @@ data class FeedRow(
     val hasNote: Boolean = false,
     val pendingReminders: Int = 0,
     val apporteurComment: String? = null,
+    @Serializable(InstantSerializer::class) val appointmentAt: Instant? = null,
 ) {
     @Serializable
     data class Event(
@@ -220,6 +223,7 @@ data class FeedRow(
             hasNote = hasNote,
             pendingReminders = pendingReminders,
             apporteurComment = apporteurComment,
+            appointmentAt = appointmentAt,
         )
     }
 }
@@ -250,6 +254,8 @@ data class RecommendationDraft(
     val company: String = "",
     /** For the company: when to call, the current supplier, who decides. */
     val comment: String = "",
+    /** Only when a meeting is needed or already fixed. */
+    val appointmentAt: Instant? = null,
     val consentConfirmed: Boolean = false,
 ) {
     val trimmedComment: String? get() = comment.trim().ifEmpty { null }
@@ -304,6 +310,28 @@ object RecoDates {
             today -> "Aujourd'hui à $time"
             today.minusDays(1) -> "Hier à $time"
             else -> "${DateTimeFormatter.ofPattern("dd/MM/yyyy", fr).format(d)} à $time"
+        }
+    }
+
+    /** "mardi 10 novembre à 14:30", with the year when it is another one. */
+    fun appointment(date: Instant, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): String {
+        val z = date.atZone(zone)
+        val pattern = if (z.year == now.atZone(zone).year) "EEEE d MMMM" else "EEEE d MMMM yyyy"
+        return "${DateTimeFormatter.ofPattern(pattern, fr).format(z)} à ${DateTimeFormatter.ofPattern("HH:mm", fr).format(z)}"
+    }
+
+    /** Tomorrow at 10:00: where the picker starts. */
+    fun defaultAppointment(now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): Instant =
+        now.atZone(zone).toLocalDate().plusDays(1).atTime(10, 0).atZone(zone).toInstant()
+}
+
+/** The meetings as the company reads them: the next one first, then those
+ *  gone by, the latest first. */
+data class AppointmentAgenda(val upcoming: List<Recommendation>, val past: List<Recommendation>) {
+    companion object {
+        fun of(meetings: List<Recommendation>, now: Instant = Instant.now()): AppointmentAgenda {
+            val (upcoming, past) = meetings.filter { it.appointmentAt != null }.partition { !it.appointmentAt!!.isBefore(now) }
+            return AppointmentAgenda(upcoming.sortedBy { it.appointmentAt }, past.sortedByDescending { it.appointmentAt })
         }
     }
 }

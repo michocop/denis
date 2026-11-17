@@ -230,6 +230,19 @@ public struct RecommendationCard: View {
         return "\(dayFormatter.string(from: date)) à \(time)"
     }
 
+    /// "mardi 10 novembre à 14:30", "mardi 1er décembre à 14:30", and the year
+    /// only when it is not this one. A meeting is read by its day of the week.
+    static func appointmentDate(_ date: Date, now: Date = .now,
+                                calendar: Calendar = .current) -> String {
+        let first = calendar.component(.day, from: date) == 1
+        let sameYear = calendar.isDate(date, equalTo: now, toGranularity: .year)
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "fr_FR")
+        f.timeZone = calendar.timeZone
+        f.dateFormat = "EEEE d\(first ? "'er'" : "") MMMM\(sameYear ? "" : " y") 'à' HH:mm"
+        return f.string(from: date)
+    }
+
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "fr_FR")
