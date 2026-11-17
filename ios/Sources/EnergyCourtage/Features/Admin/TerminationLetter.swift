@@ -24,9 +24,7 @@ public struct TerminationLetter: Equatable, Sendable {
         var missing: [String] = []
         if c.previousSupplier?.nonBlank == nil { missing.append("l'ancien fournisseur") }
         if c.previousSupplierAddress?.nonBlank == nil { missing.append("l'adresse de l'ancien fournisseur") }
-        if c.deliveryPoint?.nonBlank == nil {
-            missing.append(c.energy == .electricite ? "le PDL/PRM" : "le PCE")
-        }
+        if c.filledPoints.isEmpty { missing.append("au moins un PDL/PRM ou PCE") }
         if c.previousReference?.nonBlank == nil { missing.append("le n° de client ou de contrat") }
         if c.postalAddress == nil { missing.append("l'adresse du client") }
         if c.isProfessional && c.signatoryName?.nonBlank == nil { missing.append("le signataire") }
@@ -64,16 +62,23 @@ public struct TerminationLetter: Equatable, Sendable {
         let when = "le \(ContractDay.long(date))"
         placeAndDate = c.city?.nonBlank.map { "À \($0), \(when)" } ?? "Le \(ContractDay.long(date))"
         postalMention = "Lettre recommandée avec accusé de réception"
-        subject = "Objet : Résiliation du contrat de fourniture \(c.energy.supplyLabel)"
+        subject = "Objet : Résiliation du contrat de fourniture \(c.supplyLabel)"
 
         var references: [String] = []
         if let reference = c.previousReference?.nonBlank {
             references.append("N° client / contrat : \(reference)")
         }
-        if let point = c.deliveryPoint?.nonBlank {
-            references.append("\(c.energy.deliveryPointLabel) : \(point)")
+        let points = c.filledPoints
+        if points.count == 1, let point = points.first {
+            references.append("\(point.energy.deliveryPointLabel) : \(Self.describe(point))")
+        } else {
+            for point in points {
+                references.append("\(point.energy.pointName) : \(Self.describe(point))")
+            }
         }
-        if let site = c.suppliedSiteAddress { references.append("Adresse du site : \(site)") }
+        if !points.contains(where: { $0.site?.nonBlank != nil }), let site = c.postalAddress {
+            references.append("Adresse \(points.count > 1 ? "des sites" : "du site") : \(site)")
+        }
         if pro, let siret = c.siret?.nonBlank { references.append("Titulaire : \(name) – SIRET \(siret)") }
         else { references.append("Titulaire : \(name)") }
         self.references = references
@@ -87,11 +92,13 @@ public struct TerminationLetter: Equatable, Sendable {
             effect = "Cette résiliation prendra effet dans les délais prévus par mon contrat."
         }
 
-        let site = "pour le site référencé ci-dessus"
+        let site = points.count > 1
+            ? "pour les points de livraison référencés ci-dessus"
+            : "pour le site référencé ci-dessus"
         if pro {
             paragraphs = [
                 "Madame, Monsieur,",
-                "Par la présente, nous vous informons de notre décision de résilier le contrat de fourniture \(c.energy.supplyLabel) souscrit auprès de vos services par \(name) \(site). \(effect)",
+                "Par la présente, nous vous informons de notre décision de résilier le contrat de fourniture \(c.supplyLabel) souscrit auprès de vos services par \(name) \(site). \(effect)",
                 "Nous vous remercions de bien vouloir procéder au relevé du compteur à cette date, de nous adresser la facture de clôture correspondante et, le cas échéant, de nous rembourser tout montant trop perçu. Nous vous remercions également de nous confirmer cette résiliation par écrit.",
                 "Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées.",
             ]
@@ -102,12 +109,20 @@ public struct TerminationLetter: Equatable, Sendable {
         } else {
             paragraphs = [
                 "Madame, Monsieur,",
-                "Par la présente, je vous informe de ma décision de résilier le contrat de fourniture \(c.energy.supplyLabel) souscrit auprès de vos services \(site). \(effect)",
+                "Par la présente, je vous informe de ma décision de résilier le contrat de fourniture \(c.supplyLabel) souscrit auprès de vos services \(site). \(effect)",
                 "Je vous remercie de bien vouloir procéder au relevé du compteur à cette date, de m'adresser la facture de clôture correspondante et, le cas échéant, de me rembourser tout montant trop perçu. Je vous remercie également de me confirmer cette résiliation par écrit.",
                 "Je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distinguées.",
             ]
             signature = [name]
         }
+    }
+
+    /// "14 52 36 98 74 12 30 (Boutique) – 6 rue de la Gare, 59000 Lille"
+    static func describe(_ point: DeliveryPoint) -> String {
+        var text = point.number.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let label = point.label?.nonBlank { text += " (\(label))" }
+        if let site = point.site?.nonBlank { text += " – \(site)" }
+        return text
     }
 
     /// The file it is shared as.

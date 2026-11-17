@@ -6,6 +6,8 @@ import Foundation
 public struct SupabaseSignedContractsRepository: SignedContractsRepository {
     private let client: SupabaseClient
     private static let table = "signed_contracts"
+    private static let filesTable = "signed_contract_files"
+    private static let bucket = "contract-book"
 
     public init(client: SupabaseClient) { self.client = client }
 
@@ -15,6 +17,7 @@ public struct SupabaseSignedContractsRepository: SignedContractsRepository {
 
     public func contracts() async throws -> [SignedContract] {
         try await client.get(Self.table, query: [
+            URLQueryItem(name: "select", value: "*,signed_contract_files(count)"),
             URLQueryItem(name: "order", value: "ends_on.asc.nullslast,client_name.asc"),
         ])
     }
@@ -28,10 +31,55 @@ public struct SupabaseSignedContractsRepository: SignedContractsRepository {
         return saved
     }
 
+    /// The files' bytes first (best effort), then the row, which takes the
+    /// file rows with it.
     public func delete(id: UUID) async throws {
+        for file in (try? await files(contractID: id)) ?? [] {
+            try? await client.removeObject(bucket: Self.bucket, path: file.storagePath)
+        }
         try await client.delete(Self.table, match: [
             URLQueryItem(name: "id", value: "eq.\(id.uuidString)"),
         ])
+    }
+
+    public func files(contractID: UUID) async throws -> [ContractFile] {
+        try await client.get(Self.filesTable, query: [
+            URLQueryItem(name: "contract_id", value: "eq.\(contractID.uuidString)"),
+            URLQueryItem(name: "order", value: "created_at.asc"),
+        ])
+    }
+
+    /// The bytes, then the row that lists them: a failure in between leaves
+    /// an unlisted file, never a row pointing at nothing.
+    public func addFile(_ upload: DocumentUpload, to contractID: UUID) async throws -> ContractFile {
+        guard upload.data.count <= DocumentUpload.maxBytes else { throw DocumentError.tooLarge }
+        guard ["application/pdf", "image/jpeg", "image/png", "image/heic"].contains(upload.mimeType) else {
+            throw DocumentError.unsupported
+        }
+        let path = "\(contractID.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(upload.fileExtension)"
+        try await client.upload(bucket: Self.bucket, path: path, data: upload.data,
+                                contentType: upload.mimeType)
+        let rows: [ContractFile] = try await client.insert(Self.filesTable, values: [
+            "contract_id": AnyEncodable(contractID),
+            "storage_path": AnyEncodable(path),
+            "filename": AnyEncodable(String(upload.filename.prefix(255))),
+            "byte_size": AnyEncodable(upload.data.count),
+            "mime_type": AnyEncodable(upload.mimeType),
+        ])
+        guard let file = rows.first else { throw SupabaseError.http(status: 403, message: "") }
+        return file
+    }
+
+    public func data(of file: ContractFile) async throws -> Data {
+        try await client.download(bucket: Self.bucket, path: file.storagePath)
+    }
+
+    /// The row first, so the list never shows a file that is gone.
+    public func removeFile(_ file: ContractFile) async throws {
+        try await client.delete(Self.filesTable, match: [
+            URLQueryItem(name: "id", value: "eq.\(file.id.uuidString)"),
+        ])
+        try? await client.removeObject(bucket: Self.bucket, path: file.storagePath)
     }
 
     /// Every column, blanks as null: emptying a field in the form has to
@@ -50,9 +98,11 @@ public struct SupabaseSignedContractsRepository: SignedContractsRepository {
             "address": text(c.address),
             "postal_code": text(c.postalCode),
             "city": text(c.city),
-            "site_address": text(c.siteAddress),
-            "energy": AnyEncodable(c.energy.rawValue),
-            "delivery_point": text(c.deliveryPoint),
+            "delivery_points": AnyEncodable(c.filledPoints.map { point in
+                DeliveryPoint(id: point.id, energy: point.energy,
+                              number: point.number.trimmingCharacters(in: .whitespacesAndNewlines),
+                              label: point.label?.nonBlank, site: point.site?.nonBlank)
+            }),
             "previous_supplier": text(c.previousSupplier),
             "previous_supplier_address": text(c.previousSupplierAddress),
             "previous_reference": text(c.previousReference),

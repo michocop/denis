@@ -7,11 +7,13 @@ public final class SignedContractsViewModel {
     public private(set) var contracts: [SignedContract] = []
     public private(set) var hasLoaded = false
     public private(set) var errorMessage: String?
+    public var query = ""
 
     let repository: SignedContractsRepository
     public init(repository: SignedContractsRepository) { self.repository = repository }
 
-    public var book: ContractBook { ContractBook(contracts) }
+    /// The book as the search box leaves it.
+    public var book: ContractBook { ContractBook(contracts.filter { $0.matches(query) }) }
     public var isEmpty: Bool { hasLoaded && contracts.isEmpty }
 
     @MainActor
@@ -29,10 +31,13 @@ public final class SignedContractsViewModel {
     @MainActor
     @discardableResult
     public func save(_ contract: SignedContract) async throws -> SignedContract {
-        let saved = try await repository.save(contract)
+        var saved = try await repository.save(contract)
         if let index = contracts.firstIndex(where: { $0.id == saved.id }) {
+            // the saved row comes back without the file count it had
+            saved.fileCount = saved.fileCount ?? contracts[index].fileCount
             contracts[index] = saved
         } else {
+            saved.fileCount = saved.fileCount ?? 0
             contracts.append(saved)
         }
         return saved
@@ -42,6 +47,12 @@ public final class SignedContractsViewModel {
     public func delete(_ contract: SignedContract) async throws {
         try await repository.delete(id: contract.id)
         contracts.removeAll { $0.id == contract.id }
+    }
+
+    @MainActor
+    public func setFileCount(_ count: Int, for id: UUID) {
+        guard let index = contracts.firstIndex(where: { $0.id == id }) else { return }
+        contracts[index].fileCount = count
     }
 
     public func contract(_ id: UUID) -> SignedContract? { contracts.first { $0.id == id } }
@@ -69,6 +80,8 @@ public struct SignedContractsView: View {
 
                     PrimaryActionButton("Ajouter un contrat") { creating = SignedContract() }
 
+                    if model.contracts.count > 3 { searchField }
+
                     content
 
                     if let message = model.errorMessage {
@@ -80,12 +93,33 @@ public struct SignedContractsView: View {
                 .padding(.horizontal, Theme.Spacing.gutter)
                 .padding(.bottom, Theme.Spacing.xl)
             }
+            .scrollDismissesKeyboard(.interactively)
             .refreshable { await model.load() }
         }
         .task { await model.load() }
         .sheet(item: $creating) { draft in
             SignedContractForm(contract: draft, isNew: true) { try await model.save($0) }
         }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: Theme.Spacing.s) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Theme.Palette.textSecondary)
+            TextField("Client, ville, PDL, fournisseur…", text: $model.query)
+                .autocorrectionDisabled()
+                .foregroundStyle(Theme.Palette.textPrimary)
+            if !model.query.isEmpty {
+                Button { model.query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.Palette.textSecondary)
+                }
+                .accessibilityLabel("Effacer la recherche")
+            }
+        }
+        .font(Theme.Typography.body)
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
+            .fill(Theme.Palette.grouped))
     }
 
     @ViewBuilder
@@ -111,6 +145,11 @@ public struct SignedContractsView: View {
             }
         } else {
             let book = model.book
+            if book.isEmpty {
+                Text("Aucun contrat ne correspond à « \(model.query) ».")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+            }
             section("Prochaines échéances", book.upcoming)
             section("Sans date d'échéance", book.undated)
             section("Échéance passée", book.expired)
@@ -121,7 +160,7 @@ public struct SignedContractsView: View {
     private func section(_ title: String, _ contracts: [SignedContract]) -> some View {
         if !contracts.isEmpty {
             VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-                Text(title)
+                Text("\(title) (\(contracts.count))")
                     .font(Theme.Typography.body.weight(.semibold))
                     .foregroundStyle(Theme.Palette.textPrimary)
                 ForEach(contracts) { contract in
@@ -164,9 +203,17 @@ struct SignedContractRow: View {
     }
 
     private var subtitle: String {
-        var parts = [contract.energy.label]
+        var parts: [String] = []
+        let points = contract.filledPoints
+        for energy in contract.energies {
+            let count = points.filter { $0.energy == energy }.count
+            parts.append(count > 1 ? "\(count) \(energy.pointName)" : energy.label)
+        }
         if let supplier = contract.newSupplier?.nonBlank { parts.append(supplier) }
         if let city = contract.city?.nonBlank { parts.append(city) }
+        if let files = contract.fileCount, files > 0 {
+            parts.append(files == 1 ? "1 document" : "\(files) documents")
+        }
         return parts.joined(separator: " · ")
     }
 }
@@ -216,6 +263,7 @@ struct SignedContractDetailView: View {
     let contractID: UUID
 
     @State private var editing: SignedContract?
+    @State private var duplicating: SignedContract?
     @State private var letterURL: URL?
     @State private var confirmsDeletion = false
     @State private var errorMessage: String?
@@ -237,6 +285,20 @@ struct SignedContractDetailView: View {
                         }
                         .padding(.top, Theme.Spacing.s)
 
+                        HStack(spacing: Theme.Spacing.m) {
+                            SecondaryActionButton("Modifier", systemImage: "pencil") { editing = contract }
+                            SecondaryActionButton("Dupliquer", systemImage: "plus.square.on.square") {
+                                duplicating = contract.duplicate()
+                            }
+                        }
+
+                        pointsCard(contract)
+
+                        ContractFilesSection(contractID: contractID,
+                                             repository: model.repository) { count in
+                            model.setFileCount(count, for: contractID)
+                        }
+
                         letterCard(contract)
 
                         card("Client", rows: [
@@ -248,9 +310,6 @@ struct SignedContractDetailView: View {
                             ("Email", contract.email),
                         ])
                         card("Contrat signé", rows: [
-                            ("Énergie", contract.energy.label),
-                            (contract.energy.deliveryPointLabel, contract.deliveryPoint),
-                            ("Site", contract.siteAddress),
                             ("Nouveau fournisseur", contract.newSupplier),
                             ("Signé le", ContractDay.long(contract.signedOn)),
                             ("Début", ContractDay.long(contract.startsOn)),
@@ -270,7 +329,6 @@ struct SignedContractDetailView: View {
                                 .foregroundStyle(Theme.Palette.destructive)
                         }
 
-                        SecondaryActionButton("Modifier", systemImage: "pencil") { editing = contract }
                         Button(role: .destructive) { confirmsDeletion = true } label: {
                             Text("Supprimer ce contrat")
                                 .font(Theme.Typography.body)
@@ -288,6 +346,9 @@ struct SignedContractDetailView: View {
         .sheet(item: $editing) { draft in
             SignedContractForm(contract: draft, isNew: false) { try await model.save($0) }
         }
+        .sheet(item: $duplicating) { draft in
+            SignedContractForm(contract: draft, isNew: true) { try await model.save($0) }
+        }
         .quickLookPreview($letterURL)
         .confirmationDialog("Supprimer ce contrat ?", isPresented: $confirmsDeletion,
                             titleVisibility: .visible) {
@@ -304,8 +365,55 @@ struct SignedContractDetailView: View {
             }
             Button("Annuler", role: .cancel) {}
         } message: {
-            Text("Il disparaîtra définitivement de votre liste.")
+            Text("Le contrat et ses documents disparaîtront définitivement.")
         }
+    }
+
+    @ViewBuilder
+    private func pointsCard(_ contract: SignedContract) -> some View {
+        let points = contract.filledPoints
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            Text(points.count > 1 ? "Points de livraison (\(points.count))" : "Point de livraison")
+                .font(Theme.Typography.body.weight(.semibold))
+                .foregroundStyle(Theme.Palette.textPrimary)
+            if points.isEmpty {
+                Text("Aucun PDL/PRM ni PCE renseigné. Ajoutez-les avec « Modifier ».")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+            }
+            ForEach(points) { point in
+                HStack(alignment: .top, spacing: Theme.Spacing.m) {
+                    Image(systemName: point.energy.icon)
+                        .font(.system(size: 15))
+                        .foregroundStyle(point.energy == .electricite ? Theme.Palette.rewardText
+                                                                      : Theme.Palette.staleText)
+                        .frame(width: 22)
+                        .padding(.top, 3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(point.energy.pointName) · \(point.number)")
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Palette.textPrimary)
+                            .textSelection(.enabled)
+                        let details = [point.label?.nonBlank, point.site?.nonBlank].compactMap { $0 }
+                        if !details.isEmpty {
+                            Text(details.joined(separator: " · "))
+                                .font(Theme.Typography.secondary)
+                                .foregroundStyle(Theme.Palette.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contextMenu {
+                    Button {
+                        UIPasteboard.general.string = point.number
+                    } label: { Label("Copier le numéro", systemImage: "doc.on.doc") }
+                }
+            }
+        }
+        .padding(Theme.Spacing.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
     }
 
     private func letterCard(_ contract: SignedContract) -> some View {
@@ -379,6 +487,182 @@ struct SignedContractDetailView: View {
     }
 }
 
+// MARK: - Files
+
+@MainActor
+@Observable
+final class ContractFilesModel {
+    private(set) var files: [ContractFile] = []
+    private(set) var isUploading = false
+    private(set) var hasLoaded = false
+    var errorMessage: String?
+
+    private let contractID: UUID
+    private let repository: SignedContractsRepository
+    private let onCount: (Int) -> Void
+
+    init(contractID: UUID, repository: SignedContractsRepository, onCount: @escaping (Int) -> Void) {
+        self.contractID = contractID
+        self.repository = repository
+        self.onCount = onCount
+    }
+
+    func load() async {
+        do {
+            files = try await repository.files(contractID: contractID)
+            hasLoaded = true
+            onCount(files.count)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func add(_ uploads: [DocumentUpload]) async {
+        isUploading = true
+        defer { isUploading = false }
+        errorMessage = nil
+        for upload in uploads {
+            do {
+                _ = try await repository.addFile(upload, to: contractID)
+            } catch {
+                errorMessage = "\(upload.filename) : \(error.localizedDescription)"
+            }
+        }
+        await load()
+    }
+
+    func remove(_ file: ContractFile) async {
+        do {
+            try await repository.removeFile(file)
+            await load()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func localFile(for file: ContractFile) async -> URL? {
+        do {
+            let data = try await repository.data(of: file)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(file.filename)
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+}
+
+/// The contract's papers: scanned, picked from Photos or from Files, opened
+/// in Quick Look (where they can be shared, printed or annotated).
+struct ContractFilesSection: View {
+    @State private var model: ContractFilesModel
+    @State private var previewURL: URL?
+    @State private var removing: ContractFile?
+
+    init(contractID: UUID, repository: SignedContractsRepository, onCount: @escaping (Int) -> Void) {
+        _model = State(wrappedValue: ContractFilesModel(contractID: contractID, repository: repository,
+                                                        onCount: onCount))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            HStack {
+                Text(model.files.isEmpty ? "Documents" : "Documents (\(model.files.count))")
+                    .font(Theme.Typography.body.weight(.semibold))
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                Spacer()
+                if model.isUploading { ProgressView().tint(Theme.Palette.brand) }
+            }
+
+            if model.hasLoaded && model.files.isEmpty {
+                Text("Contrat signé, factures, pièce d'identité… en PDF ou en photo, autant que nécessaire.")
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ForEach(model.files) { file in
+                HStack(spacing: Theme.Spacing.m) {
+                    Button {
+                        Task { previewURL = await model.localFile(for: file) }
+                    } label: {
+                        row(file)
+                    }
+                    .buttonStyle(.plain)
+                    Menu {
+                        Button {
+                            Task { previewURL = await model.localFile(for: file) }
+                        } label: { Label("Ouvrir", systemImage: "eye") }
+                        Button(role: .destructive) { removing = file } label: {
+                            Label("Retirer", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.Palette.textSecondary)
+                            .frame(width: 36, height: 38)
+                    }
+                    .accessibilityLabel("Options pour \(file.filename)")
+                }
+            }
+
+            if let message = model.errorMessage {
+                Text(message)
+                    .font(Theme.Typography.secondary)
+                    .foregroundStyle(Theme.Palette.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            AddDocumentButton(title: "Ajouter des documents",
+                              scanTitle: "Scanner un document",
+                              scanName: "Document scanné",
+                              onPicked: { uploads in Task { await model.add(uploads) } },
+                              onError: { model.errorMessage = $0 })
+                .disabled(model.isUploading)
+        }
+        .padding(Theme.Spacing.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
+        .quickLookPreview($previewURL)
+        .confirmationDialog("Retirer ce document ?", isPresented: Binding(
+            get: { removing != nil }, set: { if !$0 { removing = nil } }
+        ), titleVisibility: .visible) {
+            Button("Retirer", role: .destructive) {
+                if let file = removing { Task { await model.remove(file) } }
+                removing = nil
+            }
+            Button("Annuler", role: .cancel) { removing = nil }
+        } message: {
+            Text(removing?.filename ?? "")
+        }
+        .task { await model.load() }
+    }
+
+    private func row(_ file: ContractFile) -> some View {
+        HStack(spacing: Theme.Spacing.m) {
+            Image(systemName: file.isPDF ? "doc.richtext" : "photo")
+                .font(.system(size: 18))
+                .foregroundStyle(Theme.Palette.brand)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Theme.Palette.brandSoft))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(file.filename)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Palette.textPrimary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Text([ContractDay.long(file.createdAt), file.sizeLabel].compactMap { $0 }
+                        .joined(separator: " · "))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Palette.textSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+    }
+}
+
 // MARK: - The form
 
 struct SignedContractForm: View {
@@ -386,12 +670,16 @@ struct SignedContractForm: View {
     @State private var draft: SignedContract
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var pastesList = false
 
     private let isNew: Bool
     private let save: (SignedContract) async throws -> SignedContract
 
     init(contract: SignedContract, isNew: Bool,
          save: @escaping (SignedContract) async throws -> SignedContract) {
+        var contract = contract
+        // a new contract opens on one empty meter, ready to type in
+        if contract.deliveryPoints.isEmpty { contract.deliveryPoints = [DeliveryPoint()] }
         _draft = State(initialValue: contract)
         self.isNew = isNew
         self.save = save
@@ -401,99 +689,15 @@ struct SignedContractForm: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    group("Client")
-                    Picker("Type de client", selection: $draft.clientKind) {
-                        Text("Professionnel").tag(SignedContract.ClientKind.professionnel)
-                        Text("Particulier").tag(SignedContract.ClientKind.particulier)
-                    }
-                    .pickerStyle(.segmented)
-
-                    LabelledField(draft.isProfessional ? "Raison sociale" : "Nom et prénom") {
-                        TextField(draft.isProfessional ? "Boulangerie Martin" : "Thomas Dubois",
-                                  text: $draft.clientName)
-                            .textContentType(draft.isProfessional ? .organizationName : .name)
-                    }
-                    if draft.isProfessional {
-                        LabelledField("Signataire (facultatif)") {
-                            TextField("Prénom Nom", text: text(\.signatoryName))
-                                .textContentType(.name)
-                        }
-                        LabelledField("Fonction du signataire (facultatif)") {
-                            TextField("Gérant, Président…", text: text(\.signatoryTitle))
-                        }
-                        LabelledField("SIRET (facultatif)") {
-                            TextField("14 chiffres", text: text(\.siret))
-                                .keyboardType(.numberPad)
-                        }
-                    }
-                    LabelledField("Adresse") {
-                        TextField("Numéro et rue", text: text(\.address))
-                            .textContentType(.streetAddressLine1)
-                    }
-                    HStack(spacing: Theme.Spacing.m) {
-                        LabelledField("Code postal") {
-                            TextField("59000", text: text(\.postalCode))
-                                .keyboardType(.numberPad)
-                                .textContentType(.postalCode)
-                        }
-                        .frame(maxWidth: 130)
-                        LabelledField("Ville") {
-                            TextField("Ville", text: text(\.city))
-                                .textContentType(.addressCity)
-                        }
-                    }
-                    LabelledField("Téléphone (facultatif)") {
-                        TextField("06 12 34 56 78", text: text(\.phone))
-                            .keyboardType(.phonePad)
-                    }
-                    LabelledField("Email (facultatif)") {
-                        TextField("Email", text: text(\.email),
-                                  prompt: Text(verbatim: "client@exemple.fr"))
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                    }
-
-                    group("Contrat signé")
-                    Picker("Énergie", selection: $draft.energy) {
-                        ForEach(SignedContract.Energy.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    LabelledField(draft.energy.deliveryPointLabel) {
-                        TextField(draft.energy == .electricite ? "14 chiffres" : "GI ou 14 chiffres",
-                                  text: text(\.deliveryPoint))
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                    }
-                    LabelledField("Adresse du site (si différente)") {
-                        TextField("Adresse du point de livraison", text: text(\.siteAddress))
-                    }
-                    LabelledField("Nouveau fournisseur") {
-                        TextField("Fournisseur choisi", text: text(\.newSupplier))
-                    }
-                    DayField("Date de signature", day: $draft.signedOn)
-                    DayField("Début du contrat", day: $draft.startsOn)
-                    DayField("Échéance du contrat", day: $draft.endsOn)
-
-                    group("Ancien contrat (pour la lettre de résiliation)")
-                    LabelledField("Ancien fournisseur") {
-                        TextField("EDF, Engie…", text: text(\.previousSupplier))
-                    }
-                    LabelledField("Adresse de résiliation du fournisseur") {
-                        TextField("Service, adresse, code postal et ville",
-                                  text: text(\.previousSupplierAddress), axis: .vertical)
-                            .lineLimit(2...5)
-                    }
-                    LabelledField("N° client ou de contrat") {
-                        TextField("Sur la facture de l'ancien fournisseur", text: text(\.previousReference))
-                            .autocorrectionDisabled()
-                    }
-                    DayField("Résiliation à compter du", day: $draft.terminationOn)
+                    clientSection
+                    pointsSection
+                    contractSection
+                    previousSection
 
                     group("Notes")
                     LabelledField("Notes (facultatif)") {
                         TextField("Conditions, rappel prévu…", text: text(\.notes), axis: .vertical)
-                            .lineLimit(3...8)
+                            .lineLimit(3...10)
                     }
 
                     if let problem = validationProblem ?? errorMessage {
@@ -519,9 +723,135 @@ struct SignedContractForm: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Annuler") { dismiss() }
                 }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Enregistrer") { Task { await submit() } }
+                        .disabled(!canSave)
+                }
+            }
+            .sheet(isPresented: $pastesList) {
+                PastePointsSheet { points in
+                    draft.deliveryPoints.removeAll { $0.number.nonBlank == nil && $0.label?.nonBlank == nil
+                                                     && $0.site?.nonBlank == nil }
+                    draft.deliveryPoints += points
+                }
             }
         }
     }
+
+    // MARK: sections
+
+    @ViewBuilder
+    private var clientSection: some View {
+        group("Client")
+        Picker("Type de client", selection: $draft.clientKind) {
+            Text("Professionnel").tag(SignedContract.ClientKind.professionnel)
+            Text("Particulier").tag(SignedContract.ClientKind.particulier)
+        }
+        .pickerStyle(.segmented)
+
+        LabelledField(draft.isProfessional ? "Raison sociale" : "Nom et prénom") {
+            TextField(draft.isProfessional ? "Boulangerie Martin" : "Thomas Dubois",
+                      text: $draft.clientName)
+                .textContentType(draft.isProfessional ? .organizationName : .name)
+        }
+        if draft.isProfessional {
+            LabelledField("Signataire (facultatif)") {
+                TextField("Prénom Nom", text: text(\.signatoryName))
+                    .textContentType(.name)
+            }
+            LabelledField("Fonction du signataire (facultatif)") {
+                TextField("Gérant, Président…", text: text(\.signatoryTitle))
+            }
+            LabelledField("SIRET (facultatif)") {
+                TextField("14 chiffres", text: text(\.siret))
+                    .keyboardType(.numberPad)
+            }
+        }
+        LabelledField("Adresse") {
+            TextField("Numéro et rue", text: text(\.address))
+                .textContentType(.streetAddressLine1)
+        }
+        HStack(spacing: Theme.Spacing.m) {
+            LabelledField("Code postal") {
+                TextField("59000", text: text(\.postalCode))
+                    .keyboardType(.numberPad)
+                    .textContentType(.postalCode)
+            }
+            .frame(maxWidth: 130)
+            LabelledField("Ville") {
+                TextField("Ville", text: text(\.city))
+                    .textContentType(.addressCity)
+            }
+        }
+        LabelledField("Téléphone (facultatif)") {
+            TextField("06 12 34 56 78", text: text(\.phone))
+                .keyboardType(.phonePad)
+        }
+        LabelledField("Email (facultatif)") {
+            TextField("Email", text: text(\.email),
+                      prompt: Text(verbatim: "client@exemple.fr"))
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+    }
+
+    @ViewBuilder
+    private var pointsSection: some View {
+        group("Points de livraison (PDL/PRM et PCE)")
+        Text("Autant que le client en a : un par compteur, électricité ou gaz.")
+            .font(Theme.Typography.secondary)
+            .foregroundStyle(Theme.Palette.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        ForEach($draft.deliveryPoints) { $point in
+            DeliveryPointEditor(point: $point,
+                                index: (draft.deliveryPoints.firstIndex { $0.id == point.id } ?? 0) + 1) {
+                draft.deliveryPoints.removeAll { $0.id == point.id }
+            }
+        }
+
+        HStack(spacing: Theme.Spacing.m) {
+            SecondaryActionButton("Ajouter", systemImage: "plus") {
+                // the next meter is usually of the same energy as the last
+                draft.deliveryPoints.append(DeliveryPoint(energy: draft.deliveryPoints.last?.energy ?? .electricite))
+            }
+            SecondaryActionButton("Coller une liste", systemImage: "list.bullet.clipboard") {
+                pastesList = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var contractSection: some View {
+        group("Contrat signé")
+        LabelledField("Nouveau fournisseur") {
+            TextField("Fournisseur choisi", text: text(\.newSupplier))
+        }
+        DayField("Date de signature", day: $draft.signedOn)
+        DayField("Début du contrat", day: $draft.startsOn)
+        DayField("Échéance du contrat", day: $draft.endsOn)
+    }
+
+    @ViewBuilder
+    private var previousSection: some View {
+        group("Ancien contrat (pour la lettre de résiliation)")
+        LabelledField("Ancien fournisseur") {
+            TextField("EDF, Engie…", text: text(\.previousSupplier))
+        }
+        LabelledField("Adresse de résiliation du fournisseur") {
+            TextField("Service, adresse, code postal et ville",
+                      text: text(\.previousSupplierAddress), axis: .vertical)
+                .lineLimit(2...6)
+        }
+        LabelledField("N° client ou de contrat") {
+            TextField("Sur la facture de l'ancien fournisseur", text: text(\.previousReference))
+                .autocorrectionDisabled()
+        }
+        DayField("Résiliation à compter du", day: $draft.terminationOn)
+    }
+
+    // MARK: rules
 
     private var canSave: Bool {
         !isSaving && validationProblem == nil
@@ -556,6 +886,7 @@ struct SignedContractForm: View {
     }
 
     private func submit() async {
+        guard canSave else { return }
         isSaving = true
         defer { isSaving = false }
         var contract = draft
@@ -570,6 +901,106 @@ struct SignedContractForm: View {
         } catch {
             errorMessage = "Le contrat n'a pas pu être enregistré : " + error.localizedDescription
         }
+    }
+}
+
+/// One meter in the form.
+struct DeliveryPointEditor: View {
+    @Binding var point: DeliveryPoint
+    let index: Int
+    let onRemove: () -> Void
+    @State private var showsDetails = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            HStack {
+                Picker("Énergie", selection: $point.energy) {
+                    ForEach(EnergyKind.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Button(role: .destructive, action: onRemove) {
+                    Image(systemName: "trash")
+                        .foregroundStyle(Theme.Palette.destructive)
+                        .frame(width: 40, height: 34)
+                }
+                .accessibilityLabel("Retirer le point \(index)")
+            }
+            LabelledField("\(point.energy.pointName) n° \(index)") {
+                TextField(point.energy == .electricite ? "14 chiffres" : "GI… ou 14 chiffres",
+                          text: $point.number)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+            }
+            if showsDetails || point.label?.nonBlank != nil || point.site?.nonBlank != nil {
+                LabelledField("Nom du site (facultatif)") {
+                    TextField("Siège, entrepôt, boutique…", text: Binding(
+                        get: { point.label ?? "" }, set: { point.label = $0 }))
+                }
+                LabelledField("Adresse du site (si différente)") {
+                    TextField("Adresse du compteur", text: Binding(
+                        get: { point.site ?? "" }, set: { point.site = $0 }))
+                }
+            } else {
+                Button { showsDetails = true } label: {
+                    Label("Nom ou adresse du site", systemImage: "plus.circle")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.brand)
+                }
+            }
+        }
+        .padding(Theme.Spacing.l)
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.field, style: .continuous)
+            .fill(Theme.Palette.grouped))
+    }
+}
+
+/// Many meters at once: pasted from a spreadsheet, an email or the
+/// supplier's list.
+struct PastePointsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var energy: EnergyKind = .electricite
+    let onAdd: ([DeliveryPoint]) -> Void
+
+    private var points: [DeliveryPoint] { DeliveryPoint.parse(text, energy: energy) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                    Text("Collez les numéros, un par ligne (ou séparés par des virgules).")
+                        .font(Theme.Typography.secondary)
+                        .foregroundStyle(Theme.Palette.textSecondary)
+                    Picker("Énergie", selection: $energy) {
+                        ForEach(EnergyKind.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    LabelledField("Numéros") {
+                        TextField("14523698741230\n14523698741231", text: $text, axis: .vertical)
+                            .lineLimit(6...16)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.characters)
+                    }
+                    PrimaryActionButton(points.isEmpty ? "Ajouter"
+                                        : "Ajouter \(points.count) \(energy.pointName)") {
+                        onAdd(points)
+                        dismiss()
+                    }
+                    .disabled(points.isEmpty)
+                    .opacity(points.isEmpty ? 0.5 : 1)
+                }
+                .padding(Theme.Spacing.gutter)
+            }
+            .background(BrandBackground())
+            .navigationTitle("Coller une liste")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

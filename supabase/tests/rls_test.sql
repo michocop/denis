@@ -3442,8 +3442,8 @@ declare
 begin
   perform login(v_pierre);
   perform assert(has_contract_book(), 'the owner has the book');
-  insert into signed_contracts (client_name, energy, delivery_point, previous_supplier, ends_on)
-  values ('Boulangerie Late', 'gaz', 'GI123456', 'Ancien Fournisseur', current_date + 400)
+  insert into signed_contracts (client_name, previous_supplier, ends_on)
+  values ('Boulangerie Late', 'Ancien Fournisseur', current_date + 400)
   returning id into v_late;
   insert into signed_contracts (client_name, client_kind, ends_on)
   values ('Mme Soon', 'particulier', current_date + 30)
@@ -3508,6 +3508,61 @@ begin
 end $$;
 reset role;
 update profiles set status = 'active' where id = '33333333-3333-3333-3333-333333333333';
+
+\echo '=== 58. A contract holds many meters, and its papers ============'
+set role authenticated;
+do $$
+declare
+  v_pierre uuid := '33333333-3333-3333-3333-333333333333';
+  v_id     uuid;
+begin
+  perform login(v_pierre);
+  insert into signed_contracts (client_name, delivery_points)
+  values ('Multi-sites', jsonb_build_array(
+    jsonb_build_object('id', gen_random_uuid(), 'energy', 'electricite', 'number', '14523698741230', 'label', 'Siège'),
+    jsonb_build_object('id', gen_random_uuid(), 'energy', 'electricite', 'number', '14523698741231'),
+    jsonb_build_object('id', gen_random_uuid(), 'energy', 'gaz', 'number', 'GI123456', 'site', '2 rue du Port')))
+  returning id into v_id;
+  perform assert((select jsonb_array_length(delivery_points) from signed_contracts where id = v_id) = 3,
+    'a contract keeps every meter it is given');
+  perform assert((select delivery_points from signed_contracts where client_name = 'Mme Soon') = '[]'::jsonb,
+    'a contract may have no meter yet');
+
+  begin
+    update signed_contracts set delivery_points = '{"not": "a list"}' where id = v_id;
+    raise exception 'FAIL  the meters must be a list';
+  exception when check_violation then
+    raise notice '  PASS  the meters must be a list';
+  end;
+
+  insert into storage.objects (bucket_id, name) values ('contract-book', v_id || '/f1.pdf');
+  insert into signed_contract_files (contract_id, storage_path, filename, byte_size, mime_type)
+  values (v_id, v_id || '/f1.pdf', 'Contrat signé.pdf', 1200, 'application/pdf');
+  perform assert((select count(*) from signed_contract_files where contract_id = v_id) = 1,
+    'the owner files a paper with the contract');
+end $$;
+
+select assert_denied('11111111-1111-1111-1111-111111111111',
+  $q$insert into storage.objects (bucket_id, name) values ('contract-book', 'x/intrus.pdf')$q$,
+  'an apporteur cannot store a file in the book');
+select assert_denied('44444444-0000-0000-0000-000000000057',
+  $q$insert into signed_contract_files (contract_id, storage_path, filename)
+     select id, 'x/y.pdf', 'y.pdf' from signed_contracts limit 1$q$,
+  'another admin cannot file a paper');
+do $$
+begin
+  perform login('11111111-1111-1111-1111-111111111111');
+  perform assert((select count(*) from signed_contract_files) = 0, 'an apporteur lists no file');
+  perform assert((select count(*) from storage.objects where bucket_id = 'contract-book') = 0,
+    'an apporteur reads no file of the book');
+  perform login('33333333-3333-3333-3333-333333333333');
+  perform assert((select count(*) from storage.objects where bucket_id = 'contract-book') = 1,
+    'the owner reads the files of the book');
+  delete from signed_contracts where client_name = 'Multi-sites';
+  perform assert((select count(*) from signed_contract_files) = 0,
+    'deleting a contract takes its file rows with it');
+end $$;
+reset role;
 
 reset role;
 \echo ''

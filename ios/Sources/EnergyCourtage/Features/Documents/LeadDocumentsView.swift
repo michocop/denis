@@ -66,7 +66,7 @@ enum DocumentSources {
 
     /// Scanned pages, one A4 page each, as a single PDF: what an accountant
     /// expects to receive, rather than a handful of loose photos.
-    static func upload(fromScannedPages pages: [Any]) -> DocumentUpload? {
+    static func upload(fromScannedPages pages: [Any], name: String = "Facture scannée") -> DocumentUpload? {
         #if canImport(UIKit)
         let images = pages.compactMap { $0 as? UIImage }
         guard !images.isEmpty else { return nil }
@@ -85,7 +85,7 @@ enum DocumentSources {
             }
         }
         let stamp = Date.now.formatted(.dateTime.day().month().year())
-        return DocumentUpload(data: data, filename: "Facture scannée \(stamp).pdf",
+        return DocumentUpload(data: data, filename: "\(name) \(stamp).pdf",
                               mimeType: "application/pdf")
         #else
         return nil
@@ -137,6 +137,8 @@ struct DocumentScanner: UIViewControllerRepresentable {
 /// with uploads ready to send.
 struct AddDocumentButton: View {
     var title = "Ajouter un document"
+    var scanTitle = "Scanner une facture"
+    var scanName = "Facture scannée"
     let onPicked: ([DocumentUpload]) -> Void
     let onError: (String) -> Void
 
@@ -150,7 +152,7 @@ struct AddDocumentButton: View {
             #if canImport(VisionKit) && canImport(UIKit)
             if DocumentScanner.isAvailable {
                 Button { showsScanner = true } label: {
-                    Label("Scanner une facture", systemImage: "doc.viewfinder")
+                    Label(scanTitle, systemImage: "doc.viewfinder")
                 }
             }
             #endif
@@ -197,7 +199,7 @@ struct AddDocumentButton: View {
         .fullScreenCover(isPresented: $showsScanner) {
             DocumentScanner(onFinish: { pages in
                 showsScanner = false
-                if let upload = DocumentSources.upload(fromScannedPages: pages) { onPicked([upload]) }
+                if let upload = DocumentSources.upload(fromScannedPages: pages, name: scanName) { onPicked([upload]) }
             }, onCancel: { showsScanner = false })
             .ignoresSafeArea()
         }
